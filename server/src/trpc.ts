@@ -15,6 +15,7 @@
 import { type EventEmitter, on } from 'node:events';
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
+import { simulateCounterSubagent, simulateMockSession } from './debug.js';
 import type { TranscriptMonitor } from './monitor.js';
 import type { Delta, PanelDto } from './session.js';
 
@@ -53,6 +54,22 @@ export const appRouter = t.router({
     const deltas = ctx.monitor.store.remove(input.panelId);
     for (const d of deltas) ctx.monitor.emitter.emit('delta', d);
     return { ok: true, deltas: deltas.length };
+  }),
+
+  debug: t.router({
+    spawnMock: t.procedure.mutation(async ({ ctx }) => {
+      const sessionId = await simulateMockSession(ctx.monitor);
+      return { sessionId };
+    }),
+    spawnCounter: t.procedure
+      .input(z.object({ stopAt: z.number().int().positive().max(1000).default(100) }).optional())
+      .mutation(async ({ ctx, input }) => {
+        const { sessionId, agentId } = await simulateCounterSubagent(
+          ctx.monitor,
+          input?.stopAt ?? 100,
+        );
+        return { sessionId, agentId };
+      }),
   }),
 
   deltas: t.procedure.subscription(async function* ({ ctx, signal }) {

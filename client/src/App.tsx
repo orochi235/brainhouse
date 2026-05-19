@@ -1,4 +1,5 @@
 import { PanelCard } from './components/PanelCard.tsx';
+import { trpc } from './trpc.ts';
 import { type PanelState, useDeltaStream } from './useDeltaStream.ts';
 import './app.css';
 
@@ -10,7 +11,23 @@ export function App() {
     <>
       <header className="topbar">
         <h1>brainhouse</h1>
-        <span className={`conn conn-${status}`}>{status}</span>
+        <span className="topbar-controls">
+          <button
+            type="button"
+            className="debug-spawn"
+            onClick={() => trpc.debug.spawnMock.mutate()}
+          >
+            + mock session
+          </button>
+          <button
+            type="button"
+            className="debug-spawn"
+            onClick={() => trpc.debug.spawnCounter.mutate({ stopAt: 10 })}
+          >
+            + counter subagent
+          </button>
+          <span className={`conn conn-${status}`}>{status}</span>
+        </span>
       </header>
       <main className="grid">
         {ordered.map((panel) => (
