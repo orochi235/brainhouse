@@ -1,20 +1,51 @@
-import { useEffect, useState } from 'react';
-import { trpc } from './trpc.ts';
+import { PanelCard } from './components/PanelCard.tsx';
+import { type PanelState, useDeltaStream } from './useDeltaStream.ts';
+import './app.css';
 
 export function App() {
-  const [status, setStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
-
-  useEffect(() => {
-    trpc.health
-      .query()
-      .then(() => setStatus('live'))
-      .catch(() => setStatus('offline'));
-  }, []);
+  const { status, panels } = useDeltaStream();
+  const ordered = orderPanels(panels);
 
   return (
-    <main style={{ fontFamily: 'system-ui', padding: '2rem' }}>
-      <h1 style={{ margin: 0 }}>brainhouse</h1>
-      <p style={{ color: '#888' }}>server status: {status}</p>
-    </main>
+    <>
+      <header className="topbar">
+        <h1>brainhouse</h1>
+        <span className={`conn conn-${status}`}>{status}</span>
+      </header>
+      <main className="grid">
+        {ordered.map((panel) => (
+          <PanelCard key={panel.id} panel={panel} />
+        ))}
+        {ordered.length === 0 && status === 'live' && <p className="empty">no sessions yet</p>}
+      </main>
+    </>
   );
+}
+
+/** Parent panels followed by their subagents (live first within each group). */
+function orderPanels(panels: Map<string, PanelState>): PanelState[] {
+  const all = Array.from(panels.values());
+  const parents = all.filter((p) => p.kind === 'parent');
+  const subsByParent = new Map<string, PanelState[]>();
+  for (const p of all) {
+    if (p.kind === 'subagent' && p.parent_panel_id) {
+      const arr = subsByParent.get(p.parent_panel_id) ?? [];
+      arr.push(p);
+      subsByParent.set(p.parent_panel_id, arr);
+    }
+  }
+  const out: PanelState[] = [];
+  for (const parent of parents) {
+    const subs = subsByParent.get(parent.id) ?? [];
+    const live = subs.filter((s) => s.status === 'live');
+    const rest = subs.filter((s) => s.status !== 'live');
+    out.push(...live, parent, ...rest);
+  }
+  // Orphan subagents (no parent known): tack onto the end.
+  for (const p of all) {
+    if (p.kind === 'subagent' && (!p.parent_panel_id || !panels.has(p.parent_panel_id))) {
+      out.push(p);
+    }
+  }
+  return out;
 }
