@@ -1,15 +1,15 @@
 import classNames from 'classnames';
-import { formatClockTime } from '../lib/format.ts';
 import { useLightbox } from '../lib/lightbox.tsx';
 import type { ViewItem } from '../lib/pipeline.ts';
 import { iconForTool, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
+import { EventTime } from './EventList.tsx';
 
 type ToolItem = Extract<ViewItem, { type: 'tool' }>;
 
 /**
  * Single-row tool capsule. Click → lightbox shows the input and result.
  */
-export function ToolCapsule({ item }: { item: ToolItem }) {
+export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: number }) {
   const lightbox = useLightbox();
   const use = item.use ?? { tool_use_id: '', name: 'output', input: {} };
   const result = item.result;
@@ -21,6 +21,7 @@ export function ToolCapsule({ item }: { item: ToolItem }) {
     <li className="event event-tool">
       <div
         className={classNames('tool-capsule', status)}
+        data-tool-name={use.name}
         onClick={() => lightbox.open(<ToolLightboxContent item={item} />)}
       >
         <span className="tool-icon">{icon}</span>
@@ -28,7 +29,7 @@ export function ToolCapsule({ item }: { item: ToolItem }) {
         <span className={`tool-status status-${status}`} aria-label={status}>
           {status === 'pending' ? '' : status === 'ok' ? '✓' : '✗'}
         </span>
-        <span className="event-time">{formatClockTime(item.ts)}</span>
+        <EventTime ts={item.ts} startedAt={startedAt} />
       </div>
       {item.ack && <div className="tool-note">{item.ack}</div>}
     </li>

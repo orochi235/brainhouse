@@ -270,6 +270,73 @@ body {
 .panel.status-mini:active {
   cursor: grabbing;
 }
+
+/* Completion sweep: green diagonal gradient travels across on live→done. */
+.panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 38%,
+    rgba(132, 204, 22, 0.06) 46%,
+    rgba(132, 204, 22, 0.32) 50%,
+    rgba(132, 204, 22, 0.06) 54%,
+    transparent 62%,
+    transparent 100%
+  );
+  background-size: 240% 100%;
+  background-position: 130% 0;
+  opacity: 0;
+}
+.panel.completing::after {
+  animation: completion-sweep 0.75s cubic-bezier(0.3, 0.7, 0.3, 1) forwards;
+}
+@keyframes completion-sweep {
+  0% {
+    background-position: 130% 0;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    background-position: -130% 0;
+    opacity: 0;
+  }
+}
+
+/* Full-screened panel overlay. */
+.panel.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0;
+}
+.panel.fullscreen .panel-body {
+  display: block !important;
+  max-height: none;
+}
+body.has-fullscreen-panel .grid > *:not(.fullscreen):not(:has(.fullscreen)),
+body.has-fullscreen-panel .mini-tray {
+  visibility: hidden;
+}
+
+/* Faint header buttons (popout, fullscreen, +sub). */
+.panel-btn-faint:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 @keyframes panel-spawn {
   0% {
     opacity: 0;

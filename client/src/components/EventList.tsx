@@ -1,17 +1,23 @@
 import type { Event } from '@server/parser.ts';
 import { useMemo } from 'react';
-import { formatClockTime } from '../lib/format.ts';
+import { formatClockTime, formatElapsed } from '../lib/format.ts';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type BubblePart, preprocessEvents, type ViewItem } from '../lib/pipeline.ts';
 import { Markdown } from './Markdown.tsx';
 import { ToolCapsule } from './ToolCapsule.tsx';
 
-export function EventList({ events }: { events: Event[] }) {
+interface EventListProps {
+  events: Event[];
+  startedAt?: number;
+  onBubbleClick?: (event: Event) => void;
+}
+
+export function EventList({ events, startedAt, onBubbleClick }: EventListProps) {
   const { items } = useMemo(() => preprocessEvents(events), [events]);
   return (
     <ul className="events">
       {items.map((item) => (
-        <Item key={itemKey(item)} item={item} />
+        <Item key={itemKey(item)} item={item} startedAt={startedAt} onBubbleClick={onBubbleClick} />
       ))}
     </ul>
   );
@@ -22,17 +28,34 @@ function itemKey(item: ViewItem): string {
   return `${item.type}:${item.event.uuid}`;
 }
 
-function Item({ item }: { item: ViewItem }) {
-  if (item.type === 'bubble') return <Bubble item={item} />;
-  if (item.type === 'tool') return <ToolCapsule item={item} />;
-  if (item.type === 'thinking') return <ThinkingEvent event={item.event} />;
-  if (item.type === 'system') return <SystemEvent event={item.event} />;
-  return <MetaEvent event={item.event} />;
+function Item({
+  item,
+  startedAt,
+  onBubbleClick,
+}: {
+  item: ViewItem;
+  startedAt?: number;
+  onBubbleClick?: (event: Event) => void;
+}) {
+  if (item.type === 'bubble')
+    return <Bubble item={item} startedAt={startedAt} onBubbleClick={onBubbleClick} />;
+  if (item.type === 'tool') return <ToolCapsule item={item} startedAt={startedAt} />;
+  if (item.type === 'thinking') return <ThinkingEvent event={item.event} startedAt={startedAt} />;
+  if (item.type === 'system') return <SystemEvent event={item.event} startedAt={startedAt} />;
+  return <MetaEvent event={item.event} startedAt={startedAt} />;
 }
 
-function Bubble({ item }: { item: Extract<ViewItem, { type: 'bubble' }> }) {
+function Bubble({
+  item,
+  startedAt,
+  onBubbleClick,
+}: {
+  item: Extract<ViewItem, { type: 'bubble' }>;
+  startedAt?: number;
+  onBubbleClick?: (event: Event) => void;
+}) {
   return (
-    <li className={`event event-${item.role}_text`}>
+    <li className={`event event-${item.role}_text`} onClick={() => onBubbleClick?.(item.event)}>
       <div className="bubble">
         {item.parts.map((part, i) => (
           <BubblePartView
@@ -42,7 +65,7 @@ function Bubble({ item }: { item: Extract<ViewItem, { type: 'bubble' }> }) {
           />
         ))}
       </div>
-      <span className="event-time">{formatClockTime(item.event.ts)}</span>
+      <EventTime ts={item.event.ts} startedAt={startedAt} />
     </li>
   );
 }
@@ -52,7 +75,7 @@ function BubblePartView({ part, escape }: { part: BubblePart; escape: boolean })
   return <Markdown text={part.text} escape={escape} />;
 }
 
-function ThinkingEvent({ event }: { event: Event }) {
+function ThinkingEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
   const lightbox = useLightbox();
   if (event.kind !== 'thinking') return null;
   return (
@@ -65,13 +88,13 @@ function ThinkingEvent({ event }: { event: Event }) {
       }
     >
       <span className="event-kind">thinking</span>
-      <span className="event-time">{formatClockTime(event.ts)}</span>
+      <EventTime ts={event.ts} startedAt={startedAt} />
       <div className="event-body">{event.payload.text}</div>
     </li>
   );
 }
 
-function SystemEvent({ event }: { event: Event }) {
+function SystemEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
   const lightbox = useLightbox();
   if (event.kind !== 'system') return null;
   const text = event.payload.content ?? `(${event.payload.subtype ?? 'system'})`;
@@ -83,13 +106,13 @@ function SystemEvent({ event }: { event: Event }) {
       }
     >
       <span className="event-kind">system</span>
-      <span className="event-time">{formatClockTime(event.ts)}</span>
+      <EventTime ts={event.ts} startedAt={startedAt} />
       <div className="event-body">{text}</div>
     </li>
   );
 }
 
-function MetaEvent({ event }: { event: Event }) {
+function MetaEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
   const lightbox = useLightbox();
   if (event.kind !== 'meta') return null;
   const label = event.payload.record_type ?? event.payload.block_type ?? 'meta';
@@ -104,7 +127,18 @@ function MetaEvent({ event }: { event: Event }) {
       }
     >
       <span className="event-kind">meta · {label}</span>
-      <span className="event-time">{formatClockTime(event.ts)}</span>
+      <EventTime ts={event.ts} startedAt={startedAt} />
     </li>
   );
+}
+
+/** Honors the body.show-elapsed toggle when the panel's start time is known. */
+export function EventTime({ ts, startedAt }: { ts: string; startedAt?: number }) {
+  if (document.body.classList.contains('show-elapsed') && startedAt && ts) {
+    const t = new Date(ts).getTime() / 1000;
+    if (!Number.isNaN(t)) {
+      return <span className="event-time">{formatElapsed(Math.max(0, t - startedAt))}</span>;
+    }
+  }
+  return <span className="event-time">{formatClockTime(ts)}</span>;
 }

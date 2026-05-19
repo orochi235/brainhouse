@@ -15,7 +15,7 @@
 import { type EventEmitter, on } from 'node:events';
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
-import { simulateCounterSubagent, simulateMockSession } from './debug.js';
+import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
 import type { TranscriptMonitor } from './monitor.js';
 import type { Delta, PanelDto } from './session.js';
 
@@ -69,6 +69,17 @@ export const appRouter = t.router({
           input?.stopAt ?? 100,
         );
         return { sessionId, agentId };
+      }),
+    spawnSubagentIn: t.procedure
+      .input(
+        z.object({
+          sessionId: z.string(),
+          stopAt: z.number().int().positive().max(200).default(20),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const agentId = await spawnSubagentIn(ctx.monitor, input.sessionId, input.stopAt);
+        return { sessionId: input.sessionId, agentId };
       }),
   }),
 

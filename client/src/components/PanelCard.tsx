@@ -1,5 +1,6 @@
+import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
-import { type CSSProperties, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { formatIdle, formatIdleCoarse } from '../lib/format.ts';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
@@ -26,6 +27,21 @@ export function PanelCard({ panel, nested }: Props) {
     return () => clearInterval(id);
   }, []);
 
+  const lightbox = useLightbox();
+  const articleRef = useRef<HTMLElement | null>(null);
+  const lastStatusRef = useRef(panel.status);
+
+  // Completion sweep: fire briefly on live → done transitions.
+  useEffect(() => {
+    if (lastStatusRef.current === 'live' && panel.status === 'done' && articleRef.current) {
+      const el = articleRef.current;
+      el.classList.add('completing');
+      const t = setTimeout(() => el.classList.remove('completing'), 800);
+      return () => clearTimeout(t);
+    }
+    lastStatusRef.current = panel.status;
+  }, [panel.status]);
+
   const { items, checklist, pending } = useMemo(
     () => preprocessEvents(panel.events),
     [panel.events],
@@ -33,11 +49,19 @@ export function PanelCard({ panel, nested }: Props) {
   const waiting = pending && panel.status === 'live';
   const progressPct = checklist ? progressPercent(checklist) : null;
 
+  const onBubbleClick = (event: Event) => {
+    if (!document.body.classList.contains('view-conversation')) return;
+    const turn = computeTurn(panel.events, event.uuid);
+    if (turn.length === 0) return;
+    lightbox.open(<TurnLightbox panel={panel} events={turn} />);
+  };
+
   const style: CSSProperties = {};
   if (progressPct !== null) (style as Record<string, string>)['--progress'] = `${progressPct}%`;
 
   return (
     <article
+      ref={articleRef}
       className={classNames(
         'panel',
         `panel-${panel.kind}`,
@@ -52,11 +76,44 @@ export function PanelCard({ panel, nested }: Props) {
       <PanelHeader panel={panel} now={now} />
       {checklist && <ChecklistPin items={checklist} />}
       <div className="panel-body">
-        <EventList events={panel.events} />
+        <EventList
+          events={panel.events}
+          startedAt={panel.started_at}
+          onBubbleClick={onBubbleClick}
+        />
         {waiting && <ThinkingIndicator started={lastUserActivity(items, now)} now={now} />}
       </div>
     </article>
   );
+}
+
+function TurnLightbox({ panel, events }: { panel: PanelState; events: Event[] }) {
+  return (
+    <>
+      <h3 className="lightbox-title">{panel.title}</h3>
+      <EventList events={events} startedAt={panel.started_at} />
+    </>
+  );
+}
+
+function computeTurn(events: Event[], anchorUuid: string): Event[] {
+  const anchorIdx = events.findIndex((e) => e.uuid === anchorUuid);
+  if (anchorIdx === -1) return [];
+  let start = 0;
+  for (let i = anchorIdx; i >= 0; i--) {
+    if (events[i]?.kind === 'user_text') {
+      start = i;
+      break;
+    }
+  }
+  let end = events.length;
+  for (let i = start + 1; i < events.length; i++) {
+    if (events[i]?.kind === 'user_text') {
+      end = i;
+      break;
+    }
+  }
+  return events.slice(start, end);
 }
 
 function PanelHeader({ panel, now }: { panel: PanelState; now: number }) {
@@ -95,17 +152,64 @@ function PanelHeader({ panel, now }: { panel: PanelState; now: number }) {
 function HeaderActions({ panel }: { panel: PanelState }) {
   if (panel.status === 'live') {
     return (
-      <button
-        type="button"
-        className="panel-btn"
-        title="Force this session to done"
-        onClick={(e) => {
-          e.stopPropagation();
-          trpc.forceStatus.mutate({ panelId: panel.id, status: 'done' });
-        }}
-      >
-        ×
-      </button>
+      <>
+        {panel.kind === 'parent' && (
+          <button
+            type="button"
+            className="panel-btn panel-btn-faint"
+            title="Spawn a mock subagent in this session"
+            onClick={(e) => {
+              e.stopPropagation();
+              trpc.debug.spawnSubagentIn.mutate({ sessionId: panel.id, stopAt: 8 });
+            }}
+          >
+            +sub
+          </button>
+        )}
+        {panel.kind === 'subagent' && (
+          <button
+            type="button"
+            className="panel-btn panel-btn-faint"
+            title="Open this subagent in its own window"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(
+                `/?panel=${encodeURIComponent(panel.id)}`,
+                `brainhouse-${panel.id}`,
+                'width=900,height=900',
+              );
+            }}
+          >
+            ⤢
+          </button>
+        )}
+        <button
+          type="button"
+          className="panel-btn panel-btn-faint"
+          title="Full-screen (Esc to close)"
+          onClick={(e) => {
+            e.stopPropagation();
+            const article = (e.currentTarget.closest('.panel') as HTMLElement) ?? null;
+            if (article) {
+              const on = article.classList.toggle('fullscreen');
+              document.body.classList.toggle('has-fullscreen-panel', on);
+            }
+          }}
+        >
+          ⛶
+        </button>
+        <button
+          type="button"
+          className="panel-btn"
+          title="Force this session to done"
+          onClick={(e) => {
+            e.stopPropagation();
+            trpc.forceStatus.mutate({ panelId: panel.id, status: 'done' });
+          }}
+        >
+          ×
+        </button>
+      </>
     );
   }
   if (panel.status === 'mini') {
@@ -123,7 +227,6 @@ function HeaderActions({ panel }: { panel: PanelState }) {
       </button>
     );
   }
-  // done — no per-panel buttons; click anywhere opens lightbox.
   return null;
 }
 

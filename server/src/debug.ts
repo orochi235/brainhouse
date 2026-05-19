@@ -68,6 +68,56 @@ export async function simulateMockSession(monitor: TranscriptMonitor): Promise<s
   return sessionId;
 }
 
+export async function spawnSubagentIn(
+  monitor: TranscriptMonitor,
+  sessionId: string,
+  stopAt = 20,
+): Promise<string> {
+  const agentId = `agent-mock-${randomUUID().slice(0, 6)}`;
+  void (async () => {
+    emit(monitor, sessionId, null, `${sessionId}:tu-${agentId}`, 'tool_use', {
+      tool_use_id: `tu-${agentId}`,
+      name: 'Task',
+      input: { subagent_type: 'mock', description: `Stream ${stopAt} updates` },
+    });
+    emit(monitor, sessionId, agentId, `${sessionId}:${agentId}:meta`, 'meta', {
+      record_type: 'subagent-meta',
+      raw: { agentType: 'mock', description: `Stream ${stopAt} updates` },
+    });
+    const useChecklist = Math.random() < 0.5;
+    if (useChecklist) {
+      const items = Array.from({ length: stopAt }, (_, i) => `step ${i + 1}`);
+      const block = (n: number) =>
+        [
+          'progress so far:',
+          '',
+          '```pensieve-checklist',
+          ...items.map((label, i) => `- [${i < n ? 'x' : ' '}] ${label}`),
+          '```',
+        ].join('\n');
+      for (let n = 0; n <= stopAt; n++) {
+        emit(monitor, sessionId, agentId, `${sessionId}:${agentId}:cl${n}`, 'assistant_text', {
+          text: block(n),
+        });
+        await sleep(600);
+      }
+    } else {
+      for (let n = 1; n <= stopAt; n++) {
+        emit(monitor, sessionId, agentId, `${sessionId}:${agentId}:s${n}`, 'assistant_text', {
+          text: `step ${n}/${stopAt}: doing thing`,
+        });
+        await sleep(600);
+      }
+    }
+    emit(monitor, sessionId, null, `${sessionId}:tr-${agentId}`, 'tool_result', {
+      tool_use_id: `tu-${agentId}`,
+      content: `completed ${stopAt} steps`,
+      is_error: false,
+    });
+  })();
+  return agentId;
+}
+
 export async function simulateCounterSubagent(
   monitor: TranscriptMonitor,
   stopAt = 100,

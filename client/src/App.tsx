@@ -21,6 +21,20 @@ export function App() {
     document.body.classList.toggle('view-conversation', conversation);
   }, [imessage, hideMeta, showElapsed, conversation]);
 
+  // ESC dismisses a fullscreen panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const fs = document.querySelector('.panel.fullscreen');
+      if (fs) {
+        fs.classList.remove('fullscreen');
+        document.body.classList.remove('has-fullscreen-panel');
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   const focusedId = new URLSearchParams(location.search).get('panel');
   if (focusedId) {
     const focused = panels.get(focusedId);
