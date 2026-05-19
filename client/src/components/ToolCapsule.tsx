@@ -1,0 +1,60 @@
+import classNames from 'classnames';
+import { formatClockTime } from '../lib/format.ts';
+import { useLightbox } from '../lib/lightbox.tsx';
+import type { ViewItem } from '../lib/pipeline.ts';
+import { iconForTool, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
+
+type ToolItem = Extract<ViewItem, { type: 'tool' }>;
+
+/**
+ * Single-row tool capsule. Click → lightbox shows the input and result.
+ */
+export function ToolCapsule({ item }: { item: ToolItem }) {
+  const lightbox = useLightbox();
+  const use = item.use ?? { tool_use_id: '', name: 'output', input: {} };
+  const result = item.result;
+  const status = result ? (result.is_error ? 'error' : 'ok') : 'pending';
+  const label = summarizeTool(use, result);
+  const icon = iconForTool(use.name, use.input);
+
+  return (
+    <li className="event event-tool">
+      <div
+        className={classNames('tool-capsule', status)}
+        onClick={() => lightbox.open(<ToolLightboxContent item={item} />)}
+      >
+        <span className="tool-icon">{icon}</span>
+        <span className="tool-label">{label}</span>
+        <span className={`tool-status status-${status}`} aria-label={status}>
+          {status === 'pending' ? '' : status === 'ok' ? '✓' : '✗'}
+        </span>
+        <span className="event-time">{formatClockTime(item.ts)}</span>
+      </div>
+      {item.ack && <div className="tool-note">{item.ack}</div>}
+    </li>
+  );
+}
+
+function ToolLightboxContent({ item }: { item: ToolItem }) {
+  const use = item.use;
+  const result = item.result;
+  return (
+    <>
+      <h3 className="lightbox-title">{use?.name ?? 'tool'}</h3>
+      {use && (
+        <>
+          <div className="lightbox-section">input</div>
+          <pre className="lightbox-code">{stringifyToolValue(use.input)}</pre>
+        </>
+      )}
+      {result ? (
+        <>
+          <div className="lightbox-section">{result.is_error ? 'result (error)' : 'result'}</div>
+          <pre className="lightbox-code">{stringifyToolValue(result.content)}</pre>
+        </>
+      ) : (
+        <div className="lightbox-section">result pending…</div>
+      )}
+    </>
+  );
+}

@@ -13,7 +13,21 @@
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
-    "rules": { "recommended": true }
+    "rules": {
+      "recommended": true,
+      // Brainhouse is a developer tool, not a screen-reader-first product.
+      // Click-on-list-item and div-as-button patterns are intentional.
+      "a11y": {
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "noNoninteractiveElementToInteractiveRole": "off",
+        "useAriaPropsSupportedByRole": "off"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noShadowRestrictedNames": "off"
+      }
+    }
   },
   "javascript": {
     "formatter": {
