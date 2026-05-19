@@ -2,6 +2,7 @@ import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { formatIdle, formatIdleCoarse } from '../lib/format.ts';
+import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
 import { projectLabel } from '../lib/project.ts';
@@ -190,7 +191,7 @@ export function PanelCard({
 function TurnLightbox({ panel, events }: { panel: PanelState; events: Event[] }) {
   return (
     <>
-      <h3 className="lightbox-title">{panel.title}</h3>
+      <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
       <EventList events={events} startedAt={panel.started_at} />
     </>
   );
@@ -288,7 +289,7 @@ function PanelHeader({
         )
       )}
       <span className="panel-titles">
-        <span className="panel-title">{panel.title}</span>
+        <span className="panel-title">{renderInlineCode(panel.title)}</span>
         <span className="panel-subtitle-row">
           {panel.kind === 'subagent' && panel.agent_type ? (
             <span className="panel-subtitle">{panel.agent_type}</span>
@@ -428,7 +429,7 @@ function ThinkingIndicator({ started, now }: { started: number; now: number }) {
 function PanelLightboxContent({ panel }: { panel: PanelState }) {
   return (
     <>
-      <h3 className="lightbox-title">{panel.title}</h3>
+      <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
       <EventList events={panel.events} />
     </>
   );

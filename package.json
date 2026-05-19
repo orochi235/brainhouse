@@ -9,6 +9,7 @@
   },
   "files": [
     "bin",
+    "hooks",
     "server/dist",
     "server/package.json"
   ],

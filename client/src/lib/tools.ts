@@ -10,32 +10,32 @@
  * hand-rolled `{}` glyph (no Simple Icons entry exists).
  */
 
-import brewIcon from '../assets/icons/brew.svg?url';
-import bunIcon from '../assets/icons/bun.svg?url';
-import cargoIcon from '../assets/icons/cargo.svg?url';
-import curlIcon from '../assets/icons/curl.svg?url';
-import denoIcon from '../assets/icons/deno.svg?url';
-import dockerIcon from '../assets/icons/docker.svg?url';
-import ghIcon from '../assets/icons/gh.svg?url';
-import gitIcon from '../assets/icons/git.svg?url';
-import goIcon from '../assets/icons/go.svg?url';
-import jqIcon from '../assets/icons/jq.svg?url';
-import kubectlIcon from '../assets/icons/kubectl.svg?url';
-import makeIcon from '../assets/icons/make.svg?url';
-import nodeIcon from '../assets/icons/node.svg?url';
-import npmIcon from '../assets/icons/npm.svg?url';
-import npxIcon from '../assets/icons/npx.svg?url';
-import nvimIcon from '../assets/icons/nvim.svg?url';
-import pipIcon from '../assets/icons/pip.svg?url';
-import pnpmIcon from '../assets/icons/pnpm.svg?url';
-import pytestIcon from '../assets/icons/pytest.svg?url';
-import pythonIcon from '../assets/icons/python.svg?url';
-import python3Icon from '../assets/icons/python3.svg?url';
-import rustcIcon from '../assets/icons/rustc.svg?url';
-import uvIcon from '../assets/icons/uv.svg?url';
-import vimIcon from '../assets/icons/vim.svg?url';
-import wgetIcon from '../assets/icons/wget.svg?url';
-import yarnIcon from '../assets/icons/yarn.svg?url';
+import brewIcon from '../assets/icons/brew.svg?raw';
+import bunIcon from '../assets/icons/bun.svg?raw';
+import cargoIcon from '../assets/icons/cargo.svg?raw';
+import curlIcon from '../assets/icons/curl.svg?raw';
+import denoIcon from '../assets/icons/deno.svg?raw';
+import dockerIcon from '../assets/icons/docker.svg?raw';
+import ghIcon from '../assets/icons/gh.svg?raw';
+import gitIcon from '../assets/icons/git.svg?raw';
+import goIcon from '../assets/icons/go.svg?raw';
+import jqIcon from '../assets/icons/jq.svg?raw';
+import kubectlIcon from '../assets/icons/kubectl.svg?raw';
+import makeIcon from '../assets/icons/make.svg?raw';
+import nodeIcon from '../assets/icons/node.svg?raw';
+import npmIcon from '../assets/icons/npm.svg?raw';
+import npxIcon from '../assets/icons/npx.svg?raw';
+import nvimIcon from '../assets/icons/nvim.svg?raw';
+import pipIcon from '../assets/icons/pip.svg?raw';
+import pnpmIcon from '../assets/icons/pnpm.svg?raw';
+import pytestIcon from '../assets/icons/pytest.svg?raw';
+import pythonIcon from '../assets/icons/python.svg?raw';
+import python3Icon from '../assets/icons/python3.svg?raw';
+import rustcIcon from '../assets/icons/rustc.svg?raw';
+import uvIcon from '../assets/icons/uv.svg?raw';
+import vimIcon from '../assets/icons/vim.svg?raw';
+import wgetIcon from '../assets/icons/wget.svg?raw';
+import yarnIcon from '../assets/icons/yarn.svg?raw';
 
 interface ToolUseInput {
   command?: string;
@@ -61,7 +61,7 @@ export interface ToolResultPayload {
   is_error: boolean;
 }
 
-export type ToolIcon = { kind: 'svg'; src: string } | { kind: 'glyph'; text: string };
+export type ToolIcon = { kind: 'svg'; svg: string } | { kind: 'glyph'; text: string };
 
 const TOOL_ICONS: Record<string, string> = {
   Bash: '▶',
@@ -126,7 +126,7 @@ export function iconForTool(name: string, input: unknown): ToolIcon {
     const cmd = (input as ToolUseInput).command;
     if (typeof cmd === 'string') {
       const head = parseBashCommandHead(cmd);
-      if (head && CLI_ICONS[head]) return { kind: 'svg', src: CLI_ICONS[head] };
+      if (head && CLI_ICONS[head]) return { kind: 'svg', svg: CLI_ICONS[head] };
     }
   }
   return { kind: 'glyph', text: TOOL_ICONS[name] ?? '⚙' };

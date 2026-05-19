@@ -132,7 +132,7 @@ export function App() {
     return (
       <LightboxProvider>
         <header className="topbar">
-          <h1>brainhouse · {focused?.title ?? focusedId}</h1>
+          <h1>Brainhouse · {focused?.title ?? focusedId}</h1>
           <span className={`conn conn-${status}`}>{status}</span>
         </header>
         <main className="session-grid focused">
@@ -145,17 +145,8 @@ export function App() {
   return (
     <LightboxProvider>
       <header className="topbar">
-        <h1>brainhouse</h1>
+        <h1>Brainhouse</h1>
         <span className="topbar-controls">
-          <PrefsButton onSaved={refetchPrefs} />
-          <button
-            type="button"
-            className="theme-toggle"
-            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          >
-            {theme === 'dark' ? '☾' : '☀'}
-          </button>
           <button
             type="button"
             className="debug-spawn"
@@ -174,6 +165,17 @@ export function App() {
             clear all
           </button>
           <span className={`conn conn-${status}`}>{status}</span>
+          <span className="topbar-icon-buttons">
+            <button
+              type="button"
+              className="theme-toggle"
+              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            >
+              {theme === 'dark' ? '☾' : '☀'}
+            </button>
+            <PrefsButton onSaved={refetchPrefs} />
+          </span>
         </span>
       </header>
       <main
@@ -436,7 +438,7 @@ function PrefsButton({ onSaved }: { onSaved?: () => void }) {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className="theme-toggle theme-toggle-prefs"
       title="Preferences"
       onClick={() =>
         lightbox.open(

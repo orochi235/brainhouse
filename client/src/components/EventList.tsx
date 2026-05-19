@@ -289,7 +289,14 @@ function countLines(s: string): number {
 
 function GroupIcon({ icon }: { icon: ToolIcon }) {
   if (icon.kind === 'svg')
-    return <img className="op-strip-mini-icon" src={icon.src} alt="" aria-hidden="true" />;
+    return (
+      <span
+        className="op-strip-mini-icon svg-glyph"
+        aria-hidden="true"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
+        dangerouslySetInnerHTML={{ __html: icon.svg }}
+      />
+    );
   return <span className="op-strip-mini-icon">{icon.text}</span>;
 }
 

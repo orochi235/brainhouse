@@ -244,16 +244,14 @@ export class SessionStore {
     return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 
-  /** Find live panels that originated from a given transcript file. Used by
-   * the hook bridge to route SubagentStop to a specific subagent rather
-   * than the whole session. Best-effort: matches against the most recent
-   * event in each panel. */
-  findPanelByTranscriptPath(transcriptPath: string): Panel | undefined {
-    for (const panel of this.panels.values()) {
-      const last = panel.events[panel.events.length - 1];
-      if (last && (last as { source_path?: string }).source_path === transcriptPath) return panel;
-    }
-    return undefined;
+  /** Subagent panels (live or done) parented to a given session. Used by
+   * SubagentStop to find which subagent to demote — Claude Code's hook
+   * payload doesn't directly identify the subagent id, so we collapse all
+   * live ones under the parent. */
+  liveSubagentsOf(parentSessionId: string): Panel[] {
+    return Array.from(this.panels.values()).filter(
+      (p) => p.kind === 'subagent' && p.parent_panel_id === parentSessionId && p.status === 'live',
+    );
   }
 
   snapshot(): Array<PanelDto & { events: Event[] }> {
@@ -369,6 +367,7 @@ export class SessionStore {
       event_count: p.events.length,
       cwd: p.cwd,
       theme: p.theme,
+      awaiting_input: p.awaiting_input,
     };
   }
 }

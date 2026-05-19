@@ -261,6 +261,49 @@ describe('SessionStore', () => {
     expect(store.forceStatus('S', 'live')).toEqual([]);
   });
 
+  it('setAwaiting toggles the flag and emits panel_upsert', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { payload: { text: 'hi' } }));
+
+    const on = store.setAwaiting('S', true);
+    expect(on).toHaveLength(1);
+    expect(on[0]).toMatchObject({ op: 'panel_upsert' });
+    expect(store.panel('S')?.awaiting_input).toBe(true);
+
+    // Idempotent.
+    expect(store.setAwaiting('S', true)).toEqual([]);
+
+    // Cleared automatically on next ingest.
+    const after = store.apply(ev('assistant_text', { uuid: 'u2', payload: { text: 'ok' } }));
+    expect(after.some((d) => d.op === 'panel_upsert')).toBe(true);
+    expect(store.panel('S')?.awaiting_input).toBe(false);
+  });
+
+  it('liveSubagentsOf filters by parent + live status', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { payload: { text: 'parent' } }));
+    store.apply(
+      ev('assistant_text', {
+        uuid: 'sub1-u',
+        agent_id: 'sub1',
+        payload: { text: 'hi from sub' },
+      }),
+    );
+    store.apply(
+      ev('assistant_text', {
+        uuid: 'sub2-u',
+        agent_id: 'sub2',
+        payload: { text: 'hi from sub2' },
+      }),
+    );
+    store.forceStatus('sub2', 'done');
+
+    const live = store.liveSubagentsOf('S');
+    expect(live.map((p) => p.id)).toEqual(['sub1']);
+  });
+
   it('remove returns panel_remove delta and deletes', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });

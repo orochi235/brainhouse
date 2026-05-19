@@ -26,7 +26,16 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
         onClick={() => lightbox.open(<ToolLightboxContent item={item} />)}
       >
         <span className="tool-icon">
-          {icon.kind === 'svg' ? <img src={icon.src} alt="" aria-hidden="true" /> : icon.text}
+          {icon.kind === 'svg' ? (
+            <span
+              className="svg-glyph"
+              aria-hidden="true"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
+              dangerouslySetInnerHTML={{ __html: icon.svg }}
+            />
+          ) : (
+            icon.text
+          )}
         </span>
         <span className="tool-label">{label}</span>
         <span className={`tool-status status-${status}`} aria-label={status}>

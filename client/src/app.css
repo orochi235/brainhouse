@@ -102,6 +102,16 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
+.topbar-icon-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.6rem;
+}
+.theme-toggle-prefs {
+  font-size: 1.45rem;
+  line-height: 1;
+}
 .toggle {
   display: inline-flex;
   align-items: center;
@@ -994,9 +1004,9 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   justify-content: center;
   opacity: 0.75;
 }
-.op-strip-mini-icon img {
-  width: 100%;
-  height: 100%;
+.op-strip-mini-icon.svg-glyph {
+  width: 0.9em;
+  height: 0.9em;
 }
 .op-strip-lightbox {
   display: flex;
@@ -1134,9 +1144,20 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   justify-content: center;
   flex-shrink: 0;
 }
-/* SVG icons inside a tool capsule render at exactly the same visual size as
- * the emoji glyphs they replaced — match the surrounding font size. */
-.tool-icon img {
+/* Inline-SVG icons inherit their color from `currentColor` on the parent
+ * because the bundled SVGs use `fill="currentColor"`. The wrapper just sizes
+ * the inner <svg> to the surrounding font. */
+.svg-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.svg-glyph > svg {
+  width: 100%;
+  height: 100%;
+}
+.tool-icon .svg-glyph {
   width: 1em;
   height: 1em;
   vertical-align: middle;

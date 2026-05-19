@@ -8,6 +8,7 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { HookEventWatcher, type HookEvent, defaultEventsDir } from './hookEvents.js';
 import type { Event } from './parser.js';
 import { type Delta, SessionStore } from './session.js';
 import { readPanelTheme } from './theme.js';
@@ -23,6 +24,9 @@ export interface MonitorOptions {
   miniSeconds?: number;
   removeAfterSeconds?: number;
   tickIntervalMs?: number;
+  /** Directory the hook dispatcher writes sidecar JSONL into. Defaults to
+   * `~/.brainhouse/events`. Set to `null` to disable hook ingestion. */
+  hookEventsDir?: string | null;
 }
 
 export class TranscriptMonitor {
@@ -33,6 +37,7 @@ export class TranscriptMonitor {
   readonly emitter = new EventEmitter();
   private tickIntervalMs: number;
   private tickHandle: NodeJS.Timeout | null = null;
+  private hookWatcher: HookEventWatcher | null = null;
   /** rootPath → label. Used to translate watcher "sourceRoot" into a
    * human-readable account name on each ingest. */
   private readonly accountLabels: Map<string, string>;
@@ -51,6 +56,10 @@ export class TranscriptMonitor {
       this.ingest(event, sourceRoot),
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
+    const dir = opts.hookEventsDir === undefined ? defaultEventsDir() : opts.hookEventsDir;
+    if (dir) {
+      this.hookWatcher = new HookEventWatcher(dir, (e) => this.applyHookEvent(e));
+    }
     // Default emitter caps listener count at 10; the WS subscribers will easily
     // exceed that during dev with HMR opening fresh connections.
     this.emitter.setMaxListeners(100);
@@ -58,6 +67,7 @@ export class TranscriptMonitor {
 
   async start({ watch = true }: { watch?: boolean } = {}): Promise<void> {
     await this.watcher.start({ watch });
+    if (this.hookWatcher) await this.hookWatcher.start();
     this.startTick();
   }
 
@@ -87,6 +97,28 @@ export class TranscriptMonitor {
     if (this.tickHandle) clearInterval(this.tickHandle);
     this.tickHandle = null;
     await this.watcher.stop();
+    if (this.hookWatcher) await this.hookWatcher.stop();
+  }
+
+  /** Translate a sidecar hook event into lifecycle deltas. Each event kind
+   * targets the parent panel by `session_id`; SubagentStop also demotes any
+   * live subagents under that parent. */
+  applyHookEvent(event: HookEvent): void {
+    const sid = event.session_id;
+    if (event.kind === 'stop') {
+      for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
+      return;
+    }
+    if (event.kind === 'subagent_stop') {
+      for (const sub of this.store.liveSubagentsOf(sid)) {
+        for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
+      }
+      return;
+    }
+    if (event.kind === 'notification') {
+      for (const d of this.store.setAwaiting(sid, true)) this.broadcast(d);
+      return;
+    }
   }
 
   /**
