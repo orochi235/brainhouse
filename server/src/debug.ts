@@ -5,15 +5,22 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import os from 'node:os';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { TranscriptMonitor } from './monitor.js';
 import type { Event } from './parser.js';
 
-/** Hand the mock sessions a real directory so .hued theming has something to read. */
+/** Hand the mock sessions a real directory so .hued theming has something to
+ * read. Walks up from process.cwd() to the first ancestor that has a .hued,
+ * so spawning a mock from inside `brainhouse/server/` finds `brainhouse/.hued`. */
 function pickMockCwd(): string {
-  return path.join(os.homedir(), 'src', 'pensieve');
+  let dir = process.cwd();
+  while (dir !== path.dirname(dir)) {
+    if (existsSync(path.join(dir, '.hued'))) return dir;
+    dir = path.dirname(dir);
+  }
+  return process.cwd();
 }
 
 function emit(
