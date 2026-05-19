@@ -142,6 +142,7 @@ export class TranscriptWatcher {
       uuid: `${info.agent_id}:meta`,
       parent_uuid: null,
       ts: '',
+      cwd: null,
       kind: 'meta',
       payload: { record_type: 'subagent-meta', raw },
     });

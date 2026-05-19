@@ -12,7 +12,13 @@ class FakeClock {
 
 function ev(
   kind: EventKind,
-  opts: { session_id?: string; agent_id?: string | null; uuid?: string; payload?: unknown } = {},
+  opts: {
+    session_id?: string;
+    agent_id?: string | null;
+    uuid?: string;
+    payload?: unknown;
+    cwd?: string | null;
+  } = {},
 ): Event {
   return {
     session_id: opts.session_id ?? 'S',
@@ -20,6 +26,7 @@ function ev(
     uuid: opts.uuid ?? 'u',
     parent_uuid: null,
     ts: 't',
+    cwd: opts.cwd ?? null,
     kind,
     payload: opts.payload ?? {},
   } as Event;

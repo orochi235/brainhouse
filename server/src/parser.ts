@@ -21,6 +21,9 @@ interface EventBase {
   uuid: string;
   parent_uuid: string | null;
   ts: string;
+  /** Original working directory of the Claude Code session, when present
+   * on the record. Used to read per-project theme files (.hued). */
+  cwd: string | null;
 }
 
 export type Event =
@@ -66,6 +69,7 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
   const uuid = asString(raw.uuid) ?? '';
   const parentUuid = asString(raw.parentUuid) ?? null;
   const ts = asString(raw.timestamp) ?? '';
+  const cwd = asString(raw.cwd) ?? null;
   const rtype = asString(raw.type);
 
   const base = (
@@ -76,12 +80,14 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
     uuid: string;
     parent_uuid: string | null;
     ts: string;
+    cwd: string | null;
   } => ({
     session_id: sid,
     agent_id: aid,
     uuid: uuid + uuidSuffix,
     parent_uuid: parentUuid,
     ts,
+    cwd,
   });
 
   if (rtype === 'user' || rtype === 'assistant') {

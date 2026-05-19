@@ -5,9 +5,16 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { TranscriptMonitor } from './monitor.js';
 import type { Event } from './parser.js';
+
+/** Hand the mock sessions a real directory so .hued theming has something to read. */
+function pickMockCwd(): string {
+  return path.join(os.homedir(), 'src', 'pensieve');
+}
 
 function emit(
   monitor: TranscriptMonitor,
@@ -16,6 +23,7 @@ function emit(
   uuid: string,
   kind: Event['kind'],
   payload: unknown,
+  cwd: string | null = null,
 ): void {
   monitor.ingest({
     session_id: sessionId,
@@ -23,6 +31,7 @@ function emit(
     uuid,
     parent_uuid: null,
     ts: new Date().toISOString(),
+    cwd,
     kind,
     payload: payload as Extract<Event, { kind: typeof kind }>['payload'],
   } as Event);
@@ -30,10 +39,17 @@ function emit(
 
 export async function simulateMockSession(monitor: TranscriptMonitor): Promise<string> {
   const sessionId = `mock-${randomUUID().slice(0, 8)}`;
+  const cwd = pickMockCwd();
   void (async () => {
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', {
-      text: 'summarize the top 3 numpy dtypes with a table and example code',
-    });
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'summarize the top 3 numpy dtypes with a table and example code' },
+      cwd,
+    );
     await sleep(600);
     emit(monitor, sessionId, null, `${sessionId}:t1`, 'thinking', {
       text: 'outlining the dtypes and a code example',

@@ -23,7 +23,12 @@ export function LightboxProvider({ children }: { children: ReactNode }) {
   const open = useCallback<LightboxState['open']>((c, opts) => {
     setContent(c);
     setVariant(opts?.variant ?? 'rich');
-    dialogRef.current?.showModal();
+    const d = dialogRef.current;
+    if (!d) return;
+    // showModal() throws InvalidStateError if the dialog is already open —
+    // which silently breaks "click a different message while lightbox is up."
+    // Updating the content is enough in that case.
+    if (!d.open) d.showModal();
   }, []);
   const close = useCallback(() => dialogRef.current?.close(), []);
 

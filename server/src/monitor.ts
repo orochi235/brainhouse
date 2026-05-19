@@ -10,6 +10,7 @@
 import { EventEmitter } from 'node:events';
 import type { Event } from './parser.js';
 import { type Delta, SessionStore } from './session.js';
+import { readPanelTheme } from './theme.js';
 import { TranscriptWatcher } from './watcher.js';
 
 export interface MonitorOptions {
@@ -60,5 +61,19 @@ export class TranscriptMonitor {
 
   private broadcast(delta: Delta): void {
     this.emitter.emit('delta', delta);
+    // When a panel announces (or upgrades) its cwd, try to load that
+    // project's .hued theme. The read is async; once it lands, the store
+    // emits another panel_upsert with the theme attached.
+    if (delta.op === 'panel_upsert' && delta.panel.cwd && !delta.panel.theme) {
+      void this.loadThemeFor(delta.panel.id, delta.panel.cwd);
+    }
+  }
+
+  private async loadThemeFor(panelId: string, cwd: string): Promise<void> {
+    const theme = await readPanelTheme(cwd);
+    if (!theme) return;
+    for (const delta of this.store.setTheme(panelId, theme)) {
+      this.emitter.emit('delta', delta);
+    }
   }
 }

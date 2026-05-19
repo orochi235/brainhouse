@@ -15,6 +15,11 @@ import type { Event } from './parser.js';
 export type PanelKind = 'parent' | 'subagent';
 export type PanelStatus = 'live' | 'done' | 'mini';
 
+export interface PanelTheme {
+  background: string;
+  foreground: string;
+}
+
 export interface Panel {
   id: string;
   kind: PanelKind;
@@ -24,6 +29,8 @@ export interface Panel {
   started_at: number;
   last_event_at: number;
   status_changed_at: number;
+  cwd: string | null;
+  theme: PanelTheme | null;
   events: Event[];
 }
 
@@ -37,6 +44,8 @@ export interface PanelDto {
   last_event_at: number;
   status_changed_at: number;
   event_count: number;
+  cwd: string | null;
+  theme: PanelTheme | null;
 }
 
 export type Delta =
@@ -78,8 +87,17 @@ export class SessionStore {
       deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'live' });
     }
     this.maybeUpdateTitle(panel, event, deltas);
+    this.maybeAdoptCwd(panel, event, deltas);
     deltas.push({ op: 'event_append', panel_id: panel.id, event });
     return deltas;
+  }
+
+  /** Stamp the panel's theme. Called by the monitor once .hued has been read. */
+  setTheme(panelId: string, theme: PanelTheme | null): Delta[] {
+    const panel = this.panels.get(panelId);
+    if (!panel) return [];
+    panel.theme = theme;
+    return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 
   tick(now?: number): Delta[] {
@@ -149,11 +167,22 @@ export class SessionStore {
       started_at: now,
       last_event_at: now,
       status_changed_at: now,
+      cwd: event.cwd,
+      theme: null,
       events: [],
     };
     this.panels.set(id, panel);
     deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
     return panel;
+  }
+
+  /** Late-arriving cwd: most records have it but some metadata ones don't.
+   * Adopt the first non-null cwd we see and emit a panel_upsert. */
+  private maybeAdoptCwd(panel: Panel, event: Event, deltas: Delta[]): void {
+    if (panel.cwd) return;
+    if (!event.cwd) return;
+    panel.cwd = event.cwd;
+    deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
   }
 
   private maybeUpdateTitle(panel: Panel, event: Event, deltas: Delta[]): void {
@@ -184,6 +213,8 @@ export class SessionStore {
       last_event_at: p.last_event_at,
       status_changed_at: p.status_changed_at,
       event_count: p.events.length,
+      cwd: p.cwd,
+      theme: p.theme,
     };
   }
 }

@@ -37,6 +37,7 @@ describe('appRouter', () => {
       uuid: 'u1',
       parent_uuid: null,
       ts: 't',
+      cwd: null,
       kind: 'user_text',
       payload: { text: 'hello' },
     });
@@ -53,6 +54,7 @@ describe('appRouter', () => {
       agent_id: null,
       uuid: 'u1',
       parent_uuid: null,
+      cwd: null,
       ts: 't',
       kind: 'user_text',
       payload: { text: 'hi' },
@@ -69,6 +71,7 @@ describe('appRouter', () => {
       agent_id: null,
       uuid: 'u1',
       parent_uuid: null,
+      cwd: null,
       ts: 't',
       kind: 'user_text',
       payload: { text: 'hi' },

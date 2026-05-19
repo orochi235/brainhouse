@@ -50,14 +50,22 @@ export function PanelCard({ panel, nested }: Props) {
   const progressPct = checklist ? progressPercent(checklist) : null;
 
   const onBubbleClick = (event: Event) => {
-    if (!document.body.classList.contains('view-conversation')) return;
+    // Open the full turn that contains this bubble. If for some reason we
+    // can't resolve a turn (e.g. event.uuid not found in events), fall back
+    // to showing the single message — clicking should never appear to do
+    // nothing.
     const turn = computeTurn(panel.events, event.uuid);
-    if (turn.length === 0) return;
-    lightbox.open(<TurnLightbox panel={panel} events={turn} />);
+    const eventsToShow = turn.length > 0 ? turn : [event];
+    lightbox.open(<TurnLightbox panel={panel} events={eventsToShow} />);
   };
 
   const style: CSSProperties = {};
-  if (progressPct !== null) (style as Record<string, string>)['--progress'] = `${progressPct}%`;
+  const styleVars = style as Record<string, string>;
+  if (progressPct !== null) styleVars['--progress'] = `${progressPct}%`;
+  if (panel.theme) {
+    styleVars['--panel-theme-bg'] = panel.theme.background;
+    styleVars['--panel-theme-fg'] = panel.theme.foreground;
+  }
 
   return (
     <article
@@ -68,6 +76,7 @@ export function PanelCard({ panel, nested }: Props) {
         `status-${panel.status}`,
         waiting && 'waiting',
         progressPct !== null && 'has-progress',
+        panel.theme && 'has-theme',
         nested && 'nested',
       )}
       data-panel-id={panel.id}

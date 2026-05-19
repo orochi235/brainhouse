@@ -500,6 +500,7 @@ body.imessage .event-assistant_text {
   font-size: 0.8rem;
   max-width: 90%;
   word-break: break-word;
+  cursor: pointer;
 }
 .event-user_text .bubble {
   background: var(--bubble-user);
@@ -607,6 +608,36 @@ body.imessage .event-assistant_text .bubble {
 .markdown th {
   background: rgba(127, 127, 127, 0.18);
   font-weight: 700;
+}
+
+/* Per-project theme from .hued — replaces the dominant bubble color and the
+   waiting-glow violet with the project's signature color. The "dominant"
+   bubble is whichever side carries the saturated color in the current view:
+   purple assistant in default mode, blue user in iMessage mode. */
+body:not(.imessage) .panel.has-theme .event-assistant_text .bubble {
+  background: var(--panel-theme-bg);
+  color: var(--panel-theme-fg);
+}
+body.imessage .panel.has-theme .event-user_text .bubble {
+  background: var(--panel-theme-bg);
+  color: var(--panel-theme-fg);
+}
+/* Themed waiting glow replaces the violet pulse. */
+.panel-parent.has-theme.status-live.waiting {
+  animation: waiting-pulse-themed 2.6s ease-in-out infinite;
+}
+@keyframes waiting-pulse-themed {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--panel-theme-bg) 22%, transparent),
+      0 0 22px -10px color-mix(in srgb, var(--panel-theme-bg) 45%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--panel-theme-bg) 50%, transparent),
+      0 0 32px -4px color-mix(in srgb, var(--panel-theme-bg) 75%, transparent);
+  }
 }
 
 /* sawtooth divider inside merged user bubbles */
