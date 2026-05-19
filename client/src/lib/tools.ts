@@ -4,7 +4,38 @@
  * Mirrors pensieve/static/app.js TOOL_ICONS / CLI_ICONS / summarizeTool /
  * parseBashCommandHead. Kept as a pure-function module so it stays
  * easy-to-test and easy-to-extend.
+ *
+ * CLI logo SVGs in ../assets/icons/ are sourced from Simple Icons
+ * (https://simpleicons.org/), licensed CC0-1.0. The jq icon is a
+ * hand-rolled `{}` glyph (no Simple Icons entry exists).
  */
+
+import brewIcon from '../assets/icons/brew.svg?url';
+import bunIcon from '../assets/icons/bun.svg?url';
+import cargoIcon from '../assets/icons/cargo.svg?url';
+import curlIcon from '../assets/icons/curl.svg?url';
+import denoIcon from '../assets/icons/deno.svg?url';
+import dockerIcon from '../assets/icons/docker.svg?url';
+import ghIcon from '../assets/icons/gh.svg?url';
+import gitIcon from '../assets/icons/git.svg?url';
+import goIcon from '../assets/icons/go.svg?url';
+import jqIcon from '../assets/icons/jq.svg?url';
+import kubectlIcon from '../assets/icons/kubectl.svg?url';
+import makeIcon from '../assets/icons/make.svg?url';
+import nodeIcon from '../assets/icons/node.svg?url';
+import npmIcon from '../assets/icons/npm.svg?url';
+import npxIcon from '../assets/icons/npx.svg?url';
+import nvimIcon from '../assets/icons/nvim.svg?url';
+import pipIcon from '../assets/icons/pip.svg?url';
+import pnpmIcon from '../assets/icons/pnpm.svg?url';
+import pytestIcon from '../assets/icons/pytest.svg?url';
+import pythonIcon from '../assets/icons/python.svg?url';
+import python3Icon from '../assets/icons/python3.svg?url';
+import rustcIcon from '../assets/icons/rustc.svg?url';
+import uvIcon from '../assets/icons/uv.svg?url';
+import vimIcon from '../assets/icons/vim.svg?url';
+import wgetIcon from '../assets/icons/wget.svg?url';
+import yarnIcon from '../assets/icons/yarn.svg?url';
 
 interface ToolUseInput {
   command?: string;
@@ -30,6 +61,8 @@ export interface ToolResultPayload {
   is_error: boolean;
 }
 
+export type ToolIcon = { kind: 'svg'; src: string } | { kind: 'glyph'; text: string };
+
 const TOOL_ICONS: Record<string, string> = {
   Bash: '▶',
   Read: '📄',
@@ -45,50 +78,32 @@ const TOOL_ICONS: Record<string, string> = {
 };
 
 const CLI_ICONS: Record<string, string> = {
-  gh: '🐙',
-  git: '⎇',
-  curl: '🌐',
-  wget: '⬇',
-  npm: '📦',
-  npx: '📦',
-  pnpm: '📦',
-  yarn: '📦',
-  python: '🐍',
-  python3: '🐍',
-  pip: '🐍',
-  uv: '🐍',
-  pytest: '🐍',
-  make: '🔨',
-  docker: '🐳',
-  kubectl: '☸',
-  cd: '📁',
-  ls: '📁',
-  pwd: '📁',
-  cat: '📄',
-  head: '📄',
-  tail: '📄',
-  less: '📄',
-  echo: '💬',
-  mkdir: '➕',
-  touch: '➕',
-  rm: '🗑',
-  mv: '↔',
-  cp: '↔',
-  node: 'JS',
-  deno: 'JS',
-  bun: '🥟',
-  cargo: '🦀',
-  rustc: '🦀',
-  go: 'GO',
-  brew: '🍺',
-  ssh: '🔐',
-  find: '🔎',
-  rg: '🔎',
-  grep: '🔎',
-  jq: '{}',
-  vim: '✎',
-  nvim: '✎',
-  diff: '±',
+  gh: ghIcon,
+  git: gitIcon,
+  curl: curlIcon,
+  wget: wgetIcon,
+  npm: npmIcon,
+  npx: npxIcon,
+  pnpm: pnpmIcon,
+  yarn: yarnIcon,
+  python: pythonIcon,
+  python3: python3Icon,
+  pip: pipIcon,
+  uv: uvIcon,
+  pytest: pytestIcon,
+  make: makeIcon,
+  docker: dockerIcon,
+  kubectl: kubectlIcon,
+  node: nodeIcon,
+  deno: denoIcon,
+  bun: bunIcon,
+  cargo: cargoIcon,
+  rustc: rustcIcon,
+  go: goIcon,
+  brew: brewIcon,
+  jq: jqIcon,
+  vim: vimIcon,
+  nvim: nvimIcon,
 };
 
 const BASH_SKIP = new Set(['sudo', 'time', 'command', 'exec', 'nice', 'env']);
@@ -106,15 +121,15 @@ export function parseBashCommandHead(cmd: string): string {
   return '';
 }
 
-export function iconForTool(name: string, input: unknown): string {
+export function iconForTool(name: string, input: unknown): ToolIcon {
   if (name === 'Bash' && input && typeof input === 'object') {
     const cmd = (input as ToolUseInput).command;
     if (typeof cmd === 'string') {
       const head = parseBashCommandHead(cmd);
-      if (head && CLI_ICONS[head]) return CLI_ICONS[head];
+      if (head && CLI_ICONS[head]) return { kind: 'svg', src: CLI_ICONS[head] };
     }
   }
-  return TOOL_ICONS[name] ?? '⚙';
+  return { kind: 'glyph', text: TOOL_ICONS[name] ?? '⚙' };
 }
 
 export function shortenPath(p: unknown): string {

@@ -3,6 +3,7 @@ import { useLightbox } from '../lib/lightbox.tsx';
 import type { ViewItem } from '../lib/pipeline.ts';
 import { iconForTool, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
 import { EventTime } from './EventList.tsx';
+import { Markdown } from './Markdown.tsx';
 
 type ToolItem = Extract<ViewItem, { type: 'tool' }>;
 
@@ -24,14 +25,20 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
         data-tool-name={use.name}
         onClick={() => lightbox.open(<ToolLightboxContent item={item} />)}
       >
-        <span className="tool-icon">{icon}</span>
+        <span className="tool-icon">
+          {icon.kind === 'svg' ? <img src={icon.src} alt="" aria-hidden="true" /> : icon.text}
+        </span>
         <span className="tool-label">{label}</span>
         <span className={`tool-status status-${status}`} aria-label={status}>
           {status === 'pending' ? '' : status === 'ok' ? '✓' : '✗'}
         </span>
         <EventTime ts={item.ts} startedAt={startedAt} />
       </div>
-      {item.ack && <div className="tool-note">{item.ack}</div>}
+      {item.ack && (
+        <div className="tool-note">
+          <Markdown text={item.ack} />
+        </div>
+      )}
     </li>
   );
 }

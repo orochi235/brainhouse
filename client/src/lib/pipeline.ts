@@ -12,19 +12,46 @@ import type { ToolResultPayload, ToolUsePayload } from './tools.ts';
 
 export type BubblePart = { kind: 'text'; text: string } | { kind: 'sawtooth' };
 
+export interface ToolItem {
+  type: 'tool';
+  anchorUuid: string;
+  use: ToolUsePayload | null;
+  result: ToolResultPayload | null;
+  ack: string | null;
+  ts: string;
+}
+
+export interface FileChangeItem {
+  type: 'file-change';
+  /** First op's uuid — used as the React key + lightbox anchor. */
+  anchorUuid: string;
+  path: string;
+  /** Original tool ops in order. Each is a fully-resolved use+result pair. */
+  ops: ToolItem[];
+  /** Latest op's timestamp. Used for the row's time gutter + idle ordering. */
+  ts: string;
+}
+
+/** Runs of non-bubble items between two bubbles compress into this. */
+export interface OpStripItem {
+  type: 'op-strip';
+  anchorUuid: string;
+  items: ViewItem[];
+  ts: string;
+}
+
 export type ViewItem =
   | { type: 'bubble'; event: Event; role: 'user' | 'assistant'; parts: BubblePart[] }
-  | {
-      type: 'tool';
-      anchorUuid: string;
-      use: ToolUsePayload | null;
-      result: ToolResultPayload | null;
-      ack: string | null;
-      ts: string;
-    }
+  | ToolItem
+  | FileChangeItem
+  | OpStripItem
   | { type: 'thinking'; event: Event }
   | { type: 'system'; event: Event }
   | { type: 'meta'; event: Event };
+
+/** Tool names whose inputs touch a single file via `input.file_path`. These
+ * are the ops eligible for `coalesceFileOps()`. */
+export const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit']);
 
 export interface PreprocessResult {
   items: ViewItem[];
@@ -151,10 +178,163 @@ export function preprocessEvents(events: Event[]): PreprocessResult {
 
     if (event.kind === 'thinking') items.push({ type: 'thinking', event });
     else if (event.kind === 'system') items.push({ type: 'system', event });
-    else if (event.kind === 'meta') items.push({ type: 'meta', event });
+    else if (event.kind === 'meta') {
+      // Absorbed-by-panel records that should never appear in the transcript:
+      // they exist solely to update panel-level metadata (title, agentType).
+      const rt = event.payload.record_type;
+      if (rt === 'subagent-meta' || rt === 'custom-title' || rt === 'agent-name') continue;
+      items.push({ type: 'meta', event });
+    }
   }
 
-  return { items, checklist, pending };
+  return {
+    items: coalesceBetweenChats(coalesceFileOps(items)),
+    checklist,
+    pending,
+  };
+}
+
+/**
+ * Compress runs of non-bubble items between two bubbles into a single
+ * `op-strip` row, so a long Bash/Edit/Read flurry between user/assistant
+ * turns reads as one line. Singletons pass through unchanged.
+ *
+ * Inputs are post-file-coalescing, so a "run" may include `file-change`
+ * items alongside plain tool capsules.
+ */
+export function coalesceBetweenChats(items: ViewItem[]): ViewItem[] {
+  const out: ViewItem[] = [];
+  let run: ViewItem[] = [];
+
+  const flush = () => {
+    if (run.length === 0) return;
+    if (run.length === 1) {
+      out.push(...run);
+    } else {
+      const first = run[0];
+      const last = run[run.length - 1];
+      if (first && last) {
+        out.push({
+          type: 'op-strip',
+          anchorUuid: anchorOf(first),
+          items: run.slice(),
+          ts: anchorTs(last),
+        });
+      }
+    }
+    run = [];
+  };
+
+  for (const item of items) {
+    if (item.type === 'bubble') {
+      flush();
+      out.push(item);
+      continue;
+    }
+    // Any pending (un-resulted) tool keeps its own line so the loading
+    // state stays visible to the user.
+    if (item.type === 'tool' && item.result === null) {
+      flush();
+      out.push(item);
+      continue;
+    }
+    run.push(item);
+  }
+  flush();
+  return out;
+}
+
+function anchorOf(item: ViewItem): string {
+  if (item.type === 'tool' || item.type === 'file-change' || item.type === 'op-strip') {
+    return item.anchorUuid;
+  }
+  if (item.type === 'bubble') return item.event.uuid;
+  return item.event.uuid;
+}
+
+function anchorTs(item: ViewItem): string {
+  if (item.type === 'tool' || item.type === 'file-change' || item.type === 'op-strip') {
+    return item.ts;
+  }
+  if (item.type === 'bubble') return item.event.ts;
+  return item.event.ts;
+}
+
+/**
+ * Collapse consecutive Read/Edit/Write/MultiEdit ops on the same file into
+ * a single `file-change` item, as long as no chat (bubble) breaks the run.
+ *
+ * The run is broken by:
+ *   - a `bubble` item (user message or substantive assistant message)
+ *   - any non-file tool (Bash, Grep, …) targeting something else
+ *   - a tool whose file_path differs from the run's current path
+ *   - a tool with no `result` yet (we keep pending ops un-coalesced so
+ *     their loading state stays visible)
+ *
+ * A run of length 1 stays as a plain tool item; we only collapse when ≥2.
+ */
+export function coalesceFileOps(items: ViewItem[]): ViewItem[] {
+  const out: ViewItem[] = [];
+  let run: ToolItem[] = [];
+  let runPath: string | null = null;
+
+  const flush = () => {
+    if (run.length === 0) return;
+    if (run.length === 1 || runPath === null) {
+      out.push(...run);
+    } else {
+      const first = run[0];
+      const last = run[run.length - 1];
+      if (first && last) {
+        out.push({
+          type: 'file-change',
+          anchorUuid: first.anchorUuid,
+          path: runPath,
+          ops: run.slice(),
+          ts: last.ts,
+        });
+      }
+    }
+    run = [];
+    runPath = null;
+  };
+
+  for (const item of items) {
+    if (item.type === 'tool') {
+      const path = filePathOf(item);
+      const canRun = path !== null && item.use !== null && item.result !== null;
+      if (canRun && (runPath === null || runPath === path)) {
+        run.push(item);
+        runPath = path;
+        continue;
+      }
+      flush();
+      if (canRun) {
+        run.push(item);
+        runPath = path;
+        continue;
+      }
+      out.push(item);
+      continue;
+    }
+    if (item.type === 'bubble') {
+      flush();
+      out.push(item);
+      continue;
+    }
+    // thinking / system / meta don't break a run (they're sidebar-y) but they
+    // don't extend it either; pass them through in place.
+    out.push(item);
+  }
+  flush();
+  return out;
+}
+
+function filePathOf(item: ToolItem): string | null {
+  if (!item.use || !FILE_TOOLS.has(item.use.name)) return null;
+  const input = item.use.input as { file_path?: unknown };
+  if (typeof input?.file_path !== 'string' || !input.file_path) return null;
+  return input.file_path;
 }
 
 function findToolItem(

@@ -1,7 +1,7 @@
 :root {
   color-scheme: dark;
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-  font-size: 13px;
+  font-size: 17px;
 
   --bg: #0f0f10;
   --panel-bg: #18181b;
@@ -64,14 +64,23 @@ body.imessage {
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100vh;
+  overflow: hidden;
+}
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  /* The session-dock column auto-sizes: collapses to 0 when empty (aside is not
+   * rendered) and grows to fit its content otherwise. */
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+#root {
+  display: contents;
 }
 
 /* ---- top bar ---- */
@@ -84,7 +93,7 @@ body {
   border-bottom: 1px solid var(--panel-border);
 }
 .topbar h1 {
-  font-size: 0.95rem;
+  font-size: 1.9rem;
   margin: 0;
   letter-spacing: 0.04em;
 }
@@ -118,10 +127,10 @@ body {
   cursor: pointer;
 }
 .theme-toggle {
-  width: 1.85rem;
-  height: 1.65rem;
+  width: 2.3rem;
+  height: 2.05rem;
   padding: 0;
-  font-size: 0.9rem;
+  font-size: 1.2rem;
 }
 .debug-spawn:hover,
 .theme-toggle:hover {
@@ -140,28 +149,51 @@ body {
 }
 
 /* ---- grid + tray ---- */
-.grid {
+/* Grid template columns/rows are set inline from useGridLayout — the grid
+ * always tiles into an integer N×M that fills the available space. */
+.session-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 0.75rem;
   padding: 0.75rem;
-  align-content: start;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  /* Smooth tile resize when the layout recomputes (panel appears, wide
+   * toggles, etc.). Modern browsers interpolate `repeat(N, 1fr)` shapes. */
+  transition:
+    grid-template-columns 0.35s cubic-bezier(0.22, 0.85, 0.25, 1),
+    grid-template-rows 0.35s cubic-bezier(0.22, 0.85, 0.25, 1);
 }
-.grid.focused {
+.grid-slot {
+  /* `grid-column: span N` changes get a smooth ride too. */
+  transition: grid-column 0.35s cubic-bezier(0.22, 0.85, 0.25, 1);
+}
+/* Focused mode (single-panel ?panel= URL) doesn't go through useGridLayout,
+ * so no inline style fights with these declarations. */
+.session-grid.focused {
   grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
 }
-.grid.focused .panel {
-  max-width: none;
-  max-height: 92vh;
-}
-.mini-tray {
+.session-dock {
+  width: 300px;
   border-left: 1px solid var(--panel-border);
-  padding: 0.5rem;
+  /* Same padding + gap as the main grid so the panel edges line up across
+   * the dock/grid boundary. */
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.75rem;
   overflow-y: auto;
-  background: var(--tray-bg);
+  /* Slate-blue diagonal hatch over the base tray tint — signals "stored away"
+   * across the whole container. */
+  background-color: var(--tray-bg);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0px,
+    transparent 6px,
+    color-mix(in srgb, #64748b 18%, transparent) 6px,
+    color-mix(in srgb, #64748b 18%, transparent) 7px
+  );
 }
 .tray-empty {
   color: var(--muted);
@@ -175,11 +207,38 @@ body {
   padding: 2rem;
 }
 
+/* ---- grid-slot (drag-to-reorder wrapper) ---- */
+.grid-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.grid-slot.wide {
+  grid-column: span 2;
+}
+.grid-slot.dragging {
+  opacity: 0.45;
+}
+.grid-slot.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.panel-header {
+  cursor: grab;
+}
+.panel-header:active {
+  cursor: grabbing;
+}
+
 /* ---- panel ---- */
 .panel-group {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  flex: 1;
+  min-height: 0;
 }
 .panel {
   position: relative;
@@ -188,7 +247,8 @@ body {
   border-radius: 6px;
   display: flex;
   flex-direction: column;
-  max-height: 70vh;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   animation: panel-spawn 0.45s cubic-bezier(0.22, 0.85, 0.25, 1);
 }
@@ -198,21 +258,16 @@ body {
   justify-self: start;
   max-height: none;
 }
-.panel-subagent .panel-header {
-  border-bottom: 0;
-}
-.panel-subagent .panel-body {
-  display: none;
-}
 .panel-subagent.nested {
   max-width: none;
   justify-self: stretch;
   margin: 0;
 }
 .panel.status-live {
+  border-color: color-mix(in srgb, var(--live) 55%, var(--panel-border));
   box-shadow:
-    0 0 0 1px rgba(132, 204, 22, 0.12),
-    0 4px 18px -8px rgba(132, 204, 22, 0.15);
+    0 0 0 1px color-mix(in srgb, var(--live) 35%, transparent),
+    0 6px 22px -6px color-mix(in srgb, var(--live) 35%, transparent);
 }
 .panel-parent.status-live.waiting {
   animation: waiting-pulse 2.6s ease-in-out infinite;
@@ -234,9 +289,6 @@ body {
   border-left: 3px solid var(--subagent-active);
   animation: subagent-pulse 2.4s ease-in-out infinite;
 }
-.panel-subagent.status-live .panel-title {
-  color: var(--subagent-active);
-}
 @keyframes subagent-pulse {
   0%,
   100% {
@@ -250,25 +302,101 @@ body {
       0 0 32px -4px rgba(249, 115, 22, 0.75);
   }
 }
-.panel-subagent.status-live.has-progress .panel-header {
-  background: linear-gradient(
-    to right,
-    rgba(249, 115, 22, 0.4) 0%,
-    rgba(249, 115, 22, 0.4) var(--progress, 0%),
-    var(--header-bg) var(--progress, 0%),
-    var(--header-bg) 100%
+.panel.status-done {
+  opacity: 0.5;
+  border-color: color-mix(in srgb, var(--panel-border) 70%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 90%, transparent);
+}
+.panel.status-done .panel-header {
+  background: transparent;
+}
+/* Pinned panels never dim, regardless of status. */
+.panel.pinned {
+  opacity: 1;
+}
+.panel.pinned.status-done {
+  border-color: var(--panel-border);
+  background: var(--panel-bg);
+}
+
+/* Pin button — sits on the left of the panel header, vertically centered. */
+.panel-pin {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 0.4rem 0 0;
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+}
+.panel-pin:hover {
+  opacity: 0.85;
+}
+.panel-pin.pinned {
+  opacity: 1;
+  filter: drop-shadow(
+    0 0 4px color-mix(in srgb, var(--accent) 50%, transparent)
   );
 }
-.panel.status-done {
-  opacity: 0.78;
-}
-.panel.status-mini {
-  max-height: 32px;
+/* Mini panels size to fit their contents (header + optional checklist).
+ * The transcript body is hidden — anything inside the header is responsible
+ * for its own abbreviation. */
+.panel.status-mini,
+.session-dock .panel {
+  flex: 0 0 auto;
   max-width: 100%;
   cursor: grab;
 }
-.panel.status-mini:active {
+.panel.status-mini > .panel-body,
+.session-dock .panel > .panel-body {
+  display: none;
+}
+.panel.status-mini .panel-header {
+  position: relative;
+  align-items: flex-start;
+  padding-left: 1.9rem;
+  padding-right: 2.4rem;
+}
+.panel.status-mini .panel-pin {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+}
+.panel.status-mini .panel-meta {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+}
+.panel.status-mini .panel-titles {
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
+}
+.panel.status-mini .panel-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+.panel-idle-inline {
+  font-size: 0.55rem;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.panel.status-mini:active,
+.session-dock .panel:active {
   cursor: grabbing;
+}
+/* Live panels dismissed into the tray keep their status-live coloring (so the
+ * green border + glow signal that activity is still flowing) but render at
+ * the mini size like everything else in the tray. */
+.session-dock .panel.status-live {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--live) 30%, transparent);
 }
 
 /* Completion sweep: green diagonal gradient travels across on live→done. */
@@ -311,24 +439,27 @@ body {
   }
 }
 
-/* Full-screened panel overlay. */
-.panel.fullscreen {
+/* Full-screened panel overlay. Scoped under body.has-fullscreen-panel so the
+ * compound selector outweighs `.session-grid.focused .panel` without needing !important. */
+body.has-fullscreen-panel .panel.fullscreen {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 1000;
-  max-width: none !important;
-  max-height: none !important;
+  max-width: none;
+  max-height: none;
   border-radius: 0;
 }
-.panel.fullscreen .panel-body {
-  display: block !important;
+body.has-fullscreen-panel .panel.fullscreen .panel-body {
+  display: block;
   max-height: none;
 }
-body.has-fullscreen-panel .grid > *:not(.fullscreen):not(:has(.fullscreen)),
-body.has-fullscreen-panel .mini-tray {
+body.has-fullscreen-panel
+  .session-grid
+  > *:not(.fullscreen):not(:has(.fullscreen)),
+body.has-fullscreen-panel .session-dock {
   visibility: hidden;
 }
 
@@ -364,9 +495,33 @@ body.has-fullscreen-panel .mini-tray {
   flex-shrink: 0;
   cursor: pointer;
 }
+.panel-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 0.05rem;
+}
 .panel-title {
   font-weight: 600;
   font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-subtitle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.panel-subtitle-row .panel-subtitle {
+  flex: 0 1 auto;
+}
+.panel-subtitle {
+  font-size: 0.65rem;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -381,6 +536,18 @@ body.has-fullscreen-panel .mini-tray {
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
   background: var(--header-bg);
+}
+/* Account-owns-this-session badge. Visible only when >1 account is
+ * configured in prefs (parent gates by passing the label or not). */
+.panel-account {
+  font-size: 0.55rem;
+  padding: 0.02rem 0.3rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, var(--fg));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .panel-status.live {
   color: var(--live);
@@ -473,6 +640,107 @@ body.has-fullscreen-panel .mini-tray {
   top: auto;
   bottom: 0.15rem;
   right: 0.4rem;
+}
+
+/* Subagent overrides — kept after base .panel-* selectors so cascade is
+ * naturally ascending in specificity. */
+.panel-subagent .panel-header {
+  border-bottom: 0;
+}
+.panel-subagent .panel-body {
+  display: none;
+}
+.panel-subagent.status-live .panel-title {
+  color: var(--subagent-active);
+}
+/* Retired panel fade-out — server told us this panel is gone; useDeltaStream
+ * keeps it mounted for ~600ms while this animation runs. Keep duration in
+ * sync with REMOVAL_FADE_MS in useDeltaStream.ts. */
+.panel.removing {
+  animation: panel-fadeout 0.55s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+  pointer-events: none;
+}
+@keyframes panel-fadeout {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.92) translateY(6px);
+    filter: blur(3px);
+  }
+}
+
+/* Subagent finished (progress reached 100%) — fancy collapse over ~1s.
+ * Briefly puffs up at the peak (transform 1.04), then deflates to 0 height,
+ * 0 opacity, and a small scale. PanelCard unmounts after the animation. */
+.panel-subagent.progress-completing {
+  animation: progress-collapse 0.95s cubic-bezier(0.6, -0.05, 0.35, 1) forwards;
+  pointer-events: none;
+  transform-origin: top center;
+}
+@keyframes progress-collapse {
+  0% {
+    max-height: 800px;
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1) saturate(1);
+  }
+  25% {
+    transform: scale(1.04);
+    filter: brightness(1.25) saturate(1.4);
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.85;
+    filter: brightness(1.1) saturate(1.2);
+  }
+  100% {
+    max-height: 0;
+    opacity: 0;
+    transform: scale(0.78);
+    filter: brightness(0.9) saturate(0.6) blur(2px);
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+.panel-subagent.status-live.has-progress .panel-header {
+  background: linear-gradient(
+    to right,
+    rgba(249, 115, 22, 0.4) 0%,
+    rgba(249, 115, 22, 0.4) var(--progress, 0%),
+    var(--header-bg) var(--progress, 0%),
+    var(--header-bg) 100%
+  );
+}
+
+/* "session ended" terminator — bright line through the middle with centered
+ * label. Sits at the bottom of a panel-body once the session leaves `live`. */
+.session-ended {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.8rem 0 0.3rem;
+  color: var(--accent);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+.session-ended::before,
+.session-ended::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+}
+.panel.has-theme .session-ended {
+  color: color-mix(in srgb, var(--panel-theme-bg) 80%, var(--accent));
 }
 
 /* ---- bubbles ---- */
@@ -610,10 +878,26 @@ body.imessage .event-assistant_text .bubble {
   font-weight: 700;
 }
 
-/* Per-project theme from .hued — replaces the dominant bubble color and the
-   waiting-glow violet with the project's signature color. The "dominant"
-   bubble is whichever side carries the saturated color in the current view:
-   purple assistant in default mode, blue user in iMessage mode. */
+/* Per-project theme from .hued — tints the panel frame (border + header wash)
+   plus the dominant bubble color and the waiting-glow. The "dominant" bubble
+   is whichever side carries the saturated color in the current view: purple
+   assistant in default mode, blue user in iMessage mode. */
+.panel.has-theme {
+  border-color: color-mix(
+    in srgb,
+    var(--panel-theme-bg) 55%,
+    var(--panel-border)
+  );
+}
+.panel.has-theme .panel-header,
+.panel.has-theme .panel-pinned {
+  background: color-mix(in srgb, var(--panel-theme-bg) 14%, var(--header-bg));
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--panel-theme-bg) 35%,
+    var(--panel-border)
+  );
+}
 body:not(.imessage) .panel.has-theme .event-assistant_text .bubble {
   background: var(--panel-theme-bg);
   color: var(--panel-theme-fg);
@@ -658,6 +942,169 @@ body.imessage .panel.has-theme .event-user_text .bubble {
 .event-tool {
   margin: 0.25rem 0;
 }
+/* Op-strip: compact line that replaces a flurry of tools/file-changes
+ * between two chats. Click → lightbox renders each sub-item normally. */
+.event-op-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  border: 1px dashed var(--panel-border);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.op-strip-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+.event-op-strip .event-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  position: static;
+}
+.event-op-strip:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.op-strip-icons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  gap: 0.25rem;
+  flex: 0 1 auto;
+  min-width: 0.9em;
+}
+.op-strip-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.op-strip-mini-icon {
+  display: inline-flex;
+  width: 0.9em;
+  height: 0.9em;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+}
+.op-strip-mini-icon img {
+  width: 100%;
+  height: 100%;
+}
+.op-strip-lightbox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* File-change row: a compact one-liner that replaces N back-to-back
+ * Read/Edit/Write capsules. Click to open the diff lightbox. */
+.event-file-change {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.72rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--code-bg);
+  cursor: pointer;
+}
+.file-change-icon {
+  width: 1em;
+  text-align: center;
+  flex-shrink: 0;
+}
+.file-change-path {
+  font-family: ui-monospace, monospace;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-change-summary {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* File-change lightbox: each op stacked as its own hunk. */
+.file-change-lightbox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+.file-change-subtitle {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 0;
+}
+.file-change-hunks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+.file-change-hunk header {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.file-change-hunk-read header {
+  opacity: 0.7;
+}
+.file-change-diff {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--code-bg);
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diff-del,
+.diff-add {
+  display: block;
+}
+.diff-del {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  color: color-mix(in srgb, #ef4444 75%, var(--fg));
+}
+.diff-add {
+  background: color-mix(in srgb, #84cc16 14%, transparent);
+  color: color-mix(in srgb, #84cc16 75%, var(--fg));
+}
+.diff-marker {
+  display: inline-block;
+  width: 1.2ch;
+  opacity: 0.6;
+}
+.file-change-raw {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--code-bg);
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+}
+
 .tool-capsule {
   background: var(--code-bg);
   border: 1px solid var(--panel-border);
@@ -666,7 +1113,7 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   font-size: 0.78rem;
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.3rem;
   cursor: pointer;
   min-height: 1.5rem;
 }
@@ -680,8 +1127,19 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   border-color: rgba(239, 68, 68, 0.45);
 }
 .tool-icon {
-  width: 1.25rem;
+  width: 1em;
   text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+/* SVG icons inside a tool capsule render at exactly the same visual size as
+ * the emoji glyphs they replaced — match the surrounding font size. */
+.tool-icon img {
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
 }
 .tool-label {
   flex: 1;
@@ -745,9 +1203,24 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   letter-spacing: 0.05em;
 }
 
-body.hide-meta .event-meta,
-body.hide-meta .event-system,
-body.hide-meta .event-thinking {
+/* Per-message-type visibility (driven by prefs.messages). Bubbles never
+ * hide — those are the substance. */
+body.hide-thinking .event-thinking {
+  display: none;
+}
+body.hide-system .event-system {
+  display: none;
+}
+body.hide-meta .event-meta {
+  display: none;
+}
+body.hide-tools .event-tool {
+  display: none;
+}
+body.hide-file-changes .event-file-change {
+  display: none;
+}
+body.hide-op-strips .event-op-strip {
   display: none;
 }
 
@@ -818,6 +1291,25 @@ body.view-conversation
   width: 80vw;
   height: 80vh;
 }
+/* When the lightbox was opened from a themed panel, tint the frame + close
+ * button with the panel's .hued color so the modal feels like the same
+ * surface, just enlarged. */
+.lightbox.has-theme {
+  border-color: color-mix(
+    in srgb,
+    var(--panel-theme-bg) 60%,
+    var(--panel-border)
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--panel-theme-bg) 35%, transparent),
+    0 16px 60px -10px color-mix(in srgb, var(--panel-theme-bg) 50%, transparent);
+}
+.lightbox.has-theme .lightbox-close:hover {
+  color: var(--panel-theme-bg);
+}
+.lightbox.has-theme .lightbox-title {
+  color: color-mix(in srgb, var(--panel-theme-bg) 55%, var(--fg));
+}
 .lightbox::backdrop {
   background: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(4px);
@@ -863,6 +1355,209 @@ body.view-conversation
   margin: 0 0 0.6rem;
   font-size: 1rem;
   letter-spacing: 0.03em;
+}
+
+/* ---- prefs modal (macOS System Preferences-style) ---- */
+.prefs-modal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.prefs-body {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.prefs-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-right: 1px solid var(--panel-border);
+  padding-right: 0.5rem;
+  overflow-y: auto;
+}
+.prefs-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 0.85rem;
+  font-family: inherit;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+.prefs-rail-item:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.prefs-rail-item.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.prefs-rail-icon {
+  width: 1.2em;
+  text-align: center;
+  opacity: 0.8;
+}
+.prefs-pane {
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 0.4rem;
+}
+.prefs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.prefs-section h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+}
+.prefs-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 0 0 0.4rem;
+}
+.prefs-hint code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+}
+.prefs-field {
+  display: grid;
+  grid-template-columns: 1fr 8rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.prefs-field input {
+  background: var(--code-bg);
+  color: var(--fg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+.prefs-root-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr auto;
+  gap: 0.4rem;
+}
+.prefs-root-row input {
+  background: var(--code-bg);
+  color: var(--fg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+.prefs-add,
+.prefs-remove {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 0.3rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+.prefs-remove {
+  width: 2rem;
+  padding: 0;
+}
+.prefs-add:hover,
+.prefs-remove:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.prefs-error {
+  color: #ef4444;
+  font-size: 0.82rem;
+  margin: 0.4rem 0;
+}
+.prefs-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--panel-border);
+  margin-top: 0.8rem;
+}
+.prefs-cancel,
+.prefs-save {
+  background: var(--code-bg);
+  color: var(--fg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 0.35rem 0.9rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.prefs-save {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+.prefs-loading {
+  padding: 1rem;
+  color: var(--muted);
+}
+.prefs-trash-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--code-bg);
+  align-items: center;
+}
+.prefs-trash-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.prefs-trash-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prefs-trash-cwd {
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prefs-trash-when {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.prefs-trash-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.prefs-trash-purge {
+  width: auto;
+  padding: 0.3rem 0.6rem;
+}
+.prefs-trash-purge:hover {
+  color: #ef4444;
+  border-color: #ef4444;
 }
 .lightbox-section {
   margin-top: 0.7rem;

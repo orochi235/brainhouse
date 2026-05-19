@@ -37,12 +37,69 @@ describe('SessionStore', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });
     const deltas = store.apply(ev('user_text', { payload: { text: 'hi' } }));
-    expect(deltas.map((d) => d.op)).toEqual(['panel_upsert', 'event_append']);
+    // Two upserts: one for create, one for the title-from-first-user-message update.
+    expect(deltas.map((d) => d.op)).toEqual(['panel_upsert', 'panel_upsert', 'event_append']);
     if (deltas[0]?.op === 'panel_upsert') {
       expect(deltas[0].panel.id).toBe('S');
       expect(deltas[0].panel.kind).toBe('parent');
       expect(deltas[0].panel.status).toBe('live');
     }
+    if (deltas[1]?.op === 'panel_upsert') {
+      expect(deltas[1].panel.title).toBe('hi');
+    }
+  });
+
+  it('parent title is derived from the first user message', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'design a haiku\nplease' } }));
+    expect(store.snapshot()[0]?.title).toBe('design a haiku');
+  });
+
+  it('parent title is not clobbered by later user messages', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'first' } }));
+    store.apply(ev('user_text', { uuid: 'u2', payload: { text: 'second' } }));
+    expect(store.snapshot()[0]?.title).toBe('first');
+  });
+
+  it('long parent title is truncated with ellipsis', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    const long = 'a'.repeat(200);
+    store.apply(ev('user_text', { uuid: 'u1', payload: { text: long } }));
+    const title = store.snapshot()[0]?.title ?? '';
+    expect(title.length).toBeLessThanOrEqual(80);
+    expect(title.endsWith('…')).toBe(true);
+  });
+
+  it('custom-title meta record (from /rename) wins over user-message title', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'auto-derived title' } }));
+    store.apply(
+      ev('meta', {
+        uuid: 'u2',
+        payload: { record_type: 'custom-title', raw: { customTitle: 'brainhouse jam' } },
+      }),
+    );
+    expect(store.snapshot()[0]?.title).toBe('brainhouse jam');
+  });
+
+  it('custom-title also renames subagents', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { agent_id: 'agent-x', uuid: 'u1', payload: { text: 'hi' } }));
+    store.apply(
+      ev('meta', {
+        agent_id: 'agent-x',
+        uuid: 'u2',
+        payload: { record_type: 'custom-title', raw: { customTitle: 'my agent' } },
+      }),
+    );
+    const sub = store.snapshot().find((p) => p.kind === 'subagent');
+    expect(sub?.title).toBe('my agent');
   });
 
   it('second event appends without re-creating the panel', () => {
@@ -112,6 +169,48 @@ describe('SessionStore', () => {
     store.tick();
     clock.advance(101);
     expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'mini' }]);
+  });
+
+  it('bin() soft-deletes: keeps the panel but emits panel_remove and hides from snapshot', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { payload: { text: 'hi' } }));
+    const deltas = store.bin('S');
+    expect(deltas).toEqual([{ op: 'panel_remove', panel_id: 'S' }]);
+    expect(store.snapshot()).toHaveLength(0);
+    expect(store.binnedDtos()).toHaveLength(1);
+    expect(store.panel('S')?.binned_at).not.toBeNull();
+  });
+
+  it('bin() then unbin() round-trips and emits panel_upsert', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { payload: { text: 'hi' } }));
+    store.bin('S');
+    const deltas = store.unbin('S');
+    expect(deltas.map((d) => d.op)).toEqual(['panel_upsert']);
+    expect(store.snapshot()).toHaveLength(1);
+    expect(store.binnedDtos()).toHaveLength(0);
+  });
+
+  it('binned panels are frozen — tick() does not progress their status', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ idleSeconds: 10, miniSeconds: 100, clock: clock.now });
+    store.apply(ev('user_text', { payload: { text: 'hi' } }));
+    store.bin('S');
+    clock.advance(1000);
+    expect(store.tick()).toEqual([]);
+    expect(store.panel('S')?.status).toBe('live');
+  });
+
+  it('setTimings() hot-swaps lifecycle constants', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ idleSeconds: 1000, miniSeconds: 1000, clock: clock.now });
+    store.apply(ev('user_text', { payload: { text: 'hi' } }));
+    clock.advance(11);
+    expect(store.tick()).toEqual([]); // would NOT idle out at 1000s
+    store.setTimings({ idleSeconds: 10 });
+    expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
   });
 
   it('mini panel is removed after removeAfterSeconds', () => {

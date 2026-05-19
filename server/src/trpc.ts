@@ -17,10 +17,13 @@ import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
 import type { TranscriptMonitor } from './monitor.js';
+import { PrefsSchema, type PrefsStore } from './prefs.js';
+import { resolveRoots } from './roots.js';
 import type { Delta, PanelDto } from './session.js';
 
 export interface AppContext {
   monitor: TranscriptMonitor;
+  prefs: PrefsStore;
 }
 
 const t = initTRPC.context<AppContext>().create();
@@ -50,10 +53,55 @@ export const appRouter = t.router({
     return { ok: true, deltas: deltas.length };
   }),
 
+  /** Soft-delete: move panel to the trash bin (reversible via bin.restore). */
   remove: t.procedure.input(z.object({ panelId: z.string() })).mutation(({ ctx, input }) => {
-    const deltas = ctx.monitor.store.remove(input.panelId);
+    const deltas = ctx.monitor.store.bin(input.panelId);
     for (const d of deltas) ctx.monitor.emitter.emit('delta', d);
     return { ok: true, deltas: deltas.length };
+  }),
+
+  bin: t.router({
+    list: t.procedure.query(({ ctx }) => ({ panels: ctx.monitor.store.binnedDtos() })),
+    restore: t.procedure.input(z.object({ panelId: z.string() })).mutation(({ ctx, input }) => {
+      const deltas = ctx.monitor.store.unbin(input.panelId);
+      for (const d of deltas) ctx.monitor.emitter.emit('delta', d);
+      return { ok: true, deltas: deltas.length };
+    }),
+    purge: t.procedure.input(z.object({ panelId: z.string() })).mutation(({ ctx, input }) => {
+      const deltas = ctx.monitor.store.remove(input.panelId);
+      for (const d of deltas) ctx.monitor.emitter.emit('delta', d);
+      return { ok: true, deltas: deltas.length };
+    }),
+  }),
+
+  prefs: t.router({
+    get: t.procedure.query(({ ctx }) => ctx.prefs.get()),
+    update: t.procedure.input(PrefsSchema.partial()).mutation(async ({ ctx, input }) => {
+      const before = ctx.prefs.get();
+      const updated = await ctx.prefs.update(input);
+      // Hot-swap the watcher when the resolved root list changes. We
+      // compare the *resolved* list (env > prefs > defaults) rather than
+      // just `input.roots` so swapping in an empty list falls back to
+      // defaults instead of silently shutting the watcher off.
+      const beforeRoots = resolveRoots(before);
+      const afterRoots = resolveRoots(updated);
+      if (!sameList(beforeRoots, afterRoots) || rootLabelsChanged(before.roots, updated.roots)) {
+        await ctx.monitor.setRoots(afterRoots, updated.roots);
+      }
+      // Hot-swap lifecycle timings if any changed. The next `tick()` picks
+      // up the new values; reschedule the tick interval if it changed too.
+      const a = before.timings;
+      const b = updated.timings;
+      if (
+        a.idleSeconds !== b.idleSeconds ||
+        a.miniSeconds !== b.miniSeconds ||
+        a.removeAfterSeconds !== b.removeAfterSeconds ||
+        a.tickIntervalMs !== b.tickIntervalMs
+      ) {
+        ctx.monitor.setTimings(b);
+      }
+      return updated;
+    }),
   }),
 
   debug: t.router({
@@ -93,5 +141,23 @@ export const appRouter = t.router({
     }
   }),
 });
+
+function sameList(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function rootLabelsChanged(
+  a: Array<{ path: string; label?: string }>,
+  b: Array<{ path: string; label?: string }>,
+): boolean {
+  const byPath = (xs: typeof a) => new Map(xs.map((x) => [x.path, x.label ?? '']));
+  const m = byPath(a);
+  const n = byPath(b);
+  if (m.size !== n.size) return true;
+  for (const [k, v] of m) if (n.get(k) !== v) return true;
+  return false;
+}
 
 export type AppRouter = typeof appRouter;

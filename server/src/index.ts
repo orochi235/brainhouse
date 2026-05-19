@@ -1,21 +1,31 @@
-import os from 'node:os';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fastifyStatic from '@fastify/static';
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import Fastify from 'fastify';
 import { TranscriptMonitor } from './monitor.js';
+import { PrefsStore } from './prefs.js';
+import { resolveRoots } from './roots.js';
 import { appRouter } from './trpc.js';
 
 const HOST = process.env.HOST ?? '127.0.0.1';
 const PORT = Number(process.env.PORT ?? 8765);
 
-function defaultRoots(): string[] {
-  const home = os.homedir();
-  return [path.join(home, '.claude', 'projects'), path.join(home, '.claude-pw', 'projects')];
-}
-
 async function main() {
-  const roots = process.env.BRAINHOUSE_ROOTS?.split(':') ?? defaultRoots();
-  const monitor = new TranscriptMonitor({ roots });
+  const prefs = new PrefsStore();
+  await prefs.load();
+  const roots = resolveRoots(prefs.get());
+
+  const { timings, roots: configuredRoots } = prefs.get();
+  const monitor = new TranscriptMonitor({
+    roots,
+    accounts: configuredRoots,
+    idleSeconds: timings.idleSeconds,
+    miniSeconds: timings.miniSeconds,
+    removeAfterSeconds: timings.removeAfterSeconds,
+    tickIntervalMs: timings.tickIntervalMs,
+  });
   await monitor.start();
 
   const app = Fastify({ logger: { transport: { target: 'pino-pretty' } } });
@@ -24,11 +34,25 @@ async function main() {
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
-      createContext: () => ({ monitor }),
+      createContext: () => ({ monitor, prefs }),
     },
   });
 
   app.get('/health', async () => ({ ok: true }));
+
+  // Serve the built client when present (production / `npm start`). In dev
+  // the Vite server runs on its own port and proxies /trpc back here, so
+  // this block is a no-op until `npm run build` has produced dist/public.
+  const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'public');
+  if (existsSync(publicDir)) {
+    await app.register(fastifyStatic, { root: publicDir });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method !== 'GET' || req.url.startsWith('/trpc') || req.url.startsWith('/health')) {
+        return reply.code(404).send({ error: 'not found' });
+      }
+      return reply.sendFile('index.html');
+    });
+  }
 
   app.addHook('onClose', async () => {
     await monitor.stop();

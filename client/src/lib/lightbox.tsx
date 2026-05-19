@@ -8,8 +8,16 @@ import {
   useState,
 } from 'react';
 
+interface LightboxTheme {
+  background: string;
+  foreground: string;
+}
+
 interface LightboxState {
-  open: (content: ReactNode, opts?: { variant?: 'rich' | 'text' }) => void;
+  open: (
+    content: ReactNode,
+    opts?: { variant?: 'rich' | 'text'; theme?: LightboxTheme | null },
+  ) => void;
   close: () => void;
 }
 
@@ -25,6 +33,18 @@ export function LightboxProvider({ children }: { children: ReactNode }) {
     setVariant(opts?.variant ?? 'rich');
     const d = dialogRef.current;
     if (!d) return;
+    // Apply the source panel's .hued theme to the dialog, if any. Clearing
+    // is important too — a previous themed open shouldn't carry over to
+    // an unthemed one.
+    if (opts?.theme) {
+      d.style.setProperty('--panel-theme-bg', opts.theme.background);
+      d.style.setProperty('--panel-theme-fg', opts.theme.foreground);
+      d.classList.add('has-theme');
+    } else {
+      d.style.removeProperty('--panel-theme-bg');
+      d.style.removeProperty('--panel-theme-fg');
+      d.classList.remove('has-theme');
+    }
     // showModal() throws InvalidStateError if the dialog is already open —
     // which silently breaks "click a different message while lightbox is up."
     // Updating the content is enough in that case.

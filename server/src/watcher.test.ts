@@ -196,20 +196,26 @@ describe('TranscriptWatcher', () => {
     mkdirSync(proj, { recursive: true });
     const f = path.join(proj, 'sess-live.jsonl');
     writeFileSync(f, `${JSON.stringify(record('u1', 'first', 'sess-live'))}\n`);
-    const w = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 10_000 });
+    const w = new TranscriptWatcher([dir], sink, {
+      bootstrapAgeSeconds: 10_000,
+      chokidarOptions: { usePolling: true, interval: 30 },
+    });
     await w.start({ watch: true });
     try {
       expect(events.some((e) => e.kind === 'assistant_text' && e.payload.text === 'first')).toBe(
         true,
       );
+      // Brief settle so the append's mtime differs from bootstrap's write
+      // by more than fs-poll granularity.
+      await new Promise((r) => setTimeout(r, 50));
       const fd = openSync(f, 'a');
       writeSync(fd, `${JSON.stringify(record('u2', 'second', 'sess-live'))}\n`);
       closeSync(fd);
 
-      const deadline = Date.now() + 3000;
+      const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
         if (events.some((e) => e.kind === 'assistant_text' && e.payload.text === 'second')) break;
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 30));
       }
       expect(events.some((e) => e.kind === 'assistant_text' && e.payload.text === 'second')).toBe(
         true,

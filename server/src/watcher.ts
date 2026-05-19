@@ -16,7 +16,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { open, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import chokidar, { type FSWatcher } from 'chokidar';
+import chokidar, { type ChokidarOptions, type FSWatcher } from 'chokidar';
 import { type Event, parseLine } from './parser.js';
 
 export interface PathInfo {
@@ -46,16 +46,24 @@ export function classifyPath(p: string): PathInfo | null {
   return null;
 }
 
-export type EventListener = (event: Event) => void;
+/** Listener receives the parsed Event and the root the source file lives
+ * under (one of `roots` passed to the watcher) so the caller can stamp the
+ * panel with an owning-account label. */
+export type EventListener = (event: Event, sourceRoot: string) => void;
 
 export interface WatcherOptions {
   bootstrapAgeSeconds?: number;
+  /** Extra chokidar options merged into the defaults. Mainly a test seam so
+   * tests can force polling on platforms where fsevents coalesces rapid
+   * appends. Production should leave this unset. */
+  chokidarOptions?: ChokidarOptions;
 }
 
 export class TranscriptWatcher {
   readonly roots: string[];
   private readonly onEvent: EventListener;
   private readonly bootstrapAgeSeconds: number;
+  private readonly chokidarOptions: ChokidarOptions;
   private readonly offsets = new Map<string, number>();
   private chokidarWatcher: FSWatcher | null = null;
   private processing: Promise<void> = Promise.resolve();
@@ -64,20 +72,26 @@ export class TranscriptWatcher {
     this.roots = roots.map((r) => path.resolve(r));
     this.onEvent = onEvent;
     this.bootstrapAgeSeconds = opts.bootstrapAgeSeconds ?? 30 * 60;
+    this.chokidarOptions = opts.chokidarOptions ?? {};
   }
 
   async start({ watch = true }: { watch?: boolean } = {}): Promise<void> {
     await this.bootstrap();
     if (!watch) return;
-    this.chokidarWatcher = chokidar.watch(this.roots, {
+    const watcher = chokidar.watch(this.roots, {
       ignoreInitial: true,
       awaitWriteFinish: false,
       persistent: true,
+      ...this.chokidarOptions,
     });
+    this.chokidarWatcher = watcher;
     const handle = (p: string) => {
       this.processing = this.processing.then(() => this.processPath(p)).catch(() => undefined);
     };
-    this.chokidarWatcher.on('add', handle).on('change', handle);
+    watcher.on('add', handle).on('change', handle);
+    // Wait for chokidar's initial scan to complete so writes that land
+    // immediately after start() can't slip through before the watch is armed.
+    await new Promise<void>((resolve) => watcher.once('ready', () => resolve()));
   }
 
   async stop(): Promise<void> {
@@ -136,16 +150,28 @@ export class TranscriptWatcher {
     } catch {
       return;
     }
-    this.onEvent({
-      session_id: info.session_id,
-      agent_id: info.agent_id,
-      uuid: `${info.agent_id}:meta`,
-      parent_uuid: null,
-      ts: '',
-      cwd: null,
-      kind: 'meta',
-      payload: { record_type: 'subagent-meta', raw },
-    });
+    this.onEvent(
+      {
+        session_id: info.session_id,
+        agent_id: info.agent_id,
+        uuid: `${info.agent_id}:meta`,
+        parent_uuid: null,
+        ts: '',
+        cwd: null,
+        kind: 'meta',
+        payload: { record_type: 'subagent-meta', raw },
+      },
+      this.findRoot(p),
+    );
+  }
+
+  /** Find which configured root a given path lives under. Returns the
+   * matched root, or the first root as a fallback (matching never fails in
+   * practice since chokidar only reports paths inside the watched roots). */
+  private findRoot(p: string): string {
+    const abs = path.resolve(p);
+    for (const r of this.roots) if (abs.startsWith(`${r}${path.sep}`) || abs === r) return r;
+    return this.roots[0] ?? '';
   }
 
   private async tailJsonl(p: string, info: PathInfo): Promise<void> {
@@ -182,7 +208,8 @@ export class TranscriptWatcher {
         session_id: info.session_id,
         agent_id: info.agent_id,
       });
-      for (const event of events) this.onEvent(event);
+      const sourceRoot = this.findRoot(p);
+      for (const event of events) this.onEvent(event, sourceRoot);
     }
   }
 

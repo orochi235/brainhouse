@@ -14,7 +14,14 @@ import { trpc } from './trpc.ts';
 
 export interface PanelState extends PanelDto {
   events: Event[];
+  /** Server has told us this panel is gone; we keep it mounted briefly so
+   * the UI can play a fade-out animation before it actually disappears. */
+  removing?: boolean;
 }
+
+/** How long the fade-out animation runs before we drop the panel for real.
+ * Keep in sync with the `.panel.removing` keyframe duration in app.css. */
+const REMOVAL_FADE_MS = 600;
 
 export interface DeltaState {
   /** Connection liveness — drives the header status badge. */
@@ -25,7 +32,8 @@ export interface DeltaState {
 type Action =
   | { type: 'conn'; status: DeltaState['status'] }
   | { type: 'snapshot'; panels: Array<PanelDto & { events: Event[] }> }
-  | { type: 'delta'; delta: Delta };
+  | { type: 'delta'; delta: Delta }
+  | { type: 'commit_remove'; panel_id: string };
 
 const initialState: DeltaState = {
   status: 'connecting',
@@ -62,8 +70,16 @@ function reducer(state: DeltaState, action: Action): DeltaState {
           });
         }
       } else if (d.op === 'panel_remove') {
-        panels.delete(d.panel_id);
+        // Soft remove: mark for animation. The actual delete arrives as a
+        // separate `commit_remove` action after REMOVAL_FADE_MS.
+        const existing = panels.get(d.panel_id);
+        if (existing) panels.set(d.panel_id, { ...existing, removing: true });
       }
+      return { ...state, panels };
+    }
+    case 'commit_remove': {
+      const panels = new Map(state.panels);
+      panels.delete(action.panel_id);
       return { ...state, panels };
     }
   }
@@ -89,7 +105,14 @@ export function useDeltaStream(): DeltaState {
         } else {
           // tRPC's inferred Delta loses some narrowing precision around the
           // payload union; runtime shape matches Delta exactly.
-          dispatch({ type: 'delta', delta: msg.delta as unknown as Delta });
+          const delta = msg.delta as unknown as Delta;
+          dispatch({ type: 'delta', delta });
+          if (delta.op === 'panel_remove') {
+            setTimeout(
+              () => dispatch({ type: 'commit_remove', panel_id: delta.panel_id }),
+              REMOVAL_FADE_MS,
+            );
+          }
         }
       },
       onError() {

@@ -4,6 +4,14 @@
   "private": true,
   "description": "React+Node port of pensieve — local web monitor for Claude Code sessions",
   "type": "module",
+  "bin": {
+    "brainhouse": "bin/brainhouse.js"
+  },
+  "files": [
+    "bin",
+    "server/dist",
+    "server/package.json"
+  ],
   "workspaces": [
     "client",
     "server"
@@ -15,10 +23,13 @@
     "build:client": "npm run build -w client",
     "build:server": "npm run build -w server",
     "build": "npm run build:server && npm run build:client",
+    "start": "node server/dist/index.js",
     "serve": "npm run serve -w server",
-    "check": "biome check",
-    "fix": "biome check --write",
-    "test": "npm run test -w server"
+    "check": "biome check && biome lint",
+    "fix": "biome check --write && biome lint --write",
+    "test:server": "npm run test -w server",
+    "test:client": "npm run test -w client",
+    "test": "npm run test:server && npm run test:client"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",
