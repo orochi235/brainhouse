@@ -22,9 +22,11 @@ UI/server is meant to uphold. New entries go at the bottom.
 - While a panel is actively waiting on a model response, the titlebar's
   session timer is replaced by a waiting badge showing a spinner and the
   elapsed time since the request was submitted.
-- Idle (`done`) panel opacity is user-controlled via the Display prefs
-  slider; defaults to 50%. The slider value applies live via the
-  `--idle-opacity` CSS custom property.
+- Panels are not dimmed merely for going idle. A panel only dims after we
+  have an explicit "this session is over" signal — currently, the
+  SubagentStop hook on a subagent panel. The dim level is user-controlled
+  via the Display prefs slider (defaults to 50%, floor 20%) and applies
+  live via the `--idle-opacity` CSS custom property on `.panel.ended`.
 
 ## State
 

@@ -40,6 +40,7 @@ function panel(overrides: Partial<PanelState> = {}): PanelState {
     theme: null,
     binned_at: null,
     awaiting_input: false,
+    ended: false,
     events: [],
     ...overrides,
   } as PanelState;
@@ -105,5 +106,16 @@ describe('<PanelCard>', () => {
   it('renders the "session ended" footer when status is not live', () => {
     const { container } = renderPanel(panel({ status: 'done' }));
     expect(container.querySelector('.session-ended')).toBeInTheDocument();
+  });
+
+  it('idle (done) panels do NOT get the ended class — just status-done', () => {
+    const { container } = renderPanel(panel({ status: 'done', ended: false }));
+    expect(container.querySelector('.panel')).not.toHaveClass('ended');
+    expect(container.querySelector('.panel')).toHaveClass('status-done');
+  });
+
+  it('explicitly-ended panels get the .ended class for dimming', () => {
+    const { container } = renderPanel(panel({ status: 'done', ended: true }));
+    expect(container.querySelector('.panel')).toHaveClass('ended');
   });
 });

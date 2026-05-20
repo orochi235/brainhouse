@@ -375,6 +375,40 @@ describe('SessionStore', () => {
     });
   });
 
+  describe('markEnded', () => {
+    it('flips the ended flag and emits a panel_upsert', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      const deltas = store.markEnded('S');
+      expect(store.panel('S')?.ended).toBe(true);
+      expect(deltas.map((d) => d.op)).toEqual(['panel_upsert']);
+    });
+
+    it('is idempotent — second call emits nothing', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      store.markEnded('S');
+      expect(store.markEnded('S')).toEqual([]);
+    });
+
+    it('fresh activity clears the ended flag', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      store.markEnded('S');
+      expect(store.panel('S')?.ended).toBe(true);
+      store.apply(ev('assistant_text', { uuid: 'u2', payload: { text: 'back' } }));
+      expect(store.panel('S')?.ended).toBe(false);
+    });
+
+    it('does nothing for an unknown panel', () => {
+      const store = new SessionStore({ clock: () => 0 });
+      expect(store.markEnded('nope')).toEqual([]);
+    });
+  });
+
   it('snapshot serializes panels with events', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });

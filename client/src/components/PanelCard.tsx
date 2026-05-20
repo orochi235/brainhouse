@@ -214,6 +214,7 @@ export function PanelCard({
         nested && 'nested',
         pinned && 'pinned',
         panel.removing && 'removing',
+        panel.ended && 'ended',
       )}
       data-panel-id={panel.id}
       style={style}

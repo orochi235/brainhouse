@@ -20,6 +20,7 @@ function panel(id: string, overrides: Partial<PanelState> = {}): PanelState {
     theme: null,
     binned_at: null,
     awaiting_input: false,
+    ended: false,
     events: [],
     ...overrides,
   } as PanelState;

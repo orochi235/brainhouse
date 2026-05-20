@@ -20,6 +20,7 @@ function panelDto(overrides: Partial<PanelDto> = {}): PanelDto {
     theme: null,
     binned_at: null,
     awaiting_input: false,
+    ended: false,
     ...overrides,
   };
 }

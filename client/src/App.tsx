@@ -1,4 +1,5 @@
 import classNames from 'classnames';
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { PanelCard } from './components/PanelCard.tsx';
 import { PrefsModal } from './components/PrefsModal.tsx';
@@ -184,69 +185,75 @@ export function App() {
           </span>
         </span>
       </header>
-      <main
-        className="session-grid"
-        ref={gridRef}
-        style={gridStyle}
-        onDragOver={onGridDragOver}
-        onDrop={(e) => {
-          const id = e.dataTransfer.getData('text/brainhouse-panel');
-          if (!id) return;
-          e.preventDefault();
-          // Client-mini panels live entirely in client state; restoring them
-          // is a local op. Server-mini panels need an explicit trpc.restore.
-          if (clientMiniPanels.some((p) => p.id === id)) restoreLocal(id);
-          else trpc.restore.mutate({ panelId: id });
-        }}
-      >
-        {orderedGridPanels.map((p) => (
-          <GridSlot
-            key={p.id}
-            panel={p}
-            subagents={subsByParent.get(p.id) ?? []}
-            wide={wide.has(p.id)}
-            pinned={pinned.has(p.id)}
-            account={accountFor(p)}
-            accountFor={accountFor}
-            onToggleWide={() => toggleWide(p.id)}
-            onTogglePin={() => togglePin(p.id)}
-            onTogglePinSub={(s) => togglePin(s.id)}
-            isPinnedSub={(s) => pinned.has(s.id)}
-            onHide={() => dismiss(p)}
-            onHideSub={(s) => dismiss(s)}
-            onReorder={(srcId) =>
-              moveBefore(
-                srcId,
-                p.id,
-                orderedGridPanels.map((g) => g.id),
-              )
-            }
-          />
-        ))}
-        {orderedGridPanels.length === 0 && trayPanels.length === 0 && status === 'live' && (
-          <p className="empty">no sessions yet — try `+ mock session`</p>
+      <LayoutGroup>
+        <main
+          className="session-grid"
+          ref={gridRef}
+          style={gridStyle}
+          onDragOver={onGridDragOver}
+          onDrop={(e) => {
+            const id = e.dataTransfer.getData('text/brainhouse-panel');
+            if (!id) return;
+            e.preventDefault();
+            // Client-mini panels live entirely in client state; restoring them
+            // is a local op. Server-mini panels need an explicit trpc.restore.
+            if (clientMiniPanels.some((p) => p.id === id)) restoreLocal(id);
+            else trpc.restore.mutate({ panelId: id });
+          }}
+        >
+          <AnimatePresence initial={false}>
+            {orderedGridPanels.map((p) => (
+              <GridSlot
+                key={p.id}
+                panel={p}
+                subagents={subsByParent.get(p.id) ?? []}
+                wide={wide.has(p.id)}
+                pinned={pinned.has(p.id)}
+                account={accountFor(p)}
+                accountFor={accountFor}
+                onToggleWide={() => toggleWide(p.id)}
+                onTogglePin={() => togglePin(p.id)}
+                onTogglePinSub={(s) => togglePin(s.id)}
+                isPinnedSub={(s) => pinned.has(s.id)}
+                onHide={() => dismiss(p)}
+                onHideSub={(s) => dismiss(s)}
+                onReorder={(srcId) =>
+                  moveBefore(
+                    srcId,
+                    p.id,
+                    orderedGridPanels.map((g) => g.id),
+                  )
+                }
+              />
+            ))}
+          </AnimatePresence>
+          {orderedGridPanels.length === 0 && trayPanels.length === 0 && status === 'live' && (
+            <p className="empty">no sessions yet — try `+ mock session`</p>
+          )}
+        </main>
+        {trayPanels.length > 0 && (
+          <aside className="session-dock">
+            <AnimatePresence initial={false}>
+              {trayPanels.map((p) => (
+                <MiniPanel
+                  key={p.id}
+                  panel={p}
+                  onHide={() => dismiss(p)}
+                  onRestore={() => {
+                    // Client-mini panels restore locally; server-mini ones need trpc.
+                    if (clientMiniPanels.some((m) => m.id === p.id)) restoreLocal(p.id);
+                    else if (clientMiniSubs.some((m) => m.id === p.id)) restoreLocal(p.id);
+                    else trpc.restore.mutate({ panelId: p.id });
+                  }}
+                  pinned={pinned.has(p.id)}
+                  onTogglePin={() => togglePin(p.id)}
+                  account={accountFor(p)}
+                />
+              ))}
+            </AnimatePresence>
+          </aside>
         )}
-      </main>
-      {trayPanels.length > 0 && (
-        <aside className="session-dock">
-          {trayPanels.map((p) => (
-            <MiniPanel
-              key={p.id}
-              panel={p}
-              onHide={() => dismiss(p)}
-              onRestore={() => {
-                // Client-mini panels restore locally; server-mini ones need trpc.
-                if (clientMiniPanels.some((m) => m.id === p.id)) restoreLocal(p.id);
-                else if (clientMiniSubs.some((m) => m.id === p.id)) restoreLocal(p.id);
-                else trpc.restore.mutate({ panelId: p.id });
-              }}
-              pinned={pinned.has(p.id)}
-              onTogglePin={() => togglePin(p.id)}
-              account={accountFor(p)}
-            />
-          ))}
-        </aside>
-      )}
+      </LayoutGroup>
     </LightboxProvider>
   );
 }
@@ -291,7 +298,15 @@ function GridSlot({
 }) {
   const [armed, setArmed] = useState(false);
   return (
-    <div
+    <motion.div
+      layout
+      // Enter: appear from slightly-shrunken with a soft fade; exit reverses
+      // it. The existing soft-remove dance (panel.removing → 600ms class) is
+      // independent of this; framer drives mounted-state transitions only.
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.92 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.6 }}
       className={classNames('grid-slot', wide && 'wide')}
       draggable={armed}
       onMouseDown={(e) => {
@@ -346,7 +361,7 @@ function GridSlot({
         onHide={onHide}
         onHideSub={onHideSub}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -421,7 +436,12 @@ function MiniPanel({
   onTogglePin: () => void;
 }) {
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.85 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 30, mass: 0.5 }}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
@@ -429,7 +449,7 @@ function MiniPanel({
       }}
     >
       <PanelCard panel={panel} onHide={onHide} onRestore={onRestore} account={account} />
-    </div>
+    </motion.div>
   );
 }
 

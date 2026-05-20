@@ -112,6 +112,9 @@ export class TranscriptMonitor {
     if (event.kind === 'subagent_stop') {
       for (const sub of this.store.liveSubagentsOf(sid)) {
         for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
+        // Subagents finish for real — we trust SubagentStop as an explicit
+        // end signal. Dimming flips on via `ended`.
+        for (const d of this.store.markEnded(sub.id)) this.broadcast(d);
       }
       return;
     }

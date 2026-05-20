@@ -210,8 +210,8 @@ function DisplaySection({ draft, setDraft }: SectionProps) {
         onChange={(v) => set({ conversation: v })}
       />
       <SliderField
-        label="Idle window opacity"
-        hint="How visible done/idle panels stay. 100% = no fade; floor 20%."
+        label="Ended panel opacity"
+        hint="How visible explicitly-ended panels stay (e.g. finished subagents). Idle panels are never dimmed. 100% = no fade; floor 20%."
         value={draft.display.idleOpacity}
         onChange={(v) => set({ idleOpacity: v })}
         min={0.2}

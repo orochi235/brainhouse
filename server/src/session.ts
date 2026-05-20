@@ -57,6 +57,11 @@ export interface Panel {
    * next event ingest. Surfaced via panel_upsert so clients can render a
    * "blocking on you" badge. */
   awaiting_input: boolean;
+  /** True when we have an *explicit* confirmation that the session is over
+   * (e.g. SubagentStop hook fired). Distinct from `status: 'done'`, which
+   * just means "went idle"; a parent session can sit idle for minutes and
+   * still take another prompt. Only `ended` panels get visually dimmed. */
+  ended: boolean;
 }
 
 export interface PanelDto {
@@ -75,6 +80,7 @@ export interface PanelDto {
   theme: PanelTheme | null;
   binned_at: number | null;
   awaiting_input: boolean;
+  ended: boolean;
 }
 
 export type Delta =
@@ -133,9 +139,11 @@ export class SessionStore {
       panel.events.splice(0, Math.ceil(MAX_EVENTS_PER_PANEL * EVICT_FRACTION));
     }
     panel.last_event_at = Math.max(panel.last_event_at, ts);
-    // Any fresh activity clears the awaiting-input flag.
-    if (panel.awaiting_input) {
+    // Any fresh activity clears the awaiting-input + ended flags. Spoke
+    // again → not ended after all.
+    if (panel.awaiting_input || panel.ended) {
       panel.awaiting_input = false;
+      panel.ended = false;
       deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
     }
     if (panel.status !== 'live') {
@@ -287,6 +295,7 @@ export class SessionStore {
       account_label: accountLabel,
       binned_at: null,
       awaiting_input: false,
+      ended: false,
       status: 'live',
       // started_at is wall-clock-now so the panel "age" reflects the
       // observation; last_event_at/status_changed_at are stamped with the
@@ -373,7 +382,18 @@ export class SessionStore {
       cwd: p.cwd,
       theme: p.theme,
       awaiting_input: p.awaiting_input,
+      ended: p.ended,
     };
+  }
+
+  /** Mark a panel as explicitly ended. Idempotent; only emits a delta when
+   * the flag flips. Lifecycle status is left alone — `ended` is orthogonal
+   * to live/done/mini so an ended panel still progresses to the dock. */
+  markEnded(panelId: string): Delta[] {
+    const panel = this.panels.get(panelId);
+    if (!panel || panel.ended) return [];
+    panel.ended = true;
+    return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 }
 

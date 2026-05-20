@@ -88,6 +88,24 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.panel('S')?.status).toBe('live');
   });
 
+  it('subagent_stop also marks each subagent as ended', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({}));
+    monitor.ingest(userTextEvent({ agent_id: 'sub1', uuid: 'u2' }));
+    monitor.applyHookEvent({ session_id: 'S', kind: 'subagent_stop' });
+    expect(monitor.store.panel('sub1')?.ended).toBe(true);
+    // Parent is never marked ended on subagent_stop.
+    expect(monitor.store.panel('S')?.ended).toBe(false);
+  });
+
+  it('plain Stop on the parent does NOT mark it ended (only idle)', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({}));
+    monitor.applyHookEvent({ session_id: 'S', kind: 'stop' });
+    expect(monitor.store.panel('S')?.status).toBe('done');
+    expect(monitor.store.panel('S')?.ended).toBe(false);
+  });
+
   it('setTimings forwards to the store and changes idle behavior', () => {
     const monitor = newMonitor();
     monitor.setTimings({ idleSeconds: 1 });

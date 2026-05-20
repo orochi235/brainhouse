@@ -261,6 +261,30 @@ body {
   min-height: 0;
   overflow: hidden;
   animation: panel-spawn 0.45s cubic-bezier(0.22, 0.85, 0.25, 1);
+  /* Scope layout + paint to the panel so a per-frame box-shadow pulse
+   * doesn't invalidate the rest of the page. ~10–20% perf win with many
+   * live panels; ~free win for everything else. */
+  contain: layout paint style;
+}
+.panel-parent.status-live.waiting,
+.panel-subagent.status-live,
+.panel-parent.has-theme.status-live.waiting {
+  /* Hint to the compositor that these pulsing panels should sit on their
+   * own GPU layer so per-frame box-shadow paints don't drag siblings into
+   * the repaint region. */
+  will-change: box-shadow;
+}
+/* Honor OS-level reduced-motion: infinite pulses + the spawn animation
+ * disable entirely. Static state (the non-animated `.status-live` glow)
+ * stays so the panel still reads as live. */
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .panel-parent.status-live.waiting,
+  .panel-subagent.status-live,
+  .panel-parent.has-theme.status-live.waiting,
+  .panel-waiting-spinner {
+    animation: none;
+  }
 }
 .panel-subagent {
   border-left: 2px solid var(--accent);
@@ -312,10 +336,17 @@ body {
       0 0 32px -4px rgba(249, 115, 22, 0.75);
   }
 }
+/* Idle (status: 'done') panels just look slightly less saturated — no
+ * opacity change, because "idle" is not the same as "ended". A parent
+ * session can sit idle for minutes between turns. */
 .panel.status-done {
-  opacity: var(--idle-opacity, 0.5);
   border-color: color-mix(in srgb, var(--panel-border) 70%, transparent);
   background: color-mix(in srgb, var(--panel-bg) 90%, transparent);
+}
+/* Explicitly-ended panels (e.g. SubagentStop hook fired) dim out. The
+ * opacity is user-controlled via the Display prefs slider. */
+.panel.ended {
+  opacity: var(--idle-opacity, 0.5);
 }
 .panel.status-done .panel-header {
   background: transparent;
