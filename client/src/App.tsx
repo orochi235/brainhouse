@@ -316,13 +316,18 @@ function GridSlot({
         setArmed(inHeader && !onButton);
       }}
       onMouseUp={() => setArmed(false)}
-      onDragStart={(e) => {
+      // motion.div narrows onDragStart/onDragEnd to framer's pointer-event
+      // signatures because of its internal `drag` prop; we're using native
+      // HTML5 drag instead, so cast at the boundary.
+      onDragStart={(rawE) => {
+        const e = rawE as unknown as React.DragEvent<HTMLDivElement>;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/brainhouse-panel', panel.id);
         e.dataTransfer.setData('text/brainhouse-panel-source', 'grid');
         (e.currentTarget as HTMLElement).classList.add('dragging');
       }}
-      onDragEnd={(e) => {
+      onDragEnd={(rawE) => {
+        const e = rawE as unknown as React.DragEvent<HTMLDivElement>;
         (e.currentTarget as HTMLElement).classList.remove('dragging');
         setArmed(false);
       }}
@@ -443,7 +448,8 @@ function MiniPanel({
       exit={{ opacity: 0, scale: 0.85 }}
       transition={{ type: 'spring', stiffness: 420, damping: 30, mass: 0.5 }}
       draggable
-      onDragStart={(e) => {
+      onDragStart={(rawE) => {
+        const e = rawE as unknown as React.DragEvent<HTMLDivElement>;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/brainhouse-panel', panel.id);
       }}
