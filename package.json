@@ -35,7 +35,8 @@
     "fix": "biome check --write && biome lint --write",
     "test:server": "npm run test -w server",
     "test:client": "npm run test -w client",
-    "test": "npm run test:server && npm run test:client"
+    "test": "npm run test:server && npm run test:client",
+    "postinstall": "node scripts/ensure-platform-binaries.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
