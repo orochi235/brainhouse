@@ -18,6 +18,7 @@ import { open, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import chokidar, { type ChokidarOptions, type FSWatcher } from 'chokidar';
 import { type Event, parseLine } from './parser.js';
+import type { Store } from './store.js';
 
 export interface PathInfo {
   session_id: string;
@@ -66,6 +67,10 @@ export interface WatcherOptions {
    * tests can force polling on platforms where fsevents coalesces rapid
    * appends. Production should leave this unset. */
   chokidarOptions?: ChokidarOptions;
+  /** Optional persistence layer. When set, per-file byte offsets persist
+   * to `bootstrap_offsets`; a server restart resumes from where each
+   * file's tail left off instead of replaying the trailing N minutes. */
+  store?: Store | null;
 }
 
 export class TranscriptWatcher {
@@ -74,6 +79,7 @@ export class TranscriptWatcher {
   private readonly bootstrapAgeSeconds: number;
   private readonly chokidarOptions: ChokidarOptions;
   private readonly offsets = new Map<string, number>();
+  private readonly store: Store | null;
   private chokidarWatcher: FSWatcher | null = null;
   private processing: Promise<void> = Promise.resolve();
 
@@ -82,9 +88,11 @@ export class TranscriptWatcher {
     this.onEvent = onEvent;
     this.bootstrapAgeSeconds = opts.bootstrapAgeSeconds ?? 30 * 60;
     this.chokidarOptions = opts.chokidarOptions ?? {};
+    this.store = opts.store ?? null;
   }
 
   async start({ watch = true }: { watch?: boolean } = {}): Promise<void> {
+    this.hydrateOffsets();
     await this.bootstrap();
     if (!watch) return;
     const watcher = chokidar.watch(this.roots, {
@@ -117,13 +125,38 @@ export class TranscriptWatcher {
       if (!existsSync(root)) continue;
       for (const file of await this.walk(root)) {
         if (!classifyPath(file)) continue;
+        // Two skip rules:
+        //   - file hasn't changed since the last offset we persisted
+        //     (cheap: stat mtime < (last_seen_at - epsilon))
+        //   - we have no offset AND the file's mtime is older than the
+        //     bootstrapAgeSeconds cutoff (don't replay ancient transcripts
+        //     from disk just because we noticed them this time)
+        let mtime: number;
         try {
-          if (statSync(file).mtimeMs / 1000 < cutoff) continue;
+          mtime = statSync(file).mtimeMs / 1000;
         } catch {
           continue;
         }
+        const hasOffset = this.offsets.has(file);
+        if (!hasOffset && mtime < cutoff) continue;
         await this.processPath(file);
       }
+    }
+  }
+
+  /** Restore per-file offsets from the Store so a restart resumes
+   * incrementally instead of re-replaying the trailing window. No-op
+   * when persistence is disabled. */
+  private hydrateOffsets(): void {
+    if (!this.store) return;
+    for (const [filePath, byteOffset] of this.store.allBootstrapOffsets()) {
+      // Drop stale entries for files that no longer exist so the table
+      // doesn't accumulate ghosts indefinitely.
+      if (!existsSync(filePath)) {
+        this.store.deleteBootstrapOffset(filePath);
+        continue;
+      }
+      this.offsets.set(filePath, byteOffset);
     }
   }
 
@@ -207,7 +240,9 @@ export class TranscriptWatcher {
     const lastNewline = buf.lastIndexOf(0x0a /* \n */);
     if (lastNewline === -1) return; // no complete line yet
     const complete = buf.subarray(0, lastNewline + 1);
-    this.offsets.set(p, offset + lastNewline + 1);
+    const newOffset = offset + lastNewline + 1;
+    this.offsets.set(p, newOffset);
+    this.store?.setBootstrapOffset(p, newOffset);
 
     for (const line of complete.toString('utf8').split('\n')) {
       if (!line.trim()) continue;

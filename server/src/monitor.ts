@@ -45,8 +45,12 @@ export class TranscriptMonitor {
   /** rootPath → label. Used to translate watcher "sourceRoot" into a
    * human-readable account name on each ingest. */
   private readonly accountLabels: Map<string, string>;
+  /** Held for setRoots(), which constructs a fresh watcher and needs the
+   * same persistence handle. */
+  private readonly persistStore: import('./store.js').Store | null;
 
   constructor(opts: MonitorOptions) {
+    this.persistStore = opts.store ?? null;
     this.store = new SessionStore({
       idleSeconds: opts.idleSeconds,
       miniSeconds: opts.miniSeconds,
@@ -57,8 +61,10 @@ export class TranscriptMonitor {
     for (const a of opts.accounts ?? []) {
       if (a.label) this.accountLabels.set(a.path, a.label);
     }
-    this.watcher = new TranscriptWatcher(opts.roots, (event, sourceRoot) =>
-      this.ingest(event, sourceRoot),
+    this.watcher = new TranscriptWatcher(
+      opts.roots,
+      (event, sourceRoot) => this.ingest(event, sourceRoot),
+      { store: opts.store ?? null },
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
     const dir = opts.hookEventsDir === undefined ? defaultEventsDir() : opts.hookEventsDir;
@@ -153,8 +159,10 @@ export class TranscriptMonitor {
     await this.watcher.stop();
     this.accountLabels.clear();
     for (const a of accounts) if (a.label) this.accountLabels.set(a.path, a.label);
-    this.watcher = new TranscriptWatcher(roots, (event, sourceRoot) =>
-      this.ingest(event, sourceRoot),
+    this.watcher = new TranscriptWatcher(
+      roots,
+      (event, sourceRoot) => this.ingest(event, sourceRoot),
+      { store: this.persistStore },
     );
     await this.watcher.start({ watch: true });
   }

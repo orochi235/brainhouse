@@ -494,6 +494,19 @@ export class Store {
       )
       .run(filePath, offset, seenAt);
   }
+
+  /** All `(file_path, byte_offset)` pairs the watcher has recorded.
+   * Used at boot to hydrate the watcher's in-memory offset map. */
+  allBootstrapOffsets(): Array<[string, number]> {
+    const rows = this.db
+      .prepare('SELECT file_path, byte_offset FROM bootstrap_offsets')
+      .all() as Array<{ file_path: string; byte_offset: number }>;
+    return rows.map((r) => [r.file_path, r.byte_offset]);
+  }
+
+  deleteBootstrapOffset(filePath: string): void {
+    this.db.prepare('DELETE FROM bootstrap_offsets WHERE file_path = ?').run(filePath);
+  }
 }
 
 // --- internal: row deserialization (boolean/null normalization) ---

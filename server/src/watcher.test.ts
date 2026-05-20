@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Event } from './parser.js';
+import { Store } from './store.js';
 import { classifyPath, TranscriptWatcher } from './watcher.js';
 
 function record(uuid: string, text: string, session: string): Record<string, unknown> {
@@ -246,5 +247,81 @@ describe('TranscriptWatcher', () => {
     } finally {
       await w.stop();
     }
+  });
+
+  describe('bootstrap_offsets persistence', () => {
+    it('persists byte offset after tailing; resumes from there on next start', async () => {
+      const store = Store.open(':memory:');
+      const f = path.join(dir, 'sess-x.jsonl');
+      const line1 = `${JSON.stringify(record('u1', 'first', 'sess-x'))}\n`;
+      const line2 = `${JSON.stringify(record('u2', 'second', 'sess-x'))}\n`;
+
+      // First run: read first line, persist offset.
+      const w1 = new TranscriptWatcher([dir], sink, {
+        bootstrapAgeSeconds: 10_000,
+        store,
+      });
+      writeFileSync(f, line1);
+      await w1.start({ watch: false });
+      const recordedOffset = store.getBootstrapOffset(f);
+      expect(recordedOffset).toBe(Buffer.byteLength(line1));
+
+      // Append another line, then "restart" by constructing a fresh watcher
+      // backed by the same store. The new watcher should hydrate the offset
+      // and only emit the appended line on its bootstrap pass.
+      writeFileSync(f, line1 + line2);
+      events.length = 0;
+      const w2 = new TranscriptWatcher([dir], sink, {
+        bootstrapAgeSeconds: 10_000,
+        store,
+      });
+      await w2.start({ watch: false });
+      const texts = events.flatMap((e) =>
+        e.kind === 'assistant_text' && typeof e.payload.text === 'string' ? [e.payload.text] : [],
+      );
+      expect(texts).toEqual(['second']);
+      expect(store.getBootstrapOffset(f)).toBe(Buffer.byteLength(line1 + line2));
+      store.close();
+    });
+
+    it('drops offset entries for files that no longer exist', async () => {
+      const store = Store.open(':memory:');
+      // Pre-seed a stale offset for a path that was never created.
+      store.setBootstrapOffset(path.join(dir, 'gone.jsonl'), 9999);
+      expect(store.getBootstrapOffset(path.join(dir, 'gone.jsonl'))).toBe(9999);
+      const w = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 10_000, store });
+      await w.start({ watch: false });
+      // The hydrate pass pruned the dead entry.
+      expect(store.getBootstrapOffset(path.join(dir, 'gone.jsonl'))).toBeNull();
+      store.close();
+    });
+
+    it('bypasses the bootstrapAgeSeconds cutoff for files that have a saved offset', async () => {
+      const store = Store.open(':memory:');
+      const f = path.join(dir, 'ancient.jsonl');
+      const line = `${JSON.stringify(record('u1', 'old', 'ancient'))}\n`;
+      writeFileSync(f, line);
+      // Backdate the file so it's older than the cutoff.
+      const twoDaysAgo = (Date.now() - 2 * 86_400_000) / 1000;
+      utimesSync(f, twoDaysAgo, twoDaysAgo);
+
+      // First watcher: tight cutoff, no saved offset → skipped.
+      const w1 = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 60, store });
+      await w1.start({ watch: false });
+      expect(events.length).toBe(0);
+
+      // Seed a saved offset of 0 (pretend we'd seen but not read this file).
+      store.setBootstrapOffset(f, 0);
+
+      // Second watcher: same tight cutoff, but the saved offset overrides
+      // the mtime check so the line gets emitted.
+      events.length = 0;
+      const w2 = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 60, store });
+      await w2.start({ watch: false });
+      expect(
+        events.some((e) => e.kind === 'assistant_text' && e.payload.text === 'old'),
+      ).toBe(true);
+      store.close();
+    });
   });
 });
