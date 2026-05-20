@@ -1209,6 +1209,35 @@ body.imessage .panel.has-theme .event-user_text .bubble {
 .tool-capsule.ok {
   border-color: rgba(132, 204, 22, 0.35);
 }
+/* Pure-lookup ops (Glob, Grep, WebFetch, WebSearch) — read-only, no
+ * side effects. Render at reduced visual weight so state-changing ops
+ * (Edit, Write, Bash with side effects) read as the dominant signal.
+ * Read is excluded — it gets folded into a file-change row when it
+ * appears alongside Edit/Write; standalone it's rare enough to leave
+ * at normal weight. Errors keep their full prominence since those want
+ * attention regardless of the op kind. */
+.tool-capsule:where(
+    [data-tool-name='Glob'],
+    [data-tool-name='Grep'],
+    [data-tool-name='WebFetch'],
+    [data-tool-name='WebSearch']
+  ):not(.error) {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  min-height: 1.25rem;
+  opacity: 0.7;
+  border-color: color-mix(in srgb, var(--panel-border) 60%, transparent);
+  background: color-mix(in srgb, var(--code-bg) 60%, transparent);
+}
+.tool-capsule:where(
+    [data-tool-name='Glob'],
+    [data-tool-name='Grep'],
+    [data-tool-name='WebFetch'],
+    [data-tool-name='WebSearch']
+  ):not(.error):hover {
+  opacity: 1;
+}
+
 .tool-capsule.error {
   border-color: rgba(239, 68, 68, 0.45);
 }
