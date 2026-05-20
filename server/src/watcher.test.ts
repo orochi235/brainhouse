@@ -27,17 +27,24 @@ describe('classifyPath', () => {
 
   it('classifies a subagent jsonl', () => {
     const info = classifyPath('/tmp/proj/session-xyz/subagents/agent-aaa.jsonl');
-    expect(info).toEqual({ session_id: 'session-xyz', agent_id: 'agent-aaa', is_meta: false });
+    expect(info).toEqual({ session_id: 'session-xyz', agent_id: 'aaa', is_meta: false });
   });
 
   it('classifies a subagent meta', () => {
     const info = classifyPath('/tmp/proj/session-xyz/subagents/agent-aaa.meta.json');
-    expect(info).toEqual({ session_id: 'session-xyz', agent_id: 'agent-aaa', is_meta: true });
+    expect(info).toEqual({ session_id: 'session-xyz', agent_id: 'aaa', is_meta: true });
   });
 
   it('returns null for unrelated paths', () => {
     expect(classifyPath('/tmp/proj/.DS_Store')).toBeNull();
     expect(classifyPath('/tmp/proj/notes.txt')).toBeNull();
+  });
+
+  it('jsonl and meta sibling produce the same bare agent_id', () => {
+    const jsonl = classifyPath('/tmp/proj/sess/subagents/agent-zzz.jsonl');
+    const meta = classifyPath('/tmp/proj/sess/subagents/agent-zzz.meta.json');
+    expect(jsonl?.agent_id).toBe(meta?.agent_id);
+    expect(jsonl?.agent_id).toBe('zzz');
   });
 });
 
@@ -115,6 +122,22 @@ describe('TranscriptWatcher', () => {
     ]);
   });
 
+  it('jsonl row agentId and meta sidecar funnel into the same panel id', async () => {
+    const subDir = path.join(dir, 'proj', 'sess-1', 'subagents');
+    mkdirSync(subDir, { recursive: true });
+    const meta = path.join(subDir, 'agent-ccc.meta.json');
+    writeFileSync(meta, JSON.stringify({ agentType: 'Explore', description: 'find X' }));
+    const jsonl = path.join(subDir, 'agent-ccc.jsonl');
+    // Critically: the row's `agentId` is the bare uuid (no `agent-` prefix),
+    // matching how Claude Code writes the JSONL. Path-derived id must also
+    // strip the prefix or we end up with two panels for one subagent.
+    const row = { ...record('u1', 'from sub', 'sess-1'), agentId: 'ccc' };
+    writeFileSync(jsonl, `${JSON.stringify(row)}\n`);
+    const w = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 10_000 });
+    await w.processPath(jsonl);
+    expect(events.map((e) => e.agent_id)).toEqual(['ccc', 'ccc']);
+  });
+
   it('subagent jsonl carries agent_id derived from path', async () => {
     const subDir = path.join(dir, 'proj', 'sess-1', 'subagents');
     mkdirSync(subDir, { recursive: true });
@@ -125,7 +148,7 @@ describe('TranscriptWatcher', () => {
     // Two events: the synthetic subagent-meta lookup (no .meta.json so it's
     // skipped) + the assistant_text. With no meta on disk, just one event.
     expect(events).toHaveLength(1);
-    expect(events[0]?.agent_id).toBe('agent-bbb');
+    expect(events[0]?.agent_id).toBe('bbb');
     expect(events[0]?.session_id).toBe('sess-1');
   });
 
@@ -158,7 +181,7 @@ describe('TranscriptWatcher', () => {
     expect(events).toHaveLength(1);
     const e = events[0];
     expect(e?.kind).toBe('meta');
-    expect(e?.agent_id).toBe('agent-bbb');
+    expect(e?.agent_id).toBe('bbb');
     if (e?.kind === 'meta') {
       expect(e.payload.record_type).toBe('subagent-meta');
     }

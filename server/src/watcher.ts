@@ -25,18 +25,27 @@ export interface PathInfo {
   is_meta: boolean;
 }
 
+/** Subagent files are named `agent-<uuid>.{jsonl,meta.json}` on disk, but
+ * Claude Code writes the bare `<uuid>` into the `agentId` field of each
+ * JSONL row. We strip the prefix here so the path-derived id and the
+ * row-derived id agree — otherwise a single subagent ends up as two panels
+ * (one fed by the .meta.json sidecar, the other by the transcript). */
+function stripAgentPrefix(id: string): string {
+  return id.startsWith('agent-') ? id.slice('agent-'.length) : id;
+}
+
 export function classifyPath(p: string): PathInfo | null {
   const name = path.basename(p);
   const parentDir = path.basename(path.dirname(p));
 
   if (name.endsWith('.meta.json') && parentDir === 'subagents') {
-    const agent_id = name.slice(0, -'.meta.json'.length);
+    const agent_id = stripAgentPrefix(name.slice(0, -'.meta.json'.length));
     const session_id = path.basename(path.dirname(path.dirname(p)));
     return { session_id, agent_id, is_meta: true };
   }
   if (name.endsWith('.jsonl')) {
     if (parentDir === 'subagents') {
-      const agent_id = name.slice(0, -'.jsonl'.length);
+      const agent_id = stripAgentPrefix(name.slice(0, -'.jsonl'.length));
       const session_id = path.basename(path.dirname(path.dirname(p)));
       return { session_id, agent_id, is_meta: false };
     }
@@ -131,10 +140,15 @@ export class TranscriptWatcher {
       return;
     }
     // First-sight optimization: also process the sibling .meta.json so the
-    // subagent's human-readable title appears immediately.
+    // subagent's human-readable title appears immediately. Derive the meta
+    // filename from the jsonl filename rather than info.agent_id — the
+    // file on disk is `agent-<uuid>.meta.json`, while info.agent_id is the
+    // bare `<uuid>` we use as the panel key.
     const firstSight = !this.offsets.has(p);
     if (firstSight && info.agent_id !== null) {
-      const metaPath = path.join(path.dirname(p), `${info.agent_id}.meta.json`);
+      const jsonlName = path.basename(p);
+      const metaName = `${jsonlName.slice(0, -'.jsonl'.length)}.meta.json`;
+      const metaPath = path.join(path.dirname(p), metaName);
       if (existsSync(metaPath)) {
         const metaInfo = classifyPath(metaPath);
         if (metaInfo?.is_meta) await this.emitMeta(metaPath, metaInfo);

@@ -3,7 +3,6 @@
  *
  * Targets:
  *   ~/.claude/settings.json
- *   ~/.claude-pw/settings.json  (if the directory exists)
  *
  * Idempotent: re-running replaces any existing brainhouse hooks rather than
  * appending duplicates. Adds a `brainhouse` marker to each hook entry so we
@@ -32,12 +31,8 @@ function dispatcherPath() {
 }
 
 function targetSettingsPaths() {
-  const home = os.homedir();
-  const candidates = [
-    path.join(home, '.claude'),
-    path.join(home, '.claude-pw'),
-  ].filter((d) => existsSync(d));
-  return candidates.map((d) => path.join(d, 'settings.json'));
+  const claudeDir = path.join(os.homedir(), '.claude');
+  return existsSync(claudeDir) ? [path.join(claudeDir, 'settings.json')] : [];
 }
 
 async function readJson(file) {
@@ -98,7 +93,7 @@ export async function runInit(argv) {
 
   const targets = targetSettingsPaths();
   if (targets.length === 0) {
-    console.error('brainhouse: no Claude config directory found (~/.claude or ~/.claude-pw).');
+    console.error('brainhouse: no Claude config directory found at ~/.claude.');
     process.exit(1);
   }
 

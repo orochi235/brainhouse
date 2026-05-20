@@ -1,7 +1,7 @@
 # brainhouse — project todos
 
 ## Multi-account support
-Surface sessions from more than one Claude config root at the same time (e.g. `~/.claude` *and* `~/.claude-pw`). Watcher already accepts multiple roots; needs config plumbing, per-account tagging in the panel header, and visual distinction (badge / border color).
+Surface sessions from more than one Claude config root at the same time (e.g. `~/.claude` plus any per-workspace config directory). Watcher already accepts multiple roots; needs config plumbing, per-account tagging in the panel header, and visual distinction (badge / border color).
 
 ## Coalesce file ops into "file-change" events
 Ideally, all Read + Edit + Write operations on the same file within a short

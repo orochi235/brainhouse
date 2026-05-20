@@ -47,16 +47,21 @@ brainhouse         # boots the server on :8765
 
 The link points to this repo's `bin/brainhouse.js`, which loads
 `server/dist/index.js` + the built client assets — so the CLI only reflects
-changes after a rebuild. To keep it always-current while you hack, run:
+changes after a rebuild. Two ways to keep things current while you hack:
 
 ```sh
-npm run build:watch    # tsc -w (server) + vite build --watch (client)
+# one terminal: rebuilds + reruns the server on every save
+npm run start:watch     # tsc -w + vite build --watch + node --watch
+
+# or, two-terminal flavor (run the linked CLI yourself between rebuilds)
+npm run build:watch     # terminal 1 — just rebuilds
+brainhouse              # terminal 2 — restart with ↑/⏎ after changes land
 ```
 
-…in a terminal alongside your usual work. Then `brainhouse` always boots the
-latest. (`npm run dev` is still the right thing for HMR-on-:8766 day-to-day;
-`build:watch` is for when you specifically want the linked one-port CLI in
-sync.)
+`start:watch` binds port 8765 itself, so close any other `brainhouse`
+instance first. (`npm run dev` is still the right thing for HMR-on-:8766
+day-to-day; the watch options above are for when you specifically want the
+production-shape one-port CLI in sync.)
 
 ## Richer panels via Claude Code hooks (optional)
 
@@ -75,10 +80,9 @@ brainhouse init --dry-run   # show what would change
 brainhouse init --uninstall # remove only brainhouse's entries
 ```
 
-The installer touches `~/.claude/settings.json` and, if it exists,
-`~/.claude-pw/settings.json`. Brainhouse-owned entries are tagged
-`"brainhouse": true` so re-running or uninstalling never disturbs hooks you
-authored yourself.
+The installer touches `~/.claude/settings.json`. Brainhouse-owned entries
+are tagged `"brainhouse": true` so re-running or uninstalling never disturbs
+hooks you authored yourself.
 
 Hook events land at `~/.brainhouse/events/<session_id>.jsonl` (override with
 `BRAINHOUSE_EVENTS_DIR`). The server tails that directory the same way it
@@ -99,13 +103,12 @@ with its standard `~/.claude/projects` transcript location.
 | `BRAINHOUSE_PREFS`  | (auto)               | Path to `prefs.json` (otherwise `$XDG_CONFIG_HOME/brainhouse/prefs.json` or `~/.brainhouse/prefs.json`) |
 | `BRAINHOUSE_EVENTS_DIR` | `~/.brainhouse/events` | Sidecar directory the hook dispatcher writes to and the server tails |
 
-### Default transcript roots
+### Default transcript root
 
 If neither `BRAINHOUSE_ROOTS` nor `prefs.json` specifies roots, Brainhouse
-watches:
-
-- `~/.claude/projects`
-- `~/.claude-pw/projects`
+watches `~/.claude/projects`. Add more under **Accounts** in the prefs
+modal if you keep transcripts elsewhere (e.g. a separate Claude config
+root per workspace).
 
 ### Preferences file
 

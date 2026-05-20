@@ -116,7 +116,12 @@ export class SessionStore {
   apply(event: Event, opts: { accountLabel?: string | null } = {}): Delta[] {
     const now = this.clock();
     const deltas: Delta[] = [];
-    const panel = this.ensurePanel(event, now, deltas, opts.accountLabel ?? null);
+    // Resolve the event's timestamp first so a brand-new panel seeded by a
+    // bootstrap-replay starts with the event's own time, not "now". Cap at
+    // `now` so a clock-skewed transcript can't project into the future.
+    const eventTs = parseEventTs(event.ts);
+    const ts = eventTs !== null ? Math.min(eventTs, now) : now;
+    const panel = this.ensurePanel(event, now, ts, deltas, opts.accountLabel ?? null);
     // Dedupe by uuid. The watcher re-reads `.meta.json` sidecars on every
     // change event and emits with a stable `agent-X:meta` uuid; without this
     // guard those duplicates pile up in `panel.events` and React's list
@@ -127,10 +132,6 @@ export class SessionStore {
     if (panel.events.length > MAX_EVENTS_PER_PANEL) {
       panel.events.splice(0, Math.ceil(MAX_EVENTS_PER_PANEL * EVICT_FRACTION));
     }
-    // Use the event's own timestamp so bootstrap-replayed events don't all
-    // collapse to "just now" — but never project into the future.
-    const eventTs = parseEventTs(event.ts);
-    const ts = eventTs !== null ? Math.min(eventTs, now) : now;
     panel.last_event_at = Math.max(panel.last_event_at, ts);
     // Any fresh activity clears the awaiting-input flag.
     if (panel.awaiting_input) {
@@ -270,6 +271,7 @@ export class SessionStore {
   private ensurePanel(
     event: Event,
     now: number,
+    eventTs: number,
     deltas: Delta[],
     accountLabel: string | null,
   ): Panel {
@@ -286,9 +288,12 @@ export class SessionStore {
       binned_at: null,
       awaiting_input: false,
       status: 'live',
+      // started_at is wall-clock-now so the panel "age" reflects the
+      // observation; last_event_at/status_changed_at are stamped with the
+      // event's own ts so bootstrap-replay shows the right "X ago".
       started_at: now,
-      last_event_at: now,
-      status_changed_at: now,
+      last_event_at: eventTs,
+      status_changed_at: eventTs,
       cwd: event.cwd,
       theme: null,
       events: [],

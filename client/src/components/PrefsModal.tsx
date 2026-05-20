@@ -139,8 +139,7 @@ function AccountsSection({ draft, setDraft }: SectionProps) {
       title="Accounts"
       hint={
         <>
-          Directories the watcher monitors. Empty falls back to <code>~/.claude/projects</code> and{' '}
-          <code>~/.claude-pw/projects</code>.
+          Directories the watcher monitors. Empty falls back to <code>~/.claude/projects</code>.
         </>
       }
     >

@@ -313,6 +313,68 @@ describe('SessionStore', () => {
     expect(store.remove('S')).toEqual([]);
   });
 
+  describe('event-timestamp-driven lifecycle (bootstrap replay)', () => {
+    const toIso = (epoch: number) => new Date(epoch * 1000).toISOString();
+
+    it('uses the event ts for last_event_at (capped at clock)', () => {
+      const clock = new FakeClock(10_000); // "now"
+      const store = new SessionStore({ clock: clock.now });
+      // Replay an old event written 2 hours ago.
+      const old = { ...ev('user_text', { payload: { text: 'hi' } }), ts: toIso(10_000 - 7_200) };
+      store.apply(old as Event);
+      const p = store.panel('S');
+      expect(p?.last_event_at).toBe(10_000 - 7_200);
+      expect(p?.status_changed_at).toBe(10_000 - 7_200);
+    });
+
+    it('never projects last_event_at past the clock', () => {
+      const clock = new FakeClock(10_000);
+      const store = new SessionStore({ clock: clock.now });
+      const future = { ...ev('user_text', { payload: { text: 'hi' } }), ts: toIso(99_999) };
+      store.apply(future as Event);
+      const p = store.panel('S');
+      expect(p?.last_event_at).toBe(10_000);
+    });
+
+    it('falls back to clock for missing/invalid ts', () => {
+      const clock = new FakeClock(10_000);
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      expect(store.panel('S')?.last_event_at).toBe(10_000);
+    });
+
+    it('tick stamps status_changed_at at the threshold crossing, not the tick time', () => {
+      const clock = new FakeClock(10_000);
+      const store = new SessionStore({ clock: clock.now, idleSeconds: 60 });
+      // Bootstrap replay: event was 2h ago.
+      const old = { ...ev('user_text', { payload: { text: 'hi' } }), ts: toIso(10_000 - 7_200) };
+      store.apply(old as Event);
+      store.tick();
+      const p = store.panel('S');
+      expect(p?.status).toBe('done');
+      // status_changed_at should be last_event_at + idleSeconds, not "now".
+      expect(p?.status_changed_at).toBe(10_000 - 7_200 + 60);
+    });
+
+    it('done → mini status_changed_at also lands at the threshold crossing', () => {
+      const clock = new FakeClock(10_000);
+      const store = new SessionStore({
+        clock: clock.now,
+        idleSeconds: 60,
+        miniSeconds: 300,
+      });
+      const old = { ...ev('user_text', { payload: { text: 'hi' } }), ts: toIso(10_000 - 7_200) };
+      store.apply(old as Event);
+      store.tick();
+      // Now run a second tick that should chain into mini.
+      store.tick();
+      const p = store.panel('S');
+      expect(p?.status).toBe('mini');
+      // done@(t0+60), mini@(t0+60+300)
+      expect(p?.status_changed_at).toBe(10_000 - 7_200 + 60 + 300);
+    });
+  });
+
   it('snapshot serializes panels with events', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });

@@ -8,7 +8,17 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'node',
+    // happy-dom for all client tests so hooks + components can render.
+    // Picked over jsdom because jsdom 29's WebStorage is finicky to enable
+    // and happy-dom is faster anyway. Pure-logic tests pay a small setup
+    // cost but don't otherwise care.
+    environment: 'happy-dom',
+    environmentOptions: {
+      'happy-dom': {
+        url: 'http://localhost/',
+      },
+    },
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    setupFiles: ['./src/test-setup.ts'],
   },
 });

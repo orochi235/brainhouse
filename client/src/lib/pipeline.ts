@@ -81,6 +81,11 @@ export function preprocessEvents(events: Event[]): PreprocessResult {
   const items: ViewItem[] = [];
   let checklist: ChecklistItem[] | null = null;
   let pending = false;
+  // Tool_use ids whose result we've already absorbed elsewhere (e.g. an
+  // AskUserQuestion call we rendered as an assistant bubble). When the
+  // matching tool_result arrives we swallow it instead of rendering an
+  // orphan capsule.
+  const absorbedToolUseIds = new Set<string>();
 
   for (const event of events) {
     // ---- pending-indicator tracking (user/tool_result start → pending; asst/tool_use clear) ----
@@ -99,6 +104,12 @@ export function preprocessEvents(events: Event[]): PreprocessResult {
     // ---- mergeToolResultIntoCapsule ----
     if (event.kind === 'tool_result') {
       const id = event.payload.tool_use_id;
+      if (id && absorbedToolUseIds.has(id)) {
+        // The matching tool_use was rendered as something other than a
+        // capsule (e.g. AskUserQuestion → assistant bubble). Swallow the
+        // result; no capsule to attach to.
+        continue;
+      }
       const target = id ? findToolItem(items, id) : null;
       if (target) {
         target.result = event.payload;
@@ -116,8 +127,24 @@ export function preprocessEvents(events: Event[]): PreprocessResult {
       continue;
     }
 
-    // ---- tool_use → new capsule ----
+    // ---- tool_use → new capsule (or, for AskUserQuestion, a synthetic
+    //      assistant bubble that reads as Claude asking the user) ----
     if (event.kind === 'tool_use') {
+      if (event.payload.name === 'AskUserQuestion') {
+        const text = formatAskUserQuestion(event.payload.input);
+        if (text) {
+          items.push({
+            type: 'bubble',
+            event: { ...event, kind: 'assistant_text', payload: { text } } as Event,
+            role: 'assistant',
+            parts: [{ kind: 'text', text }],
+          });
+          if (event.payload.tool_use_id) {
+            absorbedToolUseIds.add(event.payload.tool_use_id);
+          }
+          continue;
+        }
+      }
       // upgradeOrphanCapsule: did we render an orphan with this id?
       const id = event.payload.tool_use_id;
       const orphan = id ? findToolItem(items, id) : null;
@@ -413,6 +440,37 @@ function markCanceledTurn(items: ViewItem[]): void {
       item.canceled = true;
     }
   }
+}
+
+/** Render an AskUserQuestion tool_use payload as a markdown block so it can
+ * appear as an assistant bubble. Returns null if the payload doesn't match
+ * the expected shape — caller falls back to a normal tool capsule. */
+function formatAskUserQuestion(input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null;
+  const questions = (input as { questions?: unknown }).questions;
+  if (!Array.isArray(questions) || questions.length === 0) return null;
+  const blocks: string[] = [];
+  for (const q of questions) {
+    if (!q || typeof q !== 'object') continue;
+    const question = (q as { question?: unknown }).question;
+    const multiSelect = (q as { multiSelect?: unknown }).multiSelect === true;
+    const options = (q as { options?: unknown }).options;
+    if (typeof question !== 'string') continue;
+    const lines: string[] = [];
+    lines.push(`**${question}**${multiSelect ? '  _(pick any)_' : ''}`);
+    if (Array.isArray(options)) {
+      for (const o of options) {
+        if (!o || typeof o !== 'object') continue;
+        const label = (o as { label?: unknown }).label;
+        const description = (o as { description?: unknown }).description;
+        if (typeof label !== 'string') continue;
+        const desc = typeof description === 'string' && description ? ` — ${description}` : '';
+        lines.push(`- **${label}**${desc}`);
+      }
+    }
+    blocks.push(lines.join('\n'));
+  }
+  return blocks.length > 0 ? blocks.join('\n\n') : null;
 }
 
 export function extractLastChecklist(text: string): ChecklistItem[] | null {

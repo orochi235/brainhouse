@@ -2,6 +2,7 @@ import classNames from 'classnames';
 import { useEffect, useRef, useState } from 'react';
 import { PanelCard } from './components/PanelCard.tsx';
 import { PrefsModal } from './components/PrefsModal.tsx';
+import { TransformsModal } from './components/TransformsModal.tsx';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { LightboxProvider, useLightbox } from './lib/lightbox.tsx';
@@ -168,6 +169,7 @@ export function App() {
           <button type="button" className="debug-spawn" onClick={dismissAll}>
             clear all
           </button>
+          <TransformsButton />
           <span className={`conn conn-${status}`}>{status}</span>
           <span className="topbar-icon-buttons">
             <button
@@ -435,6 +437,20 @@ function onGridDragOver(e: React.DragEvent) {
   if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
+}
+
+function TransformsButton() {
+  const lightbox = useLightbox();
+  return (
+    <button
+      type="button"
+      className="debug-spawn"
+      title="Show the pipeline transforms applied to every event stream"
+      onClick={() => lightbox.open(<TransformsModal />)}
+    >
+      transforms
+    </button>
+  );
 }
 
 function PrefsButton({ onSaved }: { onSaved?: () => void }) {

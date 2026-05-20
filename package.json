@@ -27,6 +27,8 @@
     "build:watch:client": "npm run build:watch -w client",
     "build:watch:server": "npm run build:watch -w server",
     "build:watch": "run-p build:watch:server build:watch:client",
+    "start:watch:server": "node --watch --watch-path=server/dist server/dist/index.js",
+    "start:watch": "run-p build:watch:server build:watch:client start:watch:server",
     "start": "node server/dist/index.js",
     "serve": "npm run serve -w server",
     "check": "biome check && biome lint",
@@ -36,7 +38,7 @@
     "test": "npm run test:server && npm run test:client"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.9",
+    "@biomejs/biome": "^2.4.15",
     "npm-run-all": "^4.1.5"
   }
 }

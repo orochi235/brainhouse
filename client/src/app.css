@@ -1199,6 +1199,64 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   opacity: 0.5;
 }
 
+/* Debug "transforms" modal — static listing of the event-pipeline transforms
+ * applied by preprocessEvents(). Helps reason about why a given view item
+ * appears the way it does. */
+.transforms-modal {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  font-size: 0.85rem;
+}
+.transforms-intro {
+  color: var(--muted);
+  margin: 0;
+}
+.transforms-intro code {
+  font-size: 0.9em;
+}
+.transforms-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.transforms-item {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  background: var(--panel-bg);
+}
+.transforms-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.transforms-name {
+  font-weight: 600;
+}
+.transforms-stage {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.transforms-source {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+.transforms-blurb {
+  margin: 0.3rem 0 0;
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
+}
+
 /* Inline-SVG icons inherit their color from `currentColor` on the parent
  * because the bundled SVGs use `fill="currentColor"`. The wrapper just sizes
  * the inner <svg> to the surrounding font. */

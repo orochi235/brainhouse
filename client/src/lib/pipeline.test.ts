@@ -315,6 +315,130 @@ describe('preprocessEvents', () => {
       { done: true, text: 'also done' },
     ]);
   });
+
+  describe('interrupt marker → canceled turn', () => {
+    const interrupt = () => userText('[Request interrupted by user]');
+
+    it('marks the in-flight assistant bubble as canceled', () => {
+      const { items } = preprocessEvents([
+        userText('explain quicksort'),
+        asstText('Sure! Let me walk through it step by step…'),
+        interrupt(),
+        userText('actually nevermind'),
+      ]);
+      // mergeInterruptedFollowup folds the post-interrupt user_text into the
+      // *previous* user bubble (with a sawtooth tear), so the final list is
+      // [user-bubble-with-followup, asst-bubble (canceled)].
+      const asst = items.find(
+        (i): i is Extract<typeof i, { type: 'bubble' }> =>
+          i.type === 'bubble' && i.role === 'assistant',
+      );
+      if (!asst) throw new Error('expected asst bubble');
+      expect(asst.canceled).toBe(true);
+    });
+
+    it('marks tools/capsules between the last user and the interrupt as canceled', () => {
+      const { items } = preprocessEvents([
+        userText('count to 10'),
+        toolUse('t1', 'Bash'),
+        toolResult('t1'),
+        interrupt(),
+        userText('stop'),
+      ]);
+      const tool = items.find((i) => i.type === 'tool');
+      if (!tool || tool.type !== 'tool') throw new Error('missing tool item');
+      expect(tool.canceled).toBe(true);
+    });
+
+    it('does not bleed across an earlier canceled boundary', () => {
+      const { items } = preprocessEvents([
+        userText('q1'),
+        asstText('a1'),
+        interrupt(),
+        userText('q2'),
+        asstText('a2'),
+      ]);
+      // First asst canceled, second asst not.
+      const assts = items.filter(
+        (i): i is Extract<typeof i, { type: 'bubble' }> =>
+          i.type === 'bubble' && i.role === 'assistant',
+      );
+      expect(assts.length).toBe(2);
+      expect(assts[0]?.canceled).toBe(true);
+      expect(assts[1]?.canceled).toBeFalsy();
+    });
+  });
+
+  describe('AskUserQuestion → assistant bubble', () => {
+    it('renders the question + options as a synthetic assistant bubble', () => {
+      const { items } = preprocessEvents([
+        userText('pick one'),
+        toolUse('q1', 'AskUserQuestion', {
+          questions: [
+            {
+              question: 'Which db?',
+              header: 'DB',
+              multiSelect: false,
+              options: [
+                { label: 'Postgres', description: 'OLTP workhorse' },
+                { label: 'SQLite', description: 'local-first' },
+              ],
+            },
+          ],
+        }),
+      ]);
+      // user bubble + synthetic asst bubble, no tool capsule
+      expect(items.length).toBe(2);
+      const asst = items[1];
+      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
+      expect(asst.role).toBe('assistant');
+      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toContain('Which db?');
+      expect(text).toContain('Postgres');
+      expect(text).toContain('OLTP workhorse');
+      expect(text).toContain('SQLite');
+    });
+
+    it('swallows the matching tool_result', () => {
+      const { items } = preprocessEvents([
+        toolUse('q1', 'AskUserQuestion', {
+          questions: [{ question: 'go?', options: [{ label: 'yes' }] }],
+        }),
+        toolResult('q1', { answers: { go: 'yes' } }),
+      ]);
+      // Only the synthetic asst bubble — no orphan tool capsule from the result.
+      expect(items.length).toBe(1);
+      expect(items[0]?.type).toBe('bubble');
+    });
+
+    it('falls back to a normal tool capsule on a malformed payload', () => {
+      const { items } = preprocessEvents([
+        toolUse('q1', 'AskUserQuestion', { weird: true }),
+      ]);
+      expect(items.length).toBe(1);
+      expect(items[0]?.type).toBe('tool');
+    });
+
+    it('multi-select questions are annotated', () => {
+      const { items } = preprocessEvents([
+        toolUse('q1', 'AskUserQuestion', {
+          questions: [
+            {
+              question: 'pick any',
+              multiSelect: true,
+              options: [{ label: 'a' }, { label: 'b' }],
+            },
+          ],
+        }),
+      ]);
+      const asst = items[0];
+      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
+      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text.toLowerCase()).toContain('pick any');
+      // Multi-select hint should appear somewhere.
+      expect(text).toMatch(/pick any/i);
+    });
+  });
 });
 
 describe('extractLastChecklist', () => {
