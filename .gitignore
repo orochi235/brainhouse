@@ -1,7 +1,9 @@
 node_modules/
 dist/
 build/
-.ladle/
+# Ladle build cache is gitignored, but .ladle/components.tsx (and any
+# other tracked config in there) needs to be checked in.
+.ladle/cache/
 .vite/
 *.tsbuildinfo
 coverage/

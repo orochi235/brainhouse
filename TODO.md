@@ -132,6 +132,37 @@ the cache portion is visibly distinct from the input-equivalent part,
 or label the existing number as a raw sum so users don't read it as a
 cost proxy.
 
+## Onboarding flow: install hooks + edit user prompts
+We already have `brainhouse init` (in `bin/init.js`) that wires the
+hook dispatcher into `~/.claude/settings.json`. There are two outstanding
+gaps in how this lands for a new user:
+
+1. **Hook installation should be more transparent.** Right now it
+   writes a tagged hook entry; `--dry-run` exists but a normal user
+   probably won't think to use it. First-run flow should:
+   - Show *exactly* what's about to change (diff-style).
+   - Make the entries reversible by name (already done via the
+     `brainhouse: true` marker; surface this prominently).
+   - Walk through *why* each hook is installed (Stop → instant idle
+     detection, Notification → awaiting-input badge, etc.).
+
+2. **Prompt-level additions** aren't tracked at all yet. As we collect
+   conventions (the checklist convention, "did you learn anything"
+   end-of-turn prompt, the agent self-assessment hints, the negotiated
+   interruption point hints), each one is a *prompt* the user needs in
+   their CLAUDE.md or skill file. Onboarding should optionally append
+   these to the user's setup, again with a clear diff + reversibility.
+
+Cautious + transparent design notes:
+- Never modify user files without showing the diff first
+- All brainhouse-owned text in user files gets a sentinel comment
+  (`<!-- brainhouse:start -->` / `<!-- brainhouse:end -->`) so
+  uninstall is mechanical
+- Each addition is opt-in, not bundled — a user might want the hooks
+  but not the prompt-level conventions, or vice versa
+- A "what does brainhouse touch on my machine?" report at any time
+  (`brainhouse status` or in the UI) so the user can always audit
+
 ## Schema / pipeline buildout
 Continue extending `preprocessEvents` to interpret newer record types as Claude Code adds them. Inventory current passthrough `meta` records (we already saw `custom-title`, `agent-name`, `subagent-meta`, `permission-mode`, `agent-color`, `pr-link`, `queue-operation`, `file-history-snapshot`, `attachment`, `last-prompt`) and decide which deserve first-class rendering.
 
