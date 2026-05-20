@@ -31,7 +31,14 @@ export interface MonitorOptions {
   /** Optional persistence layer. When provided, SessionStore mirrors panel
    * state into SQLite on every transition; `start()` hydrates from it. */
   store?: Store | null;
+  /** Events-index retention window in days. Rows older than this get
+   * pruned on boot + once daily. Default 30 days. Ignored when no
+   * `store` is provided. */
+  eventsIndexRetentionDays?: number;
 }
+
+const DEFAULT_EVENTS_RETENTION_DAYS = 30;
+const DAILY_PRUNE_MS = 24 * 60 * 60 * 1000;
 
 export class TranscriptMonitor {
   readonly store: SessionStore;
@@ -42,6 +49,8 @@ export class TranscriptMonitor {
   private tickIntervalMs: number;
   private tickHandle: NodeJS.Timeout | null = null;
   private hookWatcher: HookEventWatcher | null = null;
+  private pruneHandle: NodeJS.Timeout | null = null;
+  private eventsIndexRetentionDays: number;
   /** rootPath → label. Used to translate watcher "sourceRoot" into a
    * human-readable account name on each ingest. */
   private readonly accountLabels: Map<string, string>;
@@ -67,6 +76,8 @@ export class TranscriptMonitor {
       { store: opts.store ?? null },
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
+    this.eventsIndexRetentionDays =
+      opts.eventsIndexRetentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS;
     const dir = opts.hookEventsDir === undefined ? defaultEventsDir() : opts.hookEventsDir;
     if (dir) {
       this.hookWatcher = new HookEventWatcher(dir, (e) => this.applyHookEvent(e));
@@ -84,6 +95,30 @@ export class TranscriptMonitor {
     await this.watcher.start({ watch });
     if (this.hookWatcher) await this.hookWatcher.start();
     this.startTick();
+    this.startPruneLoop();
+  }
+
+  /** Drop events_index rows older than the retention window. Runs on
+   * start() + once a day. Idempotent; no-op when persistence is off. */
+  private prune(): void {
+    if (!this.persistStore) return;
+    const cutoff = Date.now() / 1000 - this.eventsIndexRetentionDays * 86_400;
+    this.persistStore.pruneEventsBefore(cutoff);
+  }
+
+  private startPruneLoop(): void {
+    if (this.pruneHandle) clearInterval(this.pruneHandle);
+    this.prune();
+    if (!this.persistStore) return;
+    this.pruneHandle = setInterval(() => this.prune(), DAILY_PRUNE_MS);
+    // Don't keep the process alive just for the prune timer.
+    this.pruneHandle.unref?.();
+  }
+
+  /** Update the retention window at runtime (called by prefs.update). */
+  setEventsIndexRetentionDays(days: number): void {
+    this.eventsIndexRetentionDays = days;
+    this.prune();
   }
 
   private startTick(): void {
@@ -111,6 +146,8 @@ export class TranscriptMonitor {
   async stop(): Promise<void> {
     if (this.tickHandle) clearInterval(this.tickHandle);
     this.tickHandle = null;
+    if (this.pruneHandle) clearInterval(this.pruneHandle);
+    this.pruneHandle = null;
     await this.watcher.stop();
     if (this.hookWatcher) await this.hookWatcher.stop();
   }

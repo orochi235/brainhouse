@@ -105,6 +105,13 @@ export const appRouter = t.router({
       ) {
         ctx.monitor.setTimings(b);
       }
+      // Hot-swap events_index retention; takes effect immediately + on the
+      // next daily prune. No restart needed.
+      if (
+        before.storage.eventsIndexRetentionDays !== updated.storage.eventsIndexRetentionDays
+      ) {
+        ctx.monitor.setEventsIndexRetentionDays(updated.storage.eventsIndexRetentionDays);
+      }
       return updated;
     }),
   }),

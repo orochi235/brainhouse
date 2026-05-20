@@ -124,6 +124,80 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.idleSeconds).toBe(1);
   });
 
+  it('start() prunes events_index rows older than the retention window', async () => {
+    const { Store } = await import('./store.js');
+    const store = Store.open(':memory:');
+    // Pre-seed an old row + a fresh row.
+    const now = Date.now() / 1000;
+    store.recordEvent({
+      panel_id: 'S',
+      event_uuid: 'old',
+      ts: now - 60 * 86_400, // 60 days ago
+      kind: 'user_text',
+      tool_name: null,
+      file_path: null,
+      summary: null,
+    });
+    store.recordEvent({
+      panel_id: 'S',
+      event_uuid: 'new',
+      ts: now - 1, // 1 second ago
+      kind: 'user_text',
+      tool_name: null,
+      file_path: null,
+      summary: null,
+    });
+    const monitor = new TranscriptMonitor({
+      roots: [],
+      hookEventsDir: null,
+      store,
+      eventsIndexRetentionDays: 30,
+    });
+    await monitor.start({ watch: false });
+    await monitor.stop();
+    const remaining = store.eventsForPanel('S');
+    expect(remaining.map((e) => e.event_uuid)).toEqual(['new']);
+    store.close();
+  });
+
+  it('setEventsIndexRetentionDays takes effect immediately', async () => {
+    const { Store } = await import('./store.js');
+    const store = Store.open(':memory:');
+    const now = Date.now() / 1000;
+    // Two rows: one 10 days old, one 1 day old.
+    store.recordEvent({
+      panel_id: 'S',
+      event_uuid: 'ten',
+      ts: now - 10 * 86_400,
+      kind: 'user_text',
+      tool_name: null,
+      file_path: null,
+      summary: null,
+    });
+    store.recordEvent({
+      panel_id: 'S',
+      event_uuid: 'one',
+      ts: now - 86_400,
+      kind: 'user_text',
+      tool_name: null,
+      file_path: null,
+      summary: null,
+    });
+    const monitor = new TranscriptMonitor({
+      roots: [],
+      hookEventsDir: null,
+      store,
+      eventsIndexRetentionDays: 30, // both kept initially
+    });
+    await monitor.start({ watch: false });
+    expect(store.eventsForPanel('S').length).toBe(2);
+    // Tighten the window — only the 1-day-old row survives.
+    monitor.setEventsIndexRetentionDays(5);
+    expect(store.eventsForPanel('S').map((e) => e.event_uuid)).toEqual(['one']);
+    await monitor.stop();
+    store.close();
+  });
+
   // setRoots is an integration with chokidar; not unit-testable without a
   // real watch path. Covered indirectly by the watcher tests.
 });

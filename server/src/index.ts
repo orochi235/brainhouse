@@ -28,6 +28,7 @@ async function main() {
     removeAfterSeconds: timings.removeAfterSeconds,
     tickIntervalMs: timings.tickIntervalMs,
     store,
+    eventsIndexRetentionDays: storage.eventsIndexRetentionDays,
   });
   await monitor.start();
 
