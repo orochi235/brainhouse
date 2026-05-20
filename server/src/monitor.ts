@@ -11,6 +11,7 @@ import { EventEmitter } from 'node:events';
 import { HookEventWatcher, type HookEvent, defaultEventsDir } from './hookEvents.js';
 import type { Event } from './parser.js';
 import { type Delta, SessionStore } from './session.js';
+import type { Store } from './store.js';
 import { readPanelTheme } from './theme.js';
 import { TranscriptWatcher } from './watcher.js';
 
@@ -27,6 +28,9 @@ export interface MonitorOptions {
   /** Directory the hook dispatcher writes sidecar JSONL into. Defaults to
    * `~/.brainhouse/events`. Set to `null` to disable hook ingestion. */
   hookEventsDir?: string | null;
+  /** Optional persistence layer. When provided, SessionStore mirrors panel
+   * state into SQLite on every transition; `start()` hydrates from it. */
+  store?: Store | null;
 }
 
 export class TranscriptMonitor {
@@ -47,6 +51,7 @@ export class TranscriptMonitor {
       idleSeconds: opts.idleSeconds,
       miniSeconds: opts.miniSeconds,
       removeAfterSeconds: opts.removeAfterSeconds,
+      store: opts.store ?? null,
     });
     this.accountLabels = new Map();
     for (const a of opts.accounts ?? []) {
@@ -66,6 +71,10 @@ export class TranscriptMonitor {
   }
 
   async start({ watch = true }: { watch?: boolean } = {}): Promise<void> {
+    // Hydrate from persisted state BEFORE the watcher kicks in so any
+    // bootstrap replays land on top of last-known panel state rather than
+    // starting fresh. No-op when persistence is disabled.
+    this.store.hydrate();
     await this.watcher.start({ watch });
     if (this.hookWatcher) await this.hookWatcher.start();
     this.startTick();
@@ -107,6 +116,10 @@ export class TranscriptMonitor {
     const sid = event.session_id;
     if (event.kind === 'stop') {
       for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
+      // Materialize a session_summary with hook_stop provenance, but do
+      // NOT flip `ended` — a parent session can take another prompt later
+      // and shouldn't visually dim on Stop alone.
+      this.store.recordSessionEnd(sid, 'hook_stop');
       return;
     }
     if (event.kind === 'subagent_stop') {

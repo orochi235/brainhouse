@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Event, EventKind } from './parser.js';
 import { SessionStore } from './session.js';
+import { Store } from './store.js';
 
 class FakeClock {
   constructor(public t = 1000) {}
@@ -406,6 +407,71 @@ describe('SessionStore', () => {
     it('does nothing for an unknown panel', () => {
       const store = new SessionStore({ clock: () => 0 });
       expect(store.markEnded('nope')).toEqual([]);
+    });
+  });
+
+  describe('Store integration', () => {
+    it('apply() writes the panel + event through to the Store', () => {
+      const store = Store.open(':memory:');
+      const sess = new SessionStore({ clock: () => 1000, store });
+      sess.apply(ev('user_text', { payload: { text: 'hi' } }));
+      const row = store.getPanel('S');
+      expect(row).not.toBeNull();
+      expect(row?.title).toBe('hi');
+      expect(store.eventsForPanel('S').length).toBe(1);
+      store.close();
+    });
+
+    it('hydrate() rebuilds the in-memory panel map from the Store', () => {
+      const store = Store.open(':memory:');
+      const seed = new SessionStore({ clock: () => 1000, store });
+      seed.apply(ev('user_text', { payload: { text: 'hi' } }));
+      // Fresh SessionStore on the same DB should see the panel after hydrate.
+      const restored = new SessionStore({ clock: () => 9999, store });
+      restored.hydrate();
+      expect(restored.panel('S')).toBeDefined();
+      expect(restored.panel('S')?.title).toBe('hi');
+      store.close();
+    });
+
+    it('tick live→done materializes a session_summary with idle_timeout provenance', () => {
+      const store = Store.open(':memory:');
+      const sess = new SessionStore({ clock: () => 1000, idleSeconds: 60, store });
+      sess.apply(ev('user_text', { payload: { text: 'hi' } }));
+      sess.tick(1100); // crosses idleSeconds threshold
+      const summary = store.getSession('S');
+      expect(summary).not.toBeNull();
+      expect(summary?.ended_provenance).toBe('idle_timeout');
+      store.close();
+    });
+
+    it('markEnded materializes a session_summary with the supplied provenance', () => {
+      const store = Store.open(':memory:');
+      const sess = new SessionStore({ clock: () => 1000, store });
+      sess.apply(ev('user_text', { payload: { text: 'hi' } }));
+      sess.markEnded('S', 'hook_subagent_stop');
+      const summary = store.getSession('S');
+      expect(summary?.ended_provenance).toBe('hook_subagent_stop');
+      store.close();
+    });
+
+    it('tick mini→removed deletes the panel from the Store but keeps the summary', () => {
+      const store = Store.open(':memory:');
+      const sess = new SessionStore({
+        clock: () => 1000,
+        idleSeconds: 60,
+        miniSeconds: 60,
+        removeAfterSeconds: 60,
+        store,
+      });
+      sess.apply(ev('user_text', { payload: { text: 'hi' } }));
+      // Two ticks to progress live → done → mini, then one more for removal.
+      sess.tick(1100); // → done
+      sess.tick(1200); // → mini
+      sess.tick(1300); // → removed
+      expect(store.getPanel('S')).toBeNull();
+      expect(store.getSession('S')).not.toBeNull();
+      store.close();
     });
   });
 

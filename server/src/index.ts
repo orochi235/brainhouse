@@ -7,6 +7,7 @@ import Fastify from 'fastify';
 import { TranscriptMonitor } from './monitor.js';
 import { PrefsStore } from './prefs.js';
 import { resolveRoots } from './roots.js';
+import { Store } from './store.js';
 import { appRouter } from './trpc.js';
 
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -17,7 +18,8 @@ async function main() {
   await prefs.load();
   const roots = resolveRoots(prefs.get());
 
-  const { timings, roots: configuredRoots } = prefs.get();
+  const { timings, roots: configuredRoots, storage } = prefs.get();
+  const store = storage.persistEnabled ? Store.open() : null;
   const monitor = new TranscriptMonitor({
     roots,
     accounts: configuredRoots,
@@ -25,6 +27,7 @@ async function main() {
     miniSeconds: timings.miniSeconds,
     removeAfterSeconds: timings.removeAfterSeconds,
     tickIntervalMs: timings.tickIntervalMs,
+    store,
   });
   await monitor.start();
 
@@ -56,6 +59,7 @@ async function main() {
 
   app.addHook('onClose', async () => {
     await monitor.stop();
+    store?.close();
   });
 
   await app.listen({ host: HOST, port: PORT });

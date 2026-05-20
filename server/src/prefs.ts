@@ -122,6 +122,20 @@ export const MessagesSchema = z.object({
 });
 export type Messages = z.infer<typeof MessagesSchema>;
 
+export const StorageSchema = z.object({
+  /** When true, brainhouse persists panel state + intentions + a windowed
+   * event index to a local SQLite db at ~/.brainhouse/state.db (override
+   * via BRAINHOUSE_DB). Lets a restart resume instantly instead of
+   * replaying the last 30 min of JSONL. Default on; flip off if anything
+   * misbehaves. */
+  persistEnabled: z.boolean().default(true),
+  /** How long per-event detail stays in the events_index table. Session
+   * summaries are forever; per-event rows beyond this window are pruned
+   * to keep DB footprint bounded. */
+  eventsIndexRetentionDays: z.number().int().positive().default(30),
+});
+export type Storage = z.infer<typeof StorageSchema>;
+
 export const PrefsSchema = z.object({
   /** Transcript roots to monitor. Empty array → fall back to platform defaults. */
   roots: z.array(RootSchema).default([]),
@@ -130,6 +144,7 @@ export const PrefsSchema = z.object({
   messages: MessagesSchema.default(MessagesSchema.parse({})),
   timings: TimingsSchema.default(TimingsSchema.parse({})),
   workspace: WorkspaceSchema.default(WorkspaceSchema.parse({})),
+  storage: StorageSchema.default(StorageSchema.parse({})),
 });
 export type Prefs = z.infer<typeof PrefsSchema>;
 

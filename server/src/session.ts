@@ -11,6 +11,12 @@
  */
 
 import type { Event } from './parser.js';
+import type {
+  EventIndexRow,
+  PanelRow,
+  SessionSummaryRow,
+  Store,
+} from './store.js';
 
 export type PanelKind = 'parent' | 'subagent';
 export type PanelStatus = 'live' | 'done' | 'mini';
@@ -62,6 +68,13 @@ export interface Panel {
    * just means "went idle"; a parent session can sit idle for minutes and
    * still take another prompt. Only `ended` panels get visually dimmed. */
   ended: boolean;
+  /** When ended=true, how we learned. Null otherwise. */
+  ended_provenance:
+    | 'hook_stop'
+    | 'hook_subagent_stop'
+    | 'idle_timeout'
+    | 'server_close'
+    | null;
 }
 
 export interface PanelDto {
@@ -94,6 +107,10 @@ export interface SessionStoreOptions {
   miniSeconds?: number;
   removeAfterSeconds?: number;
   clock?: () => number;
+  /** Optional persistence layer. When set, panel state mirrors into the
+   * `panels` table on every transition, events go into `events_index`,
+   * and `session_summary` rows are materialized on end-of-session. */
+  store?: Store | null;
 }
 
 export class SessionStore {
@@ -102,12 +119,26 @@ export class SessionStore {
   removeAfterSeconds: number;
   private readonly clock: () => number;
   private readonly panels = new Map<string, Panel>();
+  private readonly store: Store | null;
 
   constructor(opts: SessionStoreOptions = {}) {
     this.idleSeconds = opts.idleSeconds ?? 60;
     this.miniSeconds = opts.miniSeconds ?? 5 * 60;
     this.removeAfterSeconds = opts.removeAfterSeconds ?? 24 * 60 * 60;
     this.clock = opts.clock ?? (() => Date.now() / 1000);
+    this.store = opts.store ?? null;
+  }
+
+  /** Hydrate the in-memory panel map from the persistence store. Call
+   * before any apply() / tick() so the bootstrap watcher pass operates
+   * on top of the last-known state instead of starting fresh. Events
+   * are not rehydrated — they remain in the JSONL files on disk and
+   * the watcher fills them back in from bootstrap_offsets. */
+  hydrate(): void {
+    if (!this.store) return;
+    for (const row of this.store.allPanels()) {
+      this.panels.set(row.id, panelRowToPanel(row));
+    }
   }
 
   /** Hot-swap lifecycle timings. The next `tick()` immediately respects
@@ -144,6 +175,7 @@ export class SessionStore {
     if (panel.awaiting_input || panel.ended) {
       panel.awaiting_input = false;
       panel.ended = false;
+      panel.ended_provenance = null;
       deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
     }
     if (panel.status !== 'live') {
@@ -154,6 +186,8 @@ export class SessionStore {
     this.maybeUpdateTitle(panel, event, deltas);
     this.maybeAdoptCwd(panel, event, deltas);
     deltas.push({ op: 'event_append', panel_id: panel.id, event });
+    this.persistEvent(panel, event, ts);
+    this.persistPanel(panel);
     return deltas;
   }
 
@@ -162,13 +196,14 @@ export class SessionStore {
     const panel = this.panels.get(panelId);
     if (!panel) return [];
     panel.theme = theme;
+    this.persistPanel(panel);
     return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 
   tick(now?: number): Delta[] {
     const t = now ?? this.clock();
     const deltas: Delta[] = [];
-    const toRemove: string[] = [];
+    const toRemove: Panel[] = [];
     for (const panel of this.panels.values()) {
       // Binned panels are frozen — no auto live→done→mini→removed progression.
       if (panel.binned_at !== null) continue;
@@ -178,20 +213,31 @@ export class SessionStore {
         // session shows "done 2h ago" instead of "done 0s ago".
         panel.status_changed_at = Math.min(t, panel.last_event_at + this.idleSeconds);
         deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'done' });
+        this.persistPanel(panel);
+        // Materialize the session summary on the live→done transition so
+        // it's available in SQLite as soon as the session goes idle — even
+        // though the panel might come back to live later (in which case
+        // we overwrite the row on the next transition).
+        this.materializeSummary(panel, 'idle_timeout');
       } else if (panel.status === 'done' && t - panel.status_changed_at >= this.miniSeconds) {
         panel.status = 'mini';
         panel.status_changed_at = Math.min(t, panel.status_changed_at + this.miniSeconds);
         deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'mini' });
+        this.persistPanel(panel);
       } else if (
         panel.status === 'mini' &&
         t - panel.status_changed_at >= this.removeAfterSeconds
       ) {
-        toRemove.push(panel.id);
+        toRemove.push(panel);
       }
     }
-    for (const id of toRemove) {
-      this.panels.delete(id);
-      deltas.push({ op: 'panel_remove', panel_id: id });
+    for (const panel of toRemove) {
+      // Last-chance materialize before the panel is forgotten; covers the
+      // case where it aged all the way out without ever flipping ended.
+      this.materializeSummary(panel, panel.ended ? panel.ended_provenance ?? 'never' : 'never');
+      this.panels.delete(panel.id);
+      this.store?.deletePanel(panel.id);
+      deltas.push({ op: 'panel_remove', panel_id: panel.id });
     }
     return deltas;
   }
@@ -203,6 +249,7 @@ export class SessionStore {
     const panel = this.panels.get(panelId);
     if (!panel || panel.binned_at !== null) return [];
     panel.binned_at = this.clock();
+    this.persistPanel(panel);
     return [{ op: 'panel_remove', panel_id: panelId }];
   }
 
@@ -214,14 +261,17 @@ export class SessionStore {
     // Refresh the lifecycle timer so an old binned panel doesn't immediately
     // get demoted by the next tick.
     panel.status_changed_at = this.clock();
+    this.persistPanel(panel);
     return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 
   /** Permanent removal. Used by the trash-bin "purge" button or the
    * lifecycle auto-removal for unbinned panels. */
   remove(panelId: string): Delta[] {
-    if (!this.panels.has(panelId)) return [];
+    const panel = this.panels.get(panelId);
+    if (!panel) return [];
     this.panels.delete(panelId);
+    this.store?.deletePanel(panelId);
     return [{ op: 'panel_remove', panel_id: panelId }];
   }
 
@@ -240,6 +290,7 @@ export class SessionStore {
     panel.status = status;
     panel.status_changed_at = now;
     if (status === 'live') panel.last_event_at = now;
+    this.persistPanel(panel);
     return [{ op: 'panel_status', panel_id: panelId, status }];
   }
 
@@ -250,6 +301,7 @@ export class SessionStore {
     const panel = this.panels.get(panelId);
     if (!panel || panel.awaiting_input === awaiting) return [];
     panel.awaiting_input = awaiting;
+    this.persistPanel(panel);
     return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 
@@ -296,6 +348,7 @@ export class SessionStore {
       binned_at: null,
       awaiting_input: false,
       ended: false,
+      ended_provenance: null,
       status: 'live',
       // started_at is wall-clock-now so the panel "age" reflects the
       // observation; last_event_at/status_changed_at are stamped with the
@@ -386,16 +439,53 @@ export class SessionStore {
     };
   }
 
+  /** Materialize a session_summary row without touching `ended` or any
+   * other panel state. Used for parent Stop hooks where the session
+   * ended a *turn* (worth summarizing) but may take another prompt. */
+  recordSessionEnd(panelId: string, provenance: SessionSummaryRow['ended_provenance']): void {
+    const panel = this.panels.get(panelId);
+    if (!panel) return;
+    this.materializeSummary(panel, provenance);
+  }
+
   /** Mark a panel as explicitly ended. Idempotent; only emits a delta when
    * the flag flips. Lifecycle status is left alone — `ended` is orthogonal
    * to live/done/mini so an ended panel still progresses to the dock. */
-  markEnded(panelId: string): Delta[] {
+  markEnded(panelId: string, provenance: PanelEndedProvenance = 'hook_subagent_stop'): Delta[] {
     const panel = this.panels.get(panelId);
     if (!panel || panel.ended) return [];
     panel.ended = true;
+    panel.ended_provenance = provenance;
+    this.persistPanel(panel);
+    this.materializeSummary(panel, provenance);
     return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
+
+  // ---- persistence write-through ----
+  //
+  // Every mutation that changes panel state calls persistPanel(); ingests
+  // call persistEvent(); end-of-session transitions call materializeSummary().
+  // All cheap when `store` is null (no-ops); when set, write-through is
+  // synchronous (matches SessionStore's sync model — node:sqlite is fast
+  // enough that the overhead is negligible at our event rates).
+
+  private persistPanel(panel: Panel): void {
+    if (!this.store) return;
+    this.store.upsertPanel(panelToRow(panel, this.clock()));
+  }
+
+  private persistEvent(panel: Panel, event: Event, ts: number): void {
+    if (!this.store) return;
+    this.store.recordEvent(eventToIndexRow(panel.id, event, ts));
+  }
+
+  private materializeSummary(panel: Panel, provenance: PanelEndedProvenance | 'idle_timeout' | 'never'): void {
+    if (!this.store) return;
+    this.store.materializeSession(buildSessionSummary(panel, provenance, this.clock()));
+  }
 }
+
+type PanelEndedProvenance = NonNullable<Panel['ended_provenance']>;
 
 function parseEventTs(ts: string): number | null {
   if (!ts) return null;
@@ -426,4 +516,131 @@ function initialTitle(panelId: string, kind: PanelKind): string {
     return `subagent · ${short.slice(0, 10)}`;
   }
   return panelId.slice(0, 8);
+}
+
+// ---- Panel ↔ Store row conversions ----
+
+function panelToRow(p: Panel, now: number): PanelRow {
+  return {
+    id: p.id,
+    kind: p.kind,
+    parent_panel_id: p.parent_panel_id,
+    title: p.title,
+    agent_type: p.agent_type,
+    account_label: p.account_label,
+    status: p.status,
+    started_at: p.started_at,
+    last_event_at: p.last_event_at,
+    status_changed_at: p.status_changed_at,
+    cwd: p.cwd,
+    theme_bg: p.theme?.background ?? null,
+    theme_fg: p.theme?.foreground ?? null,
+    binned_at: p.binned_at,
+    awaiting_input: p.awaiting_input,
+    ended: p.ended,
+    ended_provenance: p.ended_provenance,
+    updated_at: now,
+  };
+}
+
+function panelRowToPanel(r: PanelRow): Panel {
+  return {
+    id: r.id,
+    kind: r.kind,
+    parent_panel_id: r.parent_panel_id,
+    title: r.title,
+    agent_type: r.agent_type,
+    account_label: r.account_label,
+    status: r.status,
+    started_at: r.started_at,
+    last_event_at: r.last_event_at,
+    status_changed_at: r.status_changed_at,
+    cwd: r.cwd,
+    theme: r.theme_bg && r.theme_fg ? { background: r.theme_bg, foreground: r.theme_fg } : null,
+    events: [], // hydrated lazily — JSONL on disk is canonical
+    binned_at: r.binned_at,
+    awaiting_input: r.awaiting_input,
+    ended: r.ended,
+    ended_provenance: r.ended_provenance,
+  };
+}
+
+/** Map an Event into a small row for events_index. Only summary fields —
+ * the full payload stays in the JSONL on disk. */
+function eventToIndexRow(panelId: string, event: Event, fallbackTs: number): EventIndexRow {
+  const ts = parseEventTs(event.ts) ?? fallbackTs;
+  const p = (event.payload ?? {}) as Record<string, unknown>;
+  let toolName: string | null = null;
+  let filePath: string | null = null;
+  if (event.kind === 'tool_use' && typeof p.name === 'string') {
+    toolName = p.name;
+    const input = (p.input ?? {}) as Record<string, unknown>;
+    if (typeof input.file_path === 'string') filePath = input.file_path;
+    else if (typeof input.path === 'string') filePath = input.path;
+  }
+  return {
+    panel_id: panelId,
+    event_uuid: event.uuid,
+    ts,
+    kind: event.kind,
+    tool_name: toolName,
+    file_path: filePath,
+    summary: null,
+  };
+}
+
+/** Aggregate a panel's in-memory events into a session_summary row. */
+function buildSessionSummary(
+  p: Panel,
+  provenance: SessionSummaryRow['ended_provenance'],
+  now: number,
+): SessionSummaryRow {
+  let toolCallCount = 0;
+  let errorCount = 0;
+  const toolMix: Record<string, number> = {};
+  const fileEdits: Record<string, number> = {};
+  let lastAsst = '';
+  for (const e of p.events) {
+    if (e.kind === 'tool_use') {
+      toolCallCount++;
+      const name = (e.payload as { name?: string }).name ?? 'tool';
+      toolMix[name] = (toolMix[name] ?? 0) + 1;
+      const input = (e.payload as { input?: Record<string, unknown> }).input ?? {};
+      const fp = typeof input.file_path === 'string' ? input.file_path : null;
+      if (fp && (name === 'Edit' || name === 'Write' || name === 'MultiEdit')) {
+        fileEdits[fp] = (fileEdits[fp] ?? 0) + 1;
+      }
+    } else if (e.kind === 'tool_result' && (e.payload as { is_error?: boolean }).is_error) {
+      errorCount++;
+    } else if (e.kind === 'assistant_text') {
+      lastAsst = (e.payload as { text?: string }).text ?? lastAsst;
+    }
+  }
+  const topFiles = Object.entries(fileEdits)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([f]) => f);
+  return {
+    session_id: p.id,
+    kind: p.kind,
+    parent_session_id: p.parent_panel_id,
+    account_label: p.account_label,
+    title: p.title,
+    agent_type: p.agent_type,
+    cwd: p.cwd,
+    started_at: p.started_at,
+    ended_at: p.last_event_at,
+    duration_active_s: Math.max(0, p.last_event_at - p.started_at),
+    ended_provenance: provenance,
+    event_count: p.events.length,
+    tool_call_count: toolCallCount,
+    error_count: errorCount,
+    unique_files_touched: Object.keys(fileEdits).length,
+    tool_mix_json: JSON.stringify(toolMix),
+    key_files_json: JSON.stringify(topFiles),
+    key_decisions: lastAsst ? lastAsst.slice(0, 500) : null,
+    open_threads_json: null, // populated by later passes
+    pinned_checklist_json: null, // populated by later passes
+    rolled_up_at: now,
+  };
 }

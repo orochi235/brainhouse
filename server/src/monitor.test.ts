@@ -98,6 +98,18 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.panel('S')?.ended).toBe(false);
   });
 
+  it('Stop hook materializes a session_summary with hook_stop provenance', async () => {
+    const { Store } = await import('./store.js');
+    const store = Store.open(':memory:');
+    const monitor = new TranscriptMonitor({ roots: [], hookEventsDir: null, store });
+    monitor.ingest(userTextEvent({}));
+    monitor.applyHookEvent({ session_id: 'S', kind: 'stop' });
+    expect(store.getSession('S')?.ended_provenance).toBe('hook_stop');
+    // But ended flag stays false — parent might prompt again.
+    expect(monitor.store.panel('S')?.ended).toBe(false);
+    store.close();
+  });
+
   it('plain Stop on the parent does NOT mark it ended (only idle)', () => {
     const monitor = newMonitor();
     monitor.ingest(userTextEvent({}));
