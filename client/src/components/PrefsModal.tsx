@@ -13,7 +13,14 @@ import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { trpc } from '../trpc.ts';
 
 type Root = { path: string; label?: string; color?: string };
-type SectionKey = 'accounts' | 'display' | 'messages' | 'lifecycle' | 'workspace' | 'trash';
+type SectionKey =
+  | 'accounts'
+  | 'display'
+  | 'messages'
+  | 'lifecycle'
+  | 'workspace'
+  | 'storage'
+  | 'trash';
 
 interface PrefsDraft {
   roots: Root[];
@@ -43,6 +50,10 @@ interface PrefsDraft {
     maxTileSpan: number;
     spawnSubagentsMinimized: boolean;
   };
+  storage: {
+    persistEnabled: boolean;
+    eventsIndexRetentionDays: number;
+  };
 }
 
 const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
@@ -51,6 +62,7 @@ const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
   { key: 'messages', icon: '◇', label: 'Messages' },
   { key: 'lifecycle', icon: '◷', label: 'Lifecycle' },
   { key: 'workspace', icon: '▦', label: 'Workspace' },
+  { key: 'storage', icon: '◫', label: 'Storage' },
   { key: 'trash', icon: '🗑', label: 'Trash' },
 ];
 
@@ -112,6 +124,7 @@ export function PrefsModal({ onClose }: { onClose: () => void }) {
           {active === 'messages' && <MessagesSection draft={draft} setDraft={setDraft} />}
           {active === 'lifecycle' && <LifecycleSection draft={draft} setDraft={setDraft} />}
           {active === 'workspace' && <WorkspaceSection draft={draft} setDraft={setDraft} />}
+          {active === 'storage' && <StorageSection draft={draft} setDraft={setDraft} />}
           {active === 'trash' && <TrashSection />}
         </div>
       </div>
@@ -384,6 +397,30 @@ function WorkspaceSection({ draft, setDraft }: SectionProps) {
   );
 }
 
+function StorageSection({ draft, setDraft }: SectionProps) {
+  const set = (patch: Partial<PrefsDraft['storage']>) =>
+    setDraft({ ...draft, storage: { ...draft.storage, ...patch } });
+  return (
+    <Section
+      title="Storage"
+      hint="Brainhouse persists panel state + per-event index to a local SQLite db so a restart resumes instantly. The events index is windowed; session summaries are forever."
+    >
+      <CheckboxField
+        label="Persist session model to disk"
+        checked={draft.storage.persistEnabled}
+        onChange={(v) => set({ persistEnabled: v })}
+      />
+      <NumberField
+        label="Per-event detail retention (days)"
+        hint="Older events get dropped from the events_index table. Session summaries persist forever regardless."
+        value={draft.storage.eventsIndexRetentionDays}
+        min={1}
+        onChange={(v) => set({ eventsIndexRetentionDays: v })}
+      />
+    </Section>
+  );
+}
+
 interface BinnedPanel {
   id: string;
   title: string;
@@ -486,11 +523,13 @@ function Section({
 
 function NumberField({
   label,
+  hint,
   value,
   min,
   onChange,
 }: {
   label: string;
+  hint?: string;
   value: number;
   min?: number;
   onChange: (v: number) => void;
@@ -508,6 +547,7 @@ function NumberField({
           onChange(n);
         }}
       />
+      {hint && <span className="prefs-hint">{hint}</span>}
     </label>
   );
 }

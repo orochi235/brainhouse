@@ -61,5 +61,24 @@ the `tool_result` via `absorbedToolUseIds`; instead, pass the result
 through to the formatter and include the chosen labels in the rendered
 markdown.
 
+## Storybook setup
+Stand up Storybook for the client workspace so the component library is
+browsable + isolated from the live data stream. Useful for:
+- visual states that are hard to reproduce live (panel ended + dimmed,
+  the waiting halo at full intensity, a panel mid-completion-sweep,
+  hued themes, multi-line title overflow in mini mode)
+- a11y + responsive width checks
+- design review without spinning up the whole server
+
+Initial story set should map to the synthetic scenarios in
+`server/src/scenarios.ts` — one story per scenario, using fixture
+panels rather than live events. Skip the @storybook/test runner for
+now; treat stories as a visual catalog, not a test suite.
+
+Decision points: Storybook 8 (Vite builder, native React 19 support)
+vs Ladle (lighter, Vite-native). Storybook is more featureful and
+recognized, but Ladle is closer to our existing stack and faster to
+set up. Lean Ladle unless we need add-ons.
+
 ## Schema / pipeline buildout
 Continue extending `preprocessEvents` to interpret newer record types as Claude Code adds them. Inventory current passthrough `meta` records (we already saw `custom-title`, `agent-name`, `subagent-meta`, `permission-mode`, `agent-color`, `pr-link`, `queue-operation`, `file-history-snapshot`, `attachment`, `last-prompt`) and decide which deserve first-class rendering.
