@@ -1,35 +1,17 @@
 # brainhouse — project todos
 
-## Multi-account support
-Surface sessions from more than one Claude config root at the same time (e.g. `~/.claude` plus any per-workspace config directory). Watcher already accepts multiple roots; needs config plumbing, per-account tagging in the panel header, and visual distinction (badge / border color).
+## Coalesce file ops — richer diff rendering
+Basic coalescing already lands (`coalesceFileOps()` in `pipeline.ts`
+groups Read/Edit/Write/MultiEdit runs on the same path into a
+`file-change` row). What's missing:
 
-## Coalesce file ops into "file-change" events
-Ideally, all Read + Edit + Write operations on the same file within a short
-window (a few seconds, say) collapse into a single `file-change` view item in
-the transcript. The capsule shows the file path + a short summary (lines
-added/removed) inline; clicking it opens the lightbox showing a real **diff**
-across the window — the before/after of all the edits stacked together. This
-removes the N-capsule clutter and gives the actually-interesting signal
-(the diff) a proper place to live.
-
-Implement in `client/src/lib/pipeline.ts` as a new transform branch alongside
-`mergeToolResultIntoCapsule` etc. Diff rendering can use `diff` or
-`diff-match-patch` in the lightbox renderer.
-
-## Minimize visual weight of pure-read ops
-Read, Glob, Grep, and similar lookups that don't change state should render at
-a reduced footprint (smaller row, lower contrast, maybe collapsed) so that
-state-changing ops (Edit, Write, Bash-with-side-effects, external API calls)
-read as the dominant signal. Note: once Read is folded into the file-change
-coalescing above, only the lookups that don't touch a file (Glob, Grep,
-WebFetch, WebSearch) remain in scope here.
-
-## Log state recovery on refresh
-When the page reloads, we currently re-subscribe to the deltas stream and get
-a fresh snapshot, but client-side view state (scroll positions inside panels,
-which panel was being read, which lightbox was open, etc.) is lost. Wire a
-per-panel `lastViewedAt` + scroll offset into localStorage so a refresh feels
-seamless instead of "back to the top of every transcript."
+- Inline `+N -M` summary on the file-change row (currently just "N
+  operations · 2 Edit, 1 Write")
+- A real LCS-based diff renderer in `FileChangeLightbox.tsx` instead of
+  the current naive "before lines, then after lines" stack. The `diff`
+  package is the obvious dep.
+- Smarter handling of MultiEdit: collapse multiple sub-edits into one
+  visual hunk where the regions are adjacent.
 
 ## Session window drag-to-resize
 Real tiling: drag edges/corners of a panel to give it more grid cells.
@@ -84,25 +66,6 @@ Concrete pieces:
 
 This pairs naturally with #9 (schema/pipeline buildout) since the
 `usage` field is one of the higher-value passthrough records.
-
-## Storybook setup
-Stand up Storybook for the client workspace so the component library is
-browsable + isolated from the live data stream. Useful for:
-- visual states that are hard to reproduce live (panel ended + dimmed,
-  the waiting halo at full intensity, a panel mid-completion-sweep,
-  hued themes, multi-line title overflow in mini mode)
-- a11y + responsive width checks
-- design review without spinning up the whole server
-
-Initial story set should map to the synthetic scenarios in
-`server/src/scenarios.ts` — one story per scenario, using fixture
-panels rather than live events. Skip the @storybook/test runner for
-now; treat stories as a visual catalog, not a test suite.
-
-Decision points: Storybook 8 (Vite builder, native React 19 support)
-vs Ladle (lighter, Vite-native). Storybook is more featureful and
-recognized, but Ladle is closer to our existing stack and faster to
-set up. Lean Ladle unless we need add-ons.
 
 ## Schema / pipeline buildout
 Continue extending `preprocessEvents` to interpret newer record types as Claude Code adds them. Inventory current passthrough `meta` records (we already saw `custom-title`, `agent-name`, `subagent-meta`, `permission-mode`, `agent-color`, `pr-link`, `queue-operation`, `file-history-snapshot`, `attachment`, `last-prompt`) and decide which deserve first-class rendering.
