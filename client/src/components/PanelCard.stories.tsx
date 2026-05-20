@@ -58,7 +58,7 @@ function ev<K extends Event['kind']>(
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ width: 480, height: 540, display: 'flex' }}>
+    <div style={{ width: 460, height: 360, display: 'flex' }}>
       <LightboxProvider>{children}</LightboxProvider>
     </div>
   );

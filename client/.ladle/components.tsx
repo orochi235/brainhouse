@@ -25,10 +25,12 @@ export const Provider: GlobalProvider = ({ children }) => {
   return (
     <div
       style={{
-        minHeight: '100vh',
         background: 'var(--bg)',
         color: 'var(--fg)',
         padding: '1rem',
+        // Don't expand to fill the viewport — Ladle's chrome already
+        // owns scroll, and a fixed minHeight pushes the story past the
+        // visible area on shorter windows.
       }}
     >
       {children}
