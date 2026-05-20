@@ -5,8 +5,6 @@ Claude Code writes under `~/.claude/projects` (and any other roots you point
 it at), renders each session as a live panel, and demotes panels through a
 `live → done → mini → removed` lifecycle as they go idle.
 
-A React+Node port of the older Python `pensieve`.
-
 ## Requirements
 
 - Node 20+ (see `.nvmrc`)
@@ -33,7 +31,7 @@ npm start          # node server/dist/index.js — serves the built UI on :8765
 
 Open <http://localhost:8765>.
 
-## Install as a CLI
+## Install as a CLI (wip)
 
 To run `brainhouse` from anywhere on your machine, link the package after
 building:
@@ -46,6 +44,19 @@ brainhouse         # boots the server on :8765
 ```
 
 `npm unlink -g brainhouse` removes it.
+
+The link points to this repo's `bin/brainhouse.js`, which loads
+`server/dist/index.js` + the built client assets — so the CLI only reflects
+changes after a rebuild. To keep it always-current while you hack, run:
+
+```sh
+npm run build:watch    # tsc -w (server) + vite build --watch (client)
+```
+
+…in a terminal alongside your usual work. Then `brainhouse` always boots the
+latest. (`npm run dev` is still the right thing for HMR-on-:8766 day-to-day;
+`build:watch` is for when you specifically want the linked one-port CLI in
+sync.)
 
 ## Richer panels via Claude Code hooks (optional)
 
@@ -112,23 +123,6 @@ recolor that project's panels to match. The file is a one-liner:
 # .hued
 background=#320053
 ```
-
-What you get:
-
-- The panel's dominant message bubble (assistant in default mode, user in
-  iMessage mode) is tinted with the `background` color.
-- The "waiting on the model" pulse glow uses the same color, mixed against the
-  base panel surface for legibility.
-- Foreground text inside the tinted bubble is auto-selected (`#fff` or `#000`)
-  via a YIQ contrast check, so you don't have to worry about readability.
-- Near-white backgrounds (`yiq > 220`) are refused — they wash out under both
-  light and dark UI themes.
-
-Brainhouse reads `.hued` from the session's recorded `cwd`, so theming works
-the moment Claude Code records a `cwd` for that panel — no extra config on
-the Brainhouse side. The parser lives in `server/src/theme.ts` and is small
-enough that Brainhouse re-implements it inline rather than depending on the
-hued binary.
 
 ## Useful scripts
 

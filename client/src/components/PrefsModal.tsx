@@ -21,6 +21,7 @@ interface PrefsDraft {
     imessage: boolean;
     showElapsed: boolean;
     conversation: boolean;
+    idleOpacity: number;
   };
   messages: {
     thinking: boolean;
@@ -209,6 +210,16 @@ function DisplaySection({ draft, setDraft }: SectionProps) {
         checked={draft.display.conversation}
         onChange={(v) => set({ conversation: v })}
       />
+      <SliderField
+        label="Idle window opacity"
+        hint="How visible done/idle panels stay. 100% = no fade; floor 20%."
+        value={draft.display.idleOpacity}
+        onChange={(v) => set({ idleOpacity: v })}
+        min={0.2}
+        max={1}
+        step={0.05}
+        format={(v) => `${Math.round(v * 100)}%`}
+      />
     </Section>
   );
 }
@@ -252,6 +263,44 @@ function MessagesSection({ draft, setDraft }: SectionProps) {
         onChange={(v) => set({ meta: v })}
       />
     </Section>
+  );
+}
+
+function SliderField({
+  label,
+  hint,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  format,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  format?: (v: number) => string;
+}) {
+  return (
+    <label className="prefs-field prefs-slider-field">
+      <span className="prefs-slider-label">
+        {label}
+        <span className="prefs-slider-value">{format ? format(value) : value}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      {hint && <span className="prefs-hint">{hint}</span>}
+    </label>
   );
 }
 

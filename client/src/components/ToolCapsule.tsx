@@ -19,9 +19,9 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
   const icon = iconForTool(use.name, use.input);
 
   return (
-    <li className="event event-tool">
+    <li className={classNames('event event-tool', item.canceled && 'canceled')}>
       <div
-        className={classNames('tool-capsule', status)}
+        className={classNames('tool-capsule', status, item.canceled && 'canceled')}
         data-tool-name={use.name}
         onClick={() => lightbox.open(<ToolLightboxContent item={item} />)}
       >

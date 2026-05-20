@@ -19,6 +19,9 @@ export interface ToolItem {
   result: ToolResultPayload | null;
   ack: string | null;
   ts: string;
+  /** True when the user pressed ctrl-c mid-turn and this tool's call was
+   * part of the canceled work. Rendered dimmed. */
+  canceled?: boolean;
 }
 
 export interface FileChangeItem {
@@ -41,11 +44,17 @@ export interface OpStripItem {
 }
 
 export type ViewItem =
-  | { type: 'bubble'; event: Event; role: 'user' | 'assistant'; parts: BubblePart[] }
+  | {
+      type: 'bubble';
+      event: Event;
+      role: 'user' | 'assistant';
+      parts: BubblePart[];
+      canceled?: boolean;
+    }
   | ToolItem
   | FileChangeItem
   | OpStripItem
-  | { type: 'thinking'; event: Event }
+  | { type: 'thinking'; event: Event; canceled?: boolean }
   | { type: 'system'; event: Event }
   | { type: 'meta'; event: Event };
 
@@ -133,7 +142,12 @@ export function preprocessEvents(events: Event[]): PreprocessResult {
       typeof event.payload.text === 'string' &&
       INTERRUPT_PATTERN.test(event.payload.text.trim())
     ) {
-      // mark a "pending merge" so the next user_text knows to attach
+      // Mark the in-flight turn as canceled. Walk back to the most recent
+      // user bubble; everything between (assistant bubbles, thinking,
+      // tool capsules) was part of the work the user ctrl-c'd.
+      markCanceledTurn(items);
+      // Drop the synthetic marker itself — the next user_text will pick up
+      // the sawtooth via mergeInterruptedFollowup below.
       continue;
     }
 
@@ -379,6 +393,26 @@ function wasPrevUserAnInterrupt(events: Event[], current: Event): boolean {
     return sawInterrupt;
   }
   return false;
+}
+
+/** Walk backwards from the end of `items` and stamp `canceled: true` on
+ * everything until the most recent user bubble (exclusive). Operates in
+ * place. Stops at a previous interrupt boundary too, so two cancellations
+ * in a row don't cascade past the older one. */
+function markCanceledTurn(items: ViewItem[]): void {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (!item) continue;
+    if (item.type === 'bubble' && item.role === 'user') return;
+    if (item.type === 'bubble' && item.canceled) return;
+    if (
+      item.type === 'bubble' ||
+      item.type === 'tool' ||
+      item.type === 'thinking'
+    ) {
+      item.canceled = true;
+    }
+  }
 }
 
 export function extractLastChecklist(text: string): ChecklistItem[] | null {

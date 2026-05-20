@@ -16,6 +16,7 @@ export interface ClientPrefs {
     imessage: boolean;
     showElapsed: boolean;
     conversation: boolean;
+    idleOpacity: number;
   };
   messages: {
     thinking: boolean;
@@ -41,7 +42,7 @@ export interface ClientPrefs {
 }
 
 const DEFAULT_PREFS: ClientPrefs = {
-  display: { imessage: false, showElapsed: false, conversation: false },
+  display: { imessage: false, showElapsed: false, conversation: false, idleOpacity: 0.5 },
   messages: {
     thinking: true,
     system: true,

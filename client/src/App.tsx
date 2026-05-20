@@ -42,7 +42,11 @@ export function App() {
     document.body.classList.toggle('hide-tools', !m.tools);
     document.body.classList.toggle('hide-file-changes', !m.fileChanges);
     document.body.classList.toggle('hide-op-strips', !m.opStrips);
-  }, [imessage, showElapsed, conversation, prefs.messages]);
+    document.documentElement.style.setProperty(
+      '--idle-opacity',
+      String(prefs.display.idleOpacity),
+    );
+  }, [imessage, showElapsed, conversation, prefs.messages, prefs.display.idleOpacity]);
 
   // Auto-minimize newly-arriving subagent panels when the pref is on. We
   // track which ids we've already routed so toggling the pref off (or

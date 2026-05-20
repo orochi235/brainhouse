@@ -313,7 +313,7 @@ body {
   }
 }
 .panel.status-done {
-  opacity: 0.5;
+  opacity: var(--idle-opacity, 0.5);
   border-color: color-mix(in srgb, var(--panel-border) 70%, transparent);
   background: color-mix(in srgb, var(--panel-bg) 90%, transparent);
 }
@@ -469,7 +469,15 @@ body.has-fullscreen-panel .panel.fullscreen .panel-body {
 body.has-fullscreen-panel
   .session-grid
   > *:not(.fullscreen):not(:has(.fullscreen)),
-body.has-fullscreen-panel .session-dock {
+body.has-fullscreen-panel
+  .session-dock
+  > *:not(.fullscreen):not(:has(.fullscreen)) {
+  visibility: hidden;
+}
+/* When the fullscreen panel lives inside the dock, hide the dock itself only
+ * if it contains nothing fullscreen — otherwise its `visibility: hidden`
+ * cascades down and blanks the page. */
+body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   visibility: hidden;
 }
 
@@ -566,6 +574,33 @@ body.has-fullscreen-panel .session-dock {
   font-size: 0.7rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+/* Waiting badge — replaces the idle/done timer in the header while the
+ * panel is actively awaiting a model response. Picks up the hued theme
+ * color (falling back to --accent) so it matches the rest of the panel. */
+.panel-waiting-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem 0.45rem 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-theme-bg, var(--accent)) 18%, transparent);
+  color: color-mix(in srgb, var(--panel-theme-bg, var(--accent)) 70%, var(--fg));
+}
+.panel-waiting-spinner {
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+  animation: panel-waiting-spin 0.9s linear infinite;
+}
+@keyframes panel-waiting-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .panel-btn {
   background: transparent;
@@ -916,6 +951,12 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   background: var(--panel-theme-bg);
   color: var(--panel-theme-fg);
 }
+/* Themed thinking indicator — match the dominant bubble color in the current
+ * view so the "..." pill reads as part of the same conversation. */
+.panel.has-theme .thinking-indicator {
+  background: var(--panel-theme-bg);
+  color: var(--panel-theme-fg);
+}
 /* Themed waiting glow replaces the violet pulse. */
 .panel-parent.has-theme.status-live.waiting {
   animation: waiting-pulse-themed 2.6s ease-in-out infinite;
@@ -1144,6 +1185,20 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   justify-content: center;
   flex-shrink: 0;
 }
+/* User pressed ctrl-c mid-turn: dim + strikethrough the canceled assistant
+ * work (bubble text and pending tool capsules). The strikethrough lands on
+ * bubble text only — striking a tool-capsule label looks like the *tool*
+ * failed, which is misleading. */
+.event.canceled .bubble {
+  opacity: 0.55;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, currentColor 60%, transparent);
+}
+.event.canceled .tool-capsule {
+  opacity: 0.5;
+}
+
 /* Inline-SVG icons inherit their color from `currentColor` on the parent
  * because the bundled SVGs use `fill="currentColor"`. The wrapper just sizes
  * the inner <svg> to the surrounding font. */

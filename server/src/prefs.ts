@@ -104,6 +104,9 @@ export const DisplaySchema = z.object({
   imessage: z.boolean().default(false),
   showElapsed: z.boolean().default(false),
   conversation: z.boolean().default(false),
+  /** How much idle (`done`) panels fade. 1 = no dim, 0 = invisible.
+   * Mini panels in the dock dim a touch more on top of this. */
+  idleOpacity: z.number().min(0.2).max(1).default(0.5),
 });
 export type Display = z.infer<typeof DisplaySchema>;
 

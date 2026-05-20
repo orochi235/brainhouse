@@ -1,4 +1,5 @@
 import type { Event } from '@server/parser.ts';
+import classNames from 'classnames';
 import { useMemo } from 'react';
 import { formatClockTime, formatElapsed } from '../lib/format.ts';
 import { useLightbox } from '../lib/lightbox.tsx';
@@ -81,7 +82,10 @@ function Bubble({
   onBubbleClick?: (event: Event) => void;
 }) {
   return (
-    <li className={`event event-${item.role}_text`} onClick={() => onBubbleClick?.(item.event)}>
+    <li
+      className={classNames(`event event-${item.role}_text`, item.canceled && 'canceled')}
+      onClick={() => onBubbleClick?.(item.event)}
+    >
       <div className="bubble">
         {item.parts.map((part, i) => (
           <BubblePartView

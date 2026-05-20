@@ -1,6 +1,13 @@
 import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { formatIdle, formatIdleCoarse } from '../lib/format.ts';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
@@ -9,6 +16,11 @@ import { projectLabel } from '../lib/project.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import { EventList } from './EventList.tsx';
+
+/** How long after the user's last click in a panel we treat them as actively
+ * reading it. Inside this window auto-scroll respects manual scroll
+ * position; outside it, updates always snap to the bottom. */
+const ACTIVE_WINDOW_MS = 30_000;
 
 interface Props {
   panel: PanelState;
@@ -54,32 +66,85 @@ export function PanelCard({
   const lightbox = useLightbox();
   const articleRef = useRef<HTMLElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  /** Inner wrapper around the body's children, sized by content. We observe
+   * this with ResizeObserver to catch height changes that don't go through
+   * the `events.length` effect — async markdown/hljs rendering, tool-result
+   * merges that grow a capsule, status-transition banners, etc. */
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const lastStatusRef = useRef(panel.status);
   const [collapsed, setCollapsed] = useState(false);
   const prevProgressRef = useRef<number | null>(null);
   // True until the user scrolls away from the bottom. Re-armed when they
   // scroll back. While true, new events keep the view pinned at the bottom.
   const stickToBottomRef = useRef(true);
+  // Wall-clock of the user's most recent click inside this panel. While
+  // `Date.now() - lastClickAtRef.current < ACTIVE_WINDOW_MS`, auto-scroll
+  // defers to the user's manual scroll position; outside that window the
+  // panel always snaps to the bottom on update.
+  const lastClickAtRef = useRef(0);
 
-  // On mount and whenever the panel id changes (e.g. focused view), jump
-  // straight to the bottom — "restoring a session view almost always wants
-  // the latest activity, not the top of the transcript."
+  // On mount and whenever the panel id changes (e.g. focused view, restore
+  // from the tray, fullscreen open), jump straight to the bottom — restoring
+  // a session view almost always wants the latest activity, not the top.
+  // useLayoutEffect runs after DOM mutations but before paint so the user
+  // never sees a flash of the top of the transcript. The rAF re-snap covers
+  // children whose final size lands a frame later (code highlighting, async
+  // images).
   // biome-ignore lint/correctness/useExhaustiveDependencies: panel.id drives the reset; refs are intentionally not deps.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
     stickToBottomRef.current = true;
+    const raf = requestAnimationFrame(() => {
+      if (!stickToBottomRef.current) return;
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(raf);
   }, [panel.id]);
 
-  // When new events arrive, keep the view pinned at the bottom *only* if
-  // the user hadn't scrolled up to read history.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: events.length is the trigger; refs read inside intentionally.
+  // Snap-on-content-resize: a ResizeObserver on the body's content wrapper
+  // catches *any* size change — events landing, tool-result merges, async
+  // markdown / hljs render, status banners, image loads — and applies the
+  // same active-reader gating. This subsumes the old `events.length` effect.
   useEffect(() => {
-    const el = bodyRef.current;
-    if (!el) return;
-    if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [panel.events.length]);
+    const body = bodyRef.current;
+    const content = contentRef.current;
+    if (!body || !content) return;
+    const snap = () => {
+      // If the browser window isn't focused, the user can't possibly be
+      // actively reading — snap unconditionally.
+      const browserFocused = document.hasFocus();
+      const recentlyActive =
+        browserFocused && Date.now() - lastClickAtRef.current < ACTIVE_WINDOW_MS;
+      const frozen = false; // freeze-panel concept not yet supported
+      if (!recentlyActive && !frozen) {
+        body.scrollTop = body.scrollHeight;
+        stickToBottomRef.current = true;
+        return;
+      }
+      if (stickToBottomRef.current) body.scrollTop = body.scrollHeight;
+    };
+    const ro = new ResizeObserver(snap);
+    ro.observe(content);
+    // When the window loses focus or the tab is hidden, snap immediately.
+    // Otherwise a panel that grew while focused-and-recently-clicked stays
+    // mid-scroll forever from the user's perspective.
+    const onBlur = () => {
+      body.scrollTop = body.scrollHeight;
+      stickToBottomRef.current = true;
+    };
+    const onVisibility = () => {
+      if (document.hidden) onBlur();
+    };
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   // Completion sweep: fire briefly on live → done transitions.
   useEffect(() => {
@@ -152,6 +217,9 @@ export function PanelCard({
       )}
       data-panel-id={panel.id}
       style={style}
+      onMouseDownCapture={() => {
+        lastClickAtRef.current = Date.now();
+      }}
     >
       <PanelHeader
         panel={panel}
@@ -161,6 +229,8 @@ export function PanelCard({
         pinned={pinned}
         onTogglePin={onTogglePin}
         account={account}
+        waiting={waiting}
+        waitingSince={waiting ? lastUserActivity(items, now) : null}
       />
       {checklist && <ChecklistPin items={checklist} />}
       <div
@@ -172,17 +242,19 @@ export function PanelCard({
           stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
         }}
       >
-        <EventList
-          events={panel.events}
-          startedAt={panel.started_at}
-          onBubbleClick={onBubbleClick}
-        />
-        {waiting && <ThinkingIndicator started={lastUserActivity(items, now)} now={now} />}
-        {panel.status !== 'live' && (
-          <div className="session-ended" aria-label="session ended">
-            <span>session ended</span>
-          </div>
-        )}
+        <div className="panel-body-content" ref={contentRef}>
+          <EventList
+            events={panel.events}
+            startedAt={panel.started_at}
+            onBubbleClick={onBubbleClick}
+          />
+          {waiting && <ThinkingIndicator started={lastUserActivity(items, now)} now={now} />}
+          {panel.status !== 'live' && (
+            <div className="session-ended" aria-label="session ended">
+              <span>session ended</span>
+            </div>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -225,6 +297,8 @@ function PanelHeader({
   pinned,
   onTogglePin,
   account,
+  waiting,
+  waitingSince,
 }: {
   panel: PanelState;
   now: number;
@@ -233,6 +307,8 @@ function PanelHeader({
   pinned?: boolean;
   onTogglePin?: () => void;
   account?: string | null;
+  waiting?: boolean;
+  waitingSince?: number | null;
 }) {
   const lightbox = useLightbox();
   const isLive = panel.status === 'live';
@@ -244,6 +320,8 @@ function PanelHeader({
   } else {
     idleLabel = `${panel.status} ${formatIdleCoarse(Math.max(0, now - panel.status_changed_at))} ago`;
   }
+  const showWaitingBadge = !!waiting && waitingSince != null;
+  const waitingLabel = showWaitingBadge ? formatIdle(Math.max(0, now - waitingSince)) : '';
 
   return (
     <header
@@ -301,12 +379,25 @@ function PanelHeader({
               {account}
             </span>
           )}
-          {panel.status === 'mini' && <span className="panel-idle-inline">{idleLabel}</span>}
+          {panel.status === 'mini' && !showWaitingBadge && (
+            <span className="panel-idle-inline">{idleLabel}</span>
+          )}
         </span>
       </span>
       <span className="panel-meta">
-        {panel.status !== 'mini' && <span className="panel-idle">{idleLabel}</span>}
-        {isLive && <span className="panel-status live">live</span>}
+        {showWaitingBadge ? (
+          <span
+            className="panel-waiting-badge"
+            title="awaiting response from the model"
+            aria-live="polite"
+          >
+            <span className="panel-waiting-spinner" aria-hidden="true" />
+            <span className="panel-waiting-elapsed">{waitingLabel}</span>
+          </span>
+        ) : (
+          panel.status !== 'mini' && <span className="panel-idle">{idleLabel}</span>
+        )}
+        {isLive && !showWaitingBadge && <span className="panel-status live">live</span>}
         <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} />
       </span>
     </header>
