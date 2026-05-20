@@ -63,7 +63,7 @@ export interface ToolResultPayload {
 
 export type ToolIcon = { kind: 'svg'; svg: string } | { kind: 'glyph'; text: string };
 
-const TOOL_ICONS: Record<string, string> = {
+export const TOOL_ICONS: Record<string, string> = {
   Bash: '▶',
   Read: '📄',
   Edit: '✎',
@@ -77,7 +77,7 @@ const TOOL_ICONS: Record<string, string> = {
   TaskUpdate: '✓',
 };
 
-const CLI_ICONS: Record<string, string> = {
+export const CLI_ICONS: Record<string, string> = {
   gh: ghIcon,
   git: gitIcon,
   curl: curlIcon,

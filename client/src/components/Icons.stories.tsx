@@ -6,56 +6,13 @@
  * adding a new tool name would get an icon for free.
  */
 
-import { iconForTool } from '../lib/tools.ts';
+import { CLI_ICONS, TOOL_ICONS, iconForTool } from '../lib/tools.ts';
 
-/** Names brainhouse renders as glyphs (emoji-shaped) from TOOL_ICONS.
- * Pass through iconForTool with empty input → the CLI branch is skipped
- * and the TOOL_ICONS lookup wins. */
-const TOOL_NAMES = [
-  'Bash',
-  'Read',
-  'Edit',
-  'Write',
-  'Glob',
-  'Grep',
-  'WebFetch',
-  'WebSearch',
-  'Task',
-  'TaskCreate',
-  'TaskUpdate',
-] as const;
-
-/** CLI commands brainhouse renders as SVG logos from CLI_ICONS. To pull
- * the SVG, we go through iconForTool('Bash', { command: '<cli>' }) —
- * the same path the live capsule uses. */
-const CLI_NAMES = [
-  'gh',
-  'git',
-  'curl',
-  'wget',
-  'npm',
-  'npx',
-  'pnpm',
-  'yarn',
-  'python',
-  'python3',
-  'pip',
-  'uv',
-  'pytest',
-  'make',
-  'docker',
-  'kubectl',
-  'node',
-  'deno',
-  'bun',
-  'cargo',
-  'rustc',
-  'go',
-  'brew',
-  'jq',
-  'vim',
-  'nvim',
-] as const;
+/** Auto-derived from the registries so adding/removing a tool name or
+ * CLI command in `lib/tools.ts` shows up here without touching this
+ * file. Sorted for stable visual order. */
+const TOOL_NAMES = Object.keys(TOOL_ICONS).sort();
+const CLI_NAMES = Object.keys(CLI_ICONS).sort();
 
 function IconCell({ name, label }: { name: string; label: string }) {
   const icon = iconForTool(name, name === 'Bash' ? { command: label } : {});
