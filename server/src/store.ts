@@ -507,6 +507,14 @@ export class Store {
   deleteBootstrapOffset(filePath: string): void {
     this.db.prepare('DELETE FROM bootstrap_offsets WHERE file_path = ?').run(filePath);
   }
+
+  /** Wipe every offset. Called on monitor.start() so a server restart
+   * forces the watcher to re-read the recent JSONL window — that's
+   * what re-fills `panel.events[]` in memory, since events aren't
+   * persisted as full payloads (only summaries in events_index). */
+  clearAllBootstrapOffsets(): void {
+    this.db.prepare('DELETE FROM bootstrap_offsets').run();
+  }
 }
 
 // --- internal: row deserialization (boolean/null normalization) ---

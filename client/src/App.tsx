@@ -24,6 +24,16 @@ export function App() {
   const showAccountBadges = prefs.roots.length > 1;
   const accountFor = (p: PanelState): string | null | undefined =>
     showAccountBadges ? p.account_label : undefined;
+  // Lookup color by account label; PanelCard stamps it as --account-color so
+  // the badge + border pick up the per-account hue. Falls back to the global
+  // accent when no color is configured.
+  const accountColorByLabel = new Map<string, string>(
+    prefs.roots.filter((r) => r.label && r.color).map((r) => [r.label as string, r.color as string]),
+  );
+  const accountColorFor = (p: PanelState): string | undefined => {
+    if (!showAccountBadges) return undefined;
+    return p.account_label ? accountColorByLabel.get(p.account_label) : undefined;
+  };
   const { seeded, persist: persistIntention } = useIntentions();
   const { order, moveBefore } = usePanelOrder({
     initial: seeded.order,
@@ -157,7 +167,13 @@ export function App() {
           <span className={`conn conn-${status}`}>{status}</span>
         </header>
         <main className="session-grid focused">
-          {focused && <PanelCard panel={focused} account={accountFor(focused)} />}
+          {focused && (
+            <PanelCard
+              panel={focused}
+              account={accountFor(focused)}
+              accountColor={accountColorFor(focused)}
+            />
+          )}
         </main>
       </LightboxProvider>
     );
@@ -226,7 +242,9 @@ export function App() {
                 wide={wide.has(p.id)}
                 pinned={pinned.has(p.id)}
                 account={accountFor(p)}
+                accountColor={accountColorFor(p)}
                 accountFor={accountFor}
+                accountColorFor={accountColorFor}
                 onToggleWide={() => toggleWide(p.id)}
                 onTogglePin={() => togglePin(p.id)}
                 onTogglePinSub={(s) => togglePin(s.id)}
@@ -264,6 +282,7 @@ export function App() {
                   pinned={pinned.has(p.id)}
                   onTogglePin={() => togglePin(p.id)}
                   account={accountFor(p)}
+                  accountColor={accountColorFor(p)}
                 />
               ))}
             </AnimatePresence>
@@ -289,7 +308,9 @@ function GridSlot({
   wide,
   pinned,
   account,
+  accountColor,
   accountFor,
+  accountColorFor,
   onToggleWide,
   onTogglePin,
   onTogglePinSub,
@@ -303,7 +324,9 @@ function GridSlot({
   wide: boolean;
   pinned: boolean;
   account: string | null | undefined;
+  accountColor: string | undefined;
   accountFor: (p: PanelState) => string | null | undefined;
+  accountColorFor: (p: PanelState) => string | undefined;
   onToggleWide: () => void;
   onTogglePin: () => void;
   onTogglePinSub: (sub: PanelState) => void;
@@ -375,7 +398,9 @@ function GridSlot({
         subagents={subagents}
         pinned={pinned}
         account={account}
+        accountColor={accountColor}
         accountFor={accountFor}
+        accountColorFor={accountColorFor}
         onTogglePin={onTogglePin}
         onTogglePinSub={onTogglePinSub}
         isPinnedSub={isPinnedSub}
@@ -391,7 +416,9 @@ function PanelWithSubagents({
   subagents,
   pinned,
   account,
+  accountColor,
   accountFor,
+  accountColorFor,
   onTogglePin,
   onTogglePinSub,
   isPinnedSub,
@@ -402,7 +429,9 @@ function PanelWithSubagents({
   subagents: PanelState[];
   pinned: boolean;
   account: string | null | undefined;
+  accountColor: string | undefined;
   accountFor: (p: PanelState) => string | null | undefined;
+  accountColorFor: (p: PanelState) => string | undefined;
   onTogglePin: () => void;
   onTogglePinSub: (sub: PanelState) => void;
   isPinnedSub: (sub: PanelState) => boolean;
@@ -419,6 +448,7 @@ function PanelWithSubagents({
         pinned={pinned}
         onTogglePin={onTogglePin}
         account={account}
+        accountColor={accountColor}
       />
       {(live.length > 0 || rest.length > 0) && (
         <div className="panel-subagents">
@@ -431,6 +461,7 @@ function PanelWithSubagents({
               pinned={isPinnedSub(s)}
               onTogglePin={() => onTogglePinSub(s)}
               account={accountFor(s)}
+              accountColor={accountColorFor(s)}
             />
           ))}
         </div>
@@ -444,6 +475,7 @@ function MiniPanel({
   onHide,
   onRestore,
   account,
+  accountColor,
   // Kept for API completeness; mini-mode currently doesn't surface the pin
   // toggle (user preference). To re-enable, forward both props to PanelCard.
   pinned: _pinned,
@@ -453,6 +485,7 @@ function MiniPanel({
   onHide: () => void;
   onRestore: () => void;
   account: string | null | undefined;
+  accountColor: string | undefined;
   pinned: boolean;
   onTogglePin: () => void;
 }) {
@@ -470,7 +503,13 @@ function MiniPanel({
         e.dataTransfer.setData('text/brainhouse-panel', panel.id);
       }}
     >
-      <PanelCard panel={panel} onHide={onHide} onRestore={onRestore} account={account} />
+      <PanelCard
+        panel={panel}
+        onHide={onHide}
+        onRestore={onRestore}
+        account={account}
+        accountColor={accountColor}
+      />
     </motion.div>
   );
 }

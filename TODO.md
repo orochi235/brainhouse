@@ -61,6 +61,30 @@ the `tool_result` via `absorbedToolUseIds`; instead, pass the result
 through to the formatter and include the chosen labels in the rendered
 markdown.
 
+## Token usage: metering, counting, budgets
+Surface per-session token usage as a first-class signal. Claude Code writes
+usage info into the JSONL on every API response (input/output token counts,
+cache hits, model id) — pipe that through to brainhouse so each panel
+shows: tokens consumed so far this session, rate-per-minute while live,
+running cost estimate at posted model prices, and a per-project rollup
+("you've burned ~3M tokens in ~/src/foo this week").
+
+Concrete pieces:
+- Parser: extract `usage` block from assistant messages into a new
+  `ResourceUsage` event kind (or a side-channel on assistant_text)
+- Session store: accumulate input/output/cache totals + model used on the
+  Panel; surface via PanelDto
+- UI: small "tokens" capsule in the panel header (next to the idle/waiting
+  badge); click → modal with the breakdown + cost estimate
+- session_summary: persist the totals so the per-project rollup works
+  beyond the events_index retention window
+- Optional: per-project budget prefs that flash the panel when crossed
+- Tricky: cost estimates need model-pricing table; either hard-code (and
+  keep it stale) or pull from a maintained source
+
+This pairs naturally with #9 (schema/pipeline buildout) since the
+`usage` field is one of the higher-value passthrough records.
+
 ## Storybook setup
 Stand up Storybook for the client workspace so the component library is
 browsable + isolated from the live data stream. Useful for:

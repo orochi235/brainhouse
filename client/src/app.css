@@ -592,16 +592,24 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   background: var(--header-bg);
 }
 /* Account-owns-this-session badge. Visible only when >1 account is
- * configured in prefs (parent gates by passing the label or not). */
+ * configured in prefs (parent gates by passing the label or not).
+ * --account-color, if set on the .panel via prefs.roots[].color, drives
+ * the badge tint; falls back to the global accent. */
 .panel-account {
   font-size: 0.55rem;
   padding: 0.02rem 0.3rem;
   flex-shrink: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: color-mix(in srgb, var(--accent) 70%, var(--fg));
+  background: color-mix(in srgb, var(--account-color, var(--accent)) 22%, transparent);
+  color: color-mix(in srgb, var(--account-color, var(--accent)) 70%, var(--fg));
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+/* Per-account border tint — subtle so it doesn't fight the status border;
+ * only applies when --account-color is set (i.e., multi-account configured
+ * with a color on this panel's account). */
+.panel[style*="--account-color"] {
+  border-color: color-mix(in srgb, var(--account-color) 35%, var(--panel-border));
 }
 .panel-status.live {
   color: var(--live);

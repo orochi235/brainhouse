@@ -135,6 +135,7 @@ background=#320053
 | `npm run build`    | Build server then client                           |
 | `npm start`        | Run the built server (serves UI + API on one port) |
 | `npm test`         | Vitest, both workspaces                            |
+| `npm run ladle -w client`     | Component browser (Ladle) for visual states        |
 | `npm run check`    | Biome lint/format check                            |
 | `npm run fix`      | Biome auto-fix                                     |
 

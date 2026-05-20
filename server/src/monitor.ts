@@ -92,6 +92,12 @@ export class TranscriptMonitor {
     // bootstrap replays land on top of last-known panel state rather than
     // starting fresh. No-op when persistence is disabled.
     this.store.hydrate();
+    // After hydrate, every panel.events[] is empty (we only persist panel
+    // metadata, not full event payloads). Wipe bootstrap_offsets so the
+    // watcher re-reads the recent JSONL window and the event arrays
+    // repopulate. Offsets are still useful within a single process
+    // lifetime (e.g. setRoots hot-swap mid-run); just not across restarts.
+    this.persistStore?.clearAllBootstrapOffsets();
     await this.watcher.start({ watch });
     if (this.hookWatcher) await this.hookWatcher.start();
     this.startTick();

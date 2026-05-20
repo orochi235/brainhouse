@@ -178,6 +178,16 @@ function AccountsSection({ draft, setDraft }: SectionProps) {
               setDraft({ ...draft, roots });
             }}
           />
+          <input
+            type="color"
+            title="Account color — tints the panel badge and border"
+            value={r.color ?? '#a78bfa'}
+            onChange={(e) => {
+              const roots = draft.roots.slice();
+              roots[i] = { ...roots[i], color: e.target.value } as Root;
+              setDraft({ ...draft, roots });
+            }}
+          />
           <button
             type="button"
             className="prefs-remove"

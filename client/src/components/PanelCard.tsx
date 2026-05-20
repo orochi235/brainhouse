@@ -40,6 +40,9 @@ interface Props {
    * `panel.account_label` when more than one account is configured;
    * undefined/null suppresses the badge. */
   account?: string | null;
+  /** Hex color tied to the account. When set, stamps `--account-color`
+   * on the panel so the badge + a subtle border tint pick it up. */
+  accountColor?: string;
 }
 
 /**
@@ -56,6 +59,7 @@ export function PanelCard({
   pinned,
   onTogglePin,
   account,
+  accountColor,
 }: Props) {
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => {
@@ -196,6 +200,7 @@ export function PanelCard({
   const style: CSSProperties = {};
   const styleVars = style as Record<string, string>;
   if (progressPct !== null) styleVars['--progress'] = `${progressPct}%`;
+  if (accountColor) styleVars['--account-color'] = accountColor;
   if (panel.theme) {
     styleVars['--panel-theme-bg'] = panel.theme.background;
     styleVars['--panel-theme-fg'] = panel.theme.foreground;
