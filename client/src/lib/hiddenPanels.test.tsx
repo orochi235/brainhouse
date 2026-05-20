@@ -21,6 +21,7 @@ function panel(id: string, overrides: Partial<PanelState> = {}): PanelState {
     binned_at: null,
     awaiting_input: false,
     ended: false,
+    tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
     events: [],
     ...overrides,
   } as PanelState;

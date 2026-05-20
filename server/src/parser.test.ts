@@ -178,4 +178,85 @@ describe('parseLine', () => {
     });
     expect(events).toEqual([]);
   });
+
+  describe('resource_usage', () => {
+    it('assistant message with usage emits a sibling resource_usage event', () => {
+      const events = parseLine({
+        type: 'assistant',
+        uuid: 'u10',
+        sessionId: 's1',
+        timestamp: 't',
+        message: {
+          role: 'assistant',
+          model: 'claude-opus-4-7',
+          content: [{ type: 'text', text: 'response' }],
+          usage: {
+            input_tokens: 1500,
+            output_tokens: 280,
+            cache_creation_input_tokens: 200,
+            cache_read_input_tokens: 4400,
+          },
+        },
+      });
+      const usage = events.find((e) => e.kind === 'resource_usage');
+      expect(usage).toBeDefined();
+      if (usage?.kind !== 'resource_usage') throw new Error('expected resource_usage');
+      expect(usage.payload.model).toBe('claude-opus-4-7');
+      expect(usage.payload.input_tokens).toBe(1500);
+      expect(usage.payload.output_tokens).toBe(280);
+      expect(usage.payload.cache_creation_input_tokens).toBe(200);
+      expect(usage.payload.cache_read_input_tokens).toBe(4400);
+      expect(usage.uuid).toBe('u10:usage');
+    });
+
+    it('user message ignores any usage block (only assistants report it)', () => {
+      const events = parseLine({
+        type: 'user',
+        uuid: 'u11',
+        sessionId: 's1',
+        timestamp: 't',
+        message: {
+          role: 'user',
+          content: 'hi',
+          usage: { input_tokens: 9999, output_tokens: 9999 },
+        },
+      });
+      expect(events.map((e) => e.kind)).toEqual(['user_text']);
+    });
+
+    it('all-zero usage is dropped (nothing to report)', () => {
+      const events = parseLine({
+        type: 'assistant',
+        uuid: 'u12',
+        sessionId: 's1',
+        timestamp: 't',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'ok' }],
+          usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+        },
+      });
+      expect(events.some((e) => e.kind === 'resource_usage')).toBe(false);
+    });
+
+    it('handles string content shape too', () => {
+      const events = parseLine({
+        type: 'assistant',
+        uuid: 'u13',
+        sessionId: 's1',
+        timestamp: 't',
+        message: {
+          role: 'assistant',
+          content: 'plain string response',
+          usage: { input_tokens: 5, output_tokens: 10 },
+        },
+      });
+      expect(events.map((e) => e.kind)).toEqual(['assistant_text', 'resource_usage']);
+    });
+  });
 });

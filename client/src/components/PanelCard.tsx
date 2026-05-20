@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { formatIdle, formatIdleCoarse } from '../lib/format.ts';
+import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
@@ -361,6 +361,11 @@ function PanelHeader({
   }
   const showWaitingBadge = !!waiting && waitingSince != null;
   const waitingLabel = showWaitingBadge ? formatIdle(Math.max(0, now - waitingSince)) : '';
+  const totalTokens =
+    panel.tokens.input +
+    panel.tokens.output +
+    panel.tokens.cache_create +
+    panel.tokens.cache_read;
 
   return (
     <header
@@ -437,6 +442,15 @@ function PanelHeader({
           panel.status !== 'mini' && <span className="panel-idle">{idleLabel}</span>
         )}
         {isLive && !showWaitingBadge && <span className="panel-status live">live</span>}
+        {totalTokens > 0 && panel.status !== 'mini' && (
+          <span
+            className="panel-tokens"
+            title={tokensTooltip(panel.tokens)}
+            aria-label="token usage"
+          >
+            {formatTokens(totalTokens)}
+          </span>
+        )}
         <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} />
       </span>
     </header>
@@ -563,6 +577,20 @@ function PanelLightboxContent({ panel }: { panel: PanelState }) {
       <EventList events={panel.events} />
     </>
   );
+}
+
+/** Multi-line tooltip with the per-bucket token breakdown + model. */
+function tokensTooltip(t: PanelState['tokens']): string {
+  const total = t.input + t.output + t.cache_create + t.cache_read;
+  const lines = [
+    `tokens — ${formatTokens(total)} total`,
+    `  input: ${t.input.toLocaleString()}`,
+    `  output: ${t.output.toLocaleString()}`,
+  ];
+  if (t.cache_create > 0) lines.push(`  cache_create: ${t.cache_create.toLocaleString()}`);
+  if (t.cache_read > 0) lines.push(`  cache_read: ${t.cache_read.toLocaleString()}`);
+  if (t.model) lines.push(`  model: ${t.model}`);
+  return lines.join('\n');
 }
 
 function progressPercent(items: ChecklistItem[]): number {

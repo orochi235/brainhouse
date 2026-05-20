@@ -633,6 +633,23 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   background: color-mix(in srgb, var(--panel-theme-bg, var(--accent)) 18%, transparent);
   color: color-mix(in srgb, var(--panel-theme-bg, var(--accent)) 70%, var(--fg));
 }
+/* Tokens capsule — sits next to the idle/waiting badge in the panel
+ * header. Shows the running total (formatted as 1.5k / 1.5m); the
+ * `title` attr carries the full breakdown for hover-reveal. */
+.panel-tokens {
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+  cursor: help;
+  white-space: pre;
+}
+.panel-tokens::before {
+  content: '⛁ ';
+  opacity: 0.7;
+}
 .panel-waiting-spinner {
   width: 0.7em;
   height: 0.7em;

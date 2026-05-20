@@ -75,6 +75,16 @@ export interface Panel {
     | 'idle_timeout'
     | 'server_close'
     | null;
+  /** Running token counters, accumulated from `resource_usage` events.
+   * `model` is the last model_id seen on a usage record (sessions can
+   * span model changes but the most recent dominates display). */
+  tokens: {
+    input: number;
+    output: number;
+    cache_create: number;
+    cache_read: number;
+    model: string | null;
+  };
 }
 
 export interface PanelDto {
@@ -94,6 +104,13 @@ export interface PanelDto {
   binned_at: number | null;
   awaiting_input: boolean;
   ended: boolean;
+  tokens: {
+    input: number;
+    output: number;
+    cache_create: number;
+    cache_read: number;
+    model: string | null;
+  };
 }
 
 export type Delta =
@@ -164,6 +181,18 @@ export class SessionStore {
     // guard those duplicates pile up in `panel.events` and React's list
     // renderer complains about non-unique keys.
     if (panel.events.some((e) => e.uuid === event.uuid)) return deltas;
+    // Sidechannel: resource_usage isn't user-facing transcript content; it
+    // updates panel totals and a panel_upsert delta carries the new
+    // numbers to clients. Don't push it onto panel.events (would clutter
+    // the dedupe set + bloat the event list for no UI benefit).
+    if (event.kind === 'resource_usage') {
+      accumulateUsage(panel, event.payload);
+      panel.last_event_at = Math.max(panel.last_event_at, ts);
+      deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+      this.persistPanel(panel);
+      this.persistEvent(panel, event, ts);
+      return deltas;
+    }
     panel.events.push(event);
     // Cap event history per panel — oldest entries lose first.
     if (panel.events.length > MAX_EVENTS_PER_PANEL) {
@@ -349,6 +378,7 @@ export class SessionStore {
       awaiting_input: false,
       ended: false,
       ended_provenance: null,
+      tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
       status: 'live',
       // started_at is wall-clock-now so the panel "age" reflects the
       // observation; last_event_at/status_changed_at are stamped with the
@@ -436,6 +466,7 @@ export class SessionStore {
       theme: p.theme,
       awaiting_input: p.awaiting_input,
       ended: p.ended,
+      tokens: p.tokens,
     };
   }
 
@@ -562,6 +593,11 @@ function panelRowToPanel(r: PanelRow): Panel {
     awaiting_input: r.awaiting_input,
     ended: r.ended,
     ended_provenance: r.ended_provenance,
+    // Tokens aren't persisted to the panels table yet (would require a
+    // schema migration). On hydrate we start at zero and re-accumulate
+    // as the watcher replays the JSONL. Brief flicker on restart;
+    // acceptable trade-off vs. the schema work for now.
+    tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
   };
 }
 
@@ -643,4 +679,23 @@ function buildSessionSummary(
     pinned_checklist_json: null, // populated by later passes
     rolled_up_at: now,
   };
+}
+
+/** Add a resource_usage payload's counters onto the panel's running totals.
+ * Last-seen model wins for the panel-level `model` field. */
+function accumulateUsage(
+  panel: Panel,
+  usage: {
+    model: string | null;
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens: number;
+    cache_read_input_tokens: number;
+  },
+): void {
+  panel.tokens.input += usage.input_tokens;
+  panel.tokens.output += usage.output_tokens;
+  panel.tokens.cache_create += usage.cache_creation_input_tokens;
+  panel.tokens.cache_read += usage.cache_read_input_tokens;
+  if (usage.model) panel.tokens.model = usage.model;
 }

@@ -12,6 +12,7 @@ export type EventKind =
   | 'thinking'
   | 'tool_use'
   | 'tool_result'
+  | 'resource_usage'
   | 'system'
   | 'meta';
 
@@ -37,6 +38,16 @@ export type Event =
   | (EventBase & {
       kind: 'tool_result';
       payload: { tool_use_id: string; content: unknown; is_error: boolean };
+    })
+  | (EventBase & {
+      kind: 'resource_usage';
+      payload: {
+        model: string | null;
+        input_tokens: number;
+        output_tokens: number;
+        cache_creation_input_tokens: number;
+        cache_read_input_tokens: number;
+      };
     })
   | (EventBase & {
       kind: 'system';
@@ -94,11 +105,20 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
     const msg = (raw.message as Raw | undefined) ?? {};
     const content = (msg as Raw).content;
 
+    // Emit a resource_usage event for every assistant message that carries
+    // a `usage` block. Comes through as a sibling event with a `:usage`
+    // uuid suffix so SessionStore can accumulate per-panel totals without
+    // bloating the assistant_text event.
+    const usageEvent =
+      rtype === 'assistant' ? extractUsage(msg, base(':usage')) : null;
+
     if (typeof content === 'string') {
       const kind = rtype === 'user' ? 'user_text' : 'assistant_text';
-      return [{ ...base(''), kind, payload: { text: content } }];
+      const events: Event[] = [{ ...base(''), kind, payload: { text: content } }];
+      if (usageEvent) events.push(usageEvent);
+      return events;
     }
-    if (!Array.isArray(content)) return [];
+    if (!Array.isArray(content)) return usageEvent ? [usageEvent] : [];
 
     const out: Event[] = [];
     content.forEach((block, i) => {
@@ -144,6 +164,7 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
         });
       }
     });
+    if (usageEvent) out.push(usageEvent);
     return out;
   }
 
@@ -176,4 +197,47 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+function asNonNegInt(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : 0;
+}
+
+/** Pull the `usage` block off an assistant message and emit it as its own
+ * Event. Returns null when the message has no usage (e.g. local debug
+ * scenarios). */
+function extractUsage(
+  msg: Raw,
+  baseEvent: {
+    session_id: string;
+    agent_id: string | null;
+    uuid: string;
+    parent_uuid: string | null;
+    ts: string;
+    cwd: string | null;
+  },
+): Event | null {
+  const usage = (msg as { usage?: unknown }).usage;
+  if (!usage || typeof usage !== 'object') return null;
+  const u = usage as Record<string, unknown>;
+  const input = asNonNegInt(u.input_tokens);
+  const output = asNonNegInt(u.output_tokens);
+  const cacheCreate = asNonNegInt(u.cache_creation_input_tokens);
+  const cacheRead = asNonNegInt(u.cache_read_input_tokens);
+  // If every counter is zero, skip — nothing to report. Real usage records
+  // always have at least output_tokens populated.
+  if (input + output + cacheCreate + cacheRead === 0) return null;
+  return {
+    ...baseEvent,
+    kind: 'resource_usage',
+    payload: {
+      model: asString((msg as { model?: unknown }).model),
+      input_tokens: input,
+      output_tokens: output,
+      cache_creation_input_tokens: cacheCreate,
+      cache_read_input_tokens: cacheRead,
+    },
+  };
 }

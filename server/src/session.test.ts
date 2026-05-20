@@ -376,6 +376,98 @@ describe('SessionStore', () => {
     });
   });
 
+  describe('resource_usage accumulation', () => {
+    it('apply(resource_usage) adds to panel.tokens without pushing to events', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      // Seed a panel first via a regular event.
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      const before = store.panel('S');
+      expect(before?.tokens.input).toBe(0);
+      expect(before?.events.length).toBe(1);
+
+      store.apply(
+        ev('resource_usage', {
+          uuid: 'u-usage',
+          payload: {
+            model: 'claude-opus-4-7',
+            input_tokens: 1000,
+            output_tokens: 200,
+            cache_creation_input_tokens: 50,
+            cache_read_input_tokens: 4400,
+          },
+        }),
+      );
+
+      const p = store.panel('S');
+      expect(p?.tokens.input).toBe(1000);
+      expect(p?.tokens.output).toBe(200);
+      expect(p?.tokens.cache_create).toBe(50);
+      expect(p?.tokens.cache_read).toBe(4400);
+      expect(p?.tokens.model).toBe('claude-opus-4-7');
+      // resource_usage events are sidechanneled — not in panel.events.
+      expect(p?.events.length).toBe(1);
+    });
+
+    it('multiple resource_usage events accumulate counters; last-seen model wins', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      store.apply(
+        ev('resource_usage', {
+          uuid: 'u-usage-1',
+          payload: {
+            model: 'claude-sonnet-4-6',
+            input_tokens: 100,
+            output_tokens: 20,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+        }),
+      );
+      store.apply(
+        ev('resource_usage', {
+          uuid: 'u-usage-2',
+          payload: {
+            model: 'claude-opus-4-7',
+            input_tokens: 200,
+            output_tokens: 50,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+        }),
+      );
+      const p = store.panel('S');
+      expect(p?.tokens.input).toBe(300);
+      expect(p?.tokens.output).toBe(70);
+      expect(p?.tokens.model).toBe('claude-opus-4-7');
+    });
+
+    it('panel_upsert delta carries the new totals to clients', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      const deltas = store.apply(
+        ev('resource_usage', {
+          uuid: 'u-usage',
+          payload: {
+            model: 'claude-opus-4-7',
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_creation_input_tokens: 3,
+            cache_read_input_tokens: 4,
+          },
+        }),
+      );
+      const upsert = deltas.find((d) => d.op === 'panel_upsert');
+      expect(upsert).toBeDefined();
+      if (upsert?.op === 'panel_upsert') {
+        expect(upsert.panel.tokens.input).toBe(1);
+        expect(upsert.panel.tokens.output).toBe(2);
+      }
+    });
+  });
+
   describe('markEnded', () => {
     it('flips the ended flag and emits a panel_upsert', () => {
       const clock = new FakeClock();

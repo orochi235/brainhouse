@@ -67,5 +67,48 @@ Concrete pieces:
 This pairs naturally with #9 (schema/pipeline buildout) since the
 `usage` field is one of the higher-value passthrough records.
 
+## Nag the user when a session is awaiting input
+The Notification hook already populates `awaiting_input: true` on panels
+that are blocking on the user (e.g. permission required, AskUserQuestion
+pending), and we render a small badge in the header. That's easy to miss
+when brainhouse is in a background tab or another monitor.
+
+Want: a more assertive nudge that's hard to miss but still respectful.
+Candidates, mix-and-match:
+- Tab-title flash: prepend "● " to `document.title` when *any* panel is
+  awaiting; revert when none are.
+- Browser `Notification` API: native OS toast, gated on `Notification.
+  permission === 'granted'`. Requires a permission prompt the first
+  time; pref to enable.
+- Audible chime, off by default, pref to enable.
+- "Awaiting input" pulse on the favicon (some sites do this; tasteful).
+- A panel-level wake-up: bring the awaiting panel into view + briefly
+  highlight when the flag flips on. Probably worth doing regardless of
+  the cross-tab nudges.
+
+Per the design-principles doc, the prefs surface here should accept the
+user picking *which* of these they want, not be one hard-coded behavior.
+
+## Transforms-as-diagrams
+Visualize the event → view-item pipeline as a flowchart-style diagram —
+nodes for transforms, edges for the event/view-item kinds that flow
+through them, ideally in a format we can compose smaller diagrams out of
+to explain individual scenarios.
+
+Three flavors of increasing effort, all worth doing eventually:
+
+1. Static Mermaid diagrams in `docs/`. Trivial. Reference doc.
+2. Live pipeline trace for a specific panel: which transform handled
+   each event, what view item came out. `preprocessEvents` would need a
+   trace mode that emits records alongside its outputs.
+3. Composable diagram-of-diagrams: each transform is a reusable node;
+   build per-scenario explainers by snapping nodes together. Bigger
+   engineering (probably d3 or react-flow); pays off when we want to
+   explain a specific weird transcript.
+
+User clarification: "more in line with something like a flowchart that
+shows what comes in, what transforms it, and what goes out, and ideally
+in a format where we could compose diagrams out of many of those."
+
 ## Schema / pipeline buildout
 Continue extending `preprocessEvents` to interpret newer record types as Claude Code adds them. Inventory current passthrough `meta` records (we already saw `custom-title`, `agent-name`, `subagent-meta`, `permission-mode`, `agent-color`, `pr-link`, `queue-operation`, `file-history-snapshot`, `attachment`, `last-prompt`) and decide which deserve first-class rendering.
