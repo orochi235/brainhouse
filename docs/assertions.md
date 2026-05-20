@@ -6,7 +6,12 @@ UI/server is meant to uphold. New entries go at the bottom.
 
 ## UI
 
-- When opening or restoring a session window, always scroll to the bottom.
+- When opening or restoring a session window, always scroll to the bottom
+  — *unless* sessionStorage has a recent (<60s) saved scroll position for
+  that panel, in which case restore the saved position. That last
+  exception only matters for the "page refresh" case; a panel reopened
+  from the dock minutes later still snaps to the bottom because the
+  saved position has aged out.
 - When a session window receives an update, always scroll it to the bottom
   — unless the user has actively clicked inside that panel within the last
   30 seconds *and* the browser window currently has focus, or its state has

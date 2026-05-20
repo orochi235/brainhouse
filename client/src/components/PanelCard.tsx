@@ -13,6 +13,7 @@ import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
 import { projectLabel } from '../lib/project.ts';
+import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import { EventList } from './EventList.tsx';
@@ -86,18 +87,33 @@ export function PanelCard({
   // defers to the user's manual scroll position; outside that window the
   // panel always snaps to the bottom on update.
   const lastClickAtRef = useRef(0);
+  /** Throttle for sessionStorage writes during fast scrolls — at most one
+   * save per animation frame. Cleared after each flush. */
+  const scrollSaveRafRef = useRef<number | null>(null);
 
   // On mount and whenever the panel id changes (e.g. focused view, restore
-  // from the tray, fullscreen open), jump straight to the bottom — restoring
-  // a session view almost always wants the latest activity, not the top.
+  // from the tray, fullscreen open), jump straight to the bottom — UNLESS
+  // sessionStorage has a recent (<60s) saved scroll position for this
+  // panel, which means we're mid-refresh and want to restore the view.
   // useLayoutEffect runs after DOM mutations but before paint so the user
-  // never sees a flash of the top of the transcript. The rAF re-snap covers
-  // children whose final size lands a frame later (code highlighting, async
-  // images).
+  // never sees a flash of the wrong position. The rAF re-snap covers
+  // children whose final size lands a frame later (code highlighting,
+  // async images).
   // biome-ignore lint/correctness/useExhaustiveDependencies: panel.id drives the reset; refs are intentionally not deps.
   useLayoutEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
+    const saved = loadScrollPosition(panel.id);
+    if (saved !== null) {
+      el.scrollTop = saved;
+      stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+      // Children that grow a frame later (code highlight, images) — re-apply
+      // the saved offset once they settle so we don't jitter to the top.
+      const raf = requestAnimationFrame(() => {
+        el.scrollTop = saved;
+      });
+      return () => cancelAnimationFrame(raf);
+    }
     el.scrollTop = el.scrollHeight;
     stickToBottomRef.current = true;
     const raf = requestAnimationFrame(() => {
@@ -252,6 +268,16 @@ export function PanelCard({
           const el = e.currentTarget;
           // 32px slack so a near-bottom scroll still counts as "at bottom".
           stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+          // Persist position for refresh-recovery (sessionStorage, 60s TTL).
+          // Debounced via the same requestAnimationFrame the browser is
+          // already firing for scroll, so we don't write storage on every
+          // wheel tick.
+          if (scrollSaveRafRef.current === null) {
+            scrollSaveRafRef.current = requestAnimationFrame(() => {
+              scrollSaveRafRef.current = null;
+              if (bodyRef.current) saveScrollPosition(panel.id, bodyRef.current.scrollTop);
+            });
+          }
         }}
       >
         <div className="panel-body-content" ref={contentRef}>
