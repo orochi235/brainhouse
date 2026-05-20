@@ -205,6 +205,31 @@ The forward-looking equivalent would be an agent saying "this next step
 will probably need ~50k more tokens." Lets the user kill a session
 early when it's about to spiral.
 
+## End-of-turn: "did you learn anything worth remembering?"
+At session end (or at any natural breakpoint — a checkpoint, a long
+chunk of work shipping), prompt the agent to self-report:
+*"what did you learn here that's worth carrying forward?"* — then route
+those nuggets somewhere durable. Brainhouse-shaped homes for them:
+
+- per-project memory file (e.g. `<cwd>/.claude/learnings.md`)
+- the user's global memory if it's generally applicable
+- a `session_summary.learnings` JSON field so they're queryable later
+  ("show me everything I've learned about this codebase across the
+  last 6 months")
+
+Pairs with the existing `key_decisions` field on session_summary but
+fundamentally different: decisions are about *the work*, learnings are
+about *the world* (a constraint we hit, a quirk of the codebase, a
+non-obvious convention, a teammate's preference). Agents often
+implicitly know these and never write them down; explicitly asking
+flushes them out.
+
+UI piece: at session-end (or via a manual "harvest learnings" button on
+a panel), brainhouse shows whatever the agent volunteered and lets the
+user accept/edit/discard each item before it gets written to memory.
+The accept-before-write step matters — agents will sometimes volunteer
+things that aren't actually worth remembering.
+
 ## Negotiated interruption points
 The agent declares "ok to interrupt here" vs. "in the middle of an
 atomic operation, please wait." Lets the user (or another agent) ctrl-c
