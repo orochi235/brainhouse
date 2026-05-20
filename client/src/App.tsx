@@ -3,6 +3,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { PanelCard } from './components/PanelCard.tsx';
 import { PrefsModal } from './components/PrefsModal.tsx';
+import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
@@ -184,6 +185,7 @@ export function App() {
           <button type="button" className="debug-spawn" onClick={dismissAll}>
             clear all
           </button>
+          <ScenariosButton />
           <TransformsButton />
           <span className={`conn conn-${status}`}>{status}</span>
           <span className="topbar-icon-buttons">
@@ -477,6 +479,20 @@ function onGridDragOver(e: React.DragEvent) {
   if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
+}
+
+function ScenariosButton() {
+  const lightbox = useLightbox();
+  return (
+    <button
+      type="button"
+      className="debug-spawn"
+      title="Spawn a synthetic scenario that exercises specific UI/lifecycle paths"
+      onClick={() => lightbox.open(<ScenariosModal />)}
+    >
+      scenarios
+    </button>
+  );
 }
 
 function TransformsButton() {

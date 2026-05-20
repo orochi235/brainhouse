@@ -16,6 +16,7 @@ import { type EventEmitter, on } from 'node:events';
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
+import { getScenario, listScenarios } from './scenarios.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
 import { resolveRoots } from './roots.js';
@@ -164,6 +165,17 @@ export const appRouter = t.router({
         );
         return { sessionId, agentId };
       }),
+    scenarios: t.router({
+      list: t.procedure.query(() => listScenarios()),
+      spawn: t.procedure
+        .input(z.object({ key: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+          const scenario = getScenario(input.key);
+          if (!scenario) throw new Error(`Unknown scenario: ${input.key}`);
+          const { sessionId } = await scenario.run(ctx.monitor, {});
+          return { sessionId };
+        }),
+    }),
     spawnSubagentIn: t.procedure
       .input(
         z.object({
