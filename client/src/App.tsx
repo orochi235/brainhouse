@@ -9,6 +9,7 @@ import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { LightboxProvider, useLightbox } from './lib/lightbox.tsx';
 import { sortByOrder, usePanelOrder, usePinnedPanels, useWidePanels } from './lib/panelOrder.ts';
 import { useTheme } from './lib/preferences.ts';
+import { useIntentions } from './lib/useIntentions.ts';
 import { usePrefs } from './lib/usePrefs.ts';
 import { trpc } from './trpc.ts';
 import { type PanelState, useDeltaStream } from './useDeltaStream.ts';
@@ -22,16 +23,29 @@ export function App() {
   const showAccountBadges = prefs.roots.length > 1;
   const accountFor = (p: PanelState): string | null | undefined =>
     showAccountBadges ? p.account_label : undefined;
-  const { order, moveBefore } = usePanelOrder();
-  const { wide, toggleWide } = useWidePanels();
-  const { pinned, togglePin } = usePinnedPanels();
+  const { seeded, persist: persistIntention } = useIntentions();
+  const { order, moveBefore } = usePanelOrder({
+    initial: seeded.order,
+    persist: (id, manual_order) => persistIntention(id, { manual_order }),
+  });
+  const { wide, toggleWide } = useWidePanels({
+    initial: seeded.wide,
+    persist: (id, value) => persistIntention(id, { wide: value }),
+  });
+  const { pinned, togglePin } = usePinnedPanels({
+    initial: seeded.pinned,
+    persist: (id, value) => persistIntention(id, { pinned: value }),
+  });
   const {
     dismiss,
     dismissAll,
     restore: restoreLocal,
     isHidden,
     isClientMini,
-  } = usePanelDismissal(panels);
+  } = usePanelDismissal(panels, {
+    initial: seeded.dismissal,
+    persist: (id, patch) => persistIntention(id, patch),
+  });
 
   useEffect(() => {
     document.body.classList.toggle('imessage', imessage);

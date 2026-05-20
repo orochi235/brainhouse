@@ -40,12 +40,5 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
     "npm-run-all": "^4.1.5"
-  },
-  "//optionalDependencies": "Pre-declared so npm/cli#4828 (optional-dep arch resolution bug) can't ship the wrong Mac binary regardless of which arch ran `npm install`. Costs ~30MB on disk; saves the recurring 'Cannot find @rollup/rollup-darwin-*' fire-drill.",
-  "optionalDependencies": {
-    "@esbuild/darwin-arm64": "*",
-    "@esbuild/darwin-x64": "*",
-    "@rollup/rollup-darwin-arm64": "*",
-    "@rollup/rollup-darwin-x64": "*"
   }
 }

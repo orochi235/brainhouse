@@ -20,10 +20,14 @@ import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
 import { resolveRoots } from './roots.js';
 import type { Delta, PanelDto } from './session.js';
+import type { IntentionsRow, Store } from './store.js';
 
 export interface AppContext {
   monitor: TranscriptMonitor;
   prefs: PrefsStore;
+  /** Persistence layer. Nullable so prefs.storage.persistEnabled=false
+   * (or test contexts) just skips the read/write paths. */
+  store: Store | null;
 }
 
 const t = initTRPC.context<AppContext>().create();
@@ -101,6 +105,48 @@ export const appRouter = t.router({
         ctx.monitor.setTimings(b);
       }
       return updated;
+    }),
+  }),
+
+  /** Per-panel UI intentions (pin / wide / manual_order / user_mini /
+   * hidden_at / auto_mini_at). Lives in `intentions` table; survives
+   * server restarts when prefs.storage.persistEnabled is true. */
+  intentions: t.router({
+    all: t.procedure.query(({ ctx }): IntentionsRow[] => ctx.store?.allIntentions() ?? []),
+    upsert: t.procedure
+      .input(
+        z.object({
+          panel_id: z.string(),
+          pinned: z.boolean().optional(),
+          wide: z.boolean().optional(),
+          manual_order: z.number().int().nullable().optional(),
+          user_mini: z.boolean().optional(),
+          hidden_at: z.number().nullable().optional(),
+          auto_mini_at: z.number().nullable().optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) => {
+        if (!ctx.store) return { ok: false, persisted: false };
+        // Merge with existing so partial patches don't clobber other fields.
+        const existing = ctx.store.getIntentions(input.panel_id);
+        ctx.store.upsertIntentions({
+          panel_id: input.panel_id,
+          pinned: input.pinned ?? existing?.pinned ?? false,
+          wide: input.wide ?? existing?.wide ?? false,
+          manual_order:
+            input.manual_order !== undefined ? input.manual_order : (existing?.manual_order ?? null),
+          user_mini: input.user_mini ?? existing?.user_mini ?? false,
+          hidden_at:
+            input.hidden_at !== undefined ? input.hidden_at : (existing?.hidden_at ?? null),
+          auto_mini_at:
+            input.auto_mini_at !== undefined ? input.auto_mini_at : (existing?.auto_mini_at ?? null),
+          updated_at: Date.now() / 1000,
+        });
+        return { ok: true, persisted: true };
+      }),
+    clear: t.procedure.input(z.object({ panel_id: z.string() })).mutation(({ ctx, input }) => {
+      ctx.store?.deleteIntentions(input.panel_id);
+      return { ok: true };
     }),
   }),
 

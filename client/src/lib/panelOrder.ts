@@ -1,49 +1,96 @@
 /**
- * In-memory panel ordering and per-panel flags. Session state is transient —
- * we don't persist these across reloads. Panels not yet in the order go to
- * the end of the list (so newly-arrived sessions appear at the tail).
+ * Panel ordering and per-panel flags. Each hook holds canonical client state
+ * (optimistic UI) and optionally writes through to the server-side
+ * `intentions` table via a `persist` callback, so manual drag order,
+ * pin, and wide flags survive a server restart.
+ *
+ * Hooks accept an optional `initial` to seed from server-loaded intentions.
+ * When omitted, behavior matches the pre-persistence default: in-memory only.
  */
 
 import { useCallback, useState } from 'react';
 
-export function usePanelOrder() {
-  const [order, setOrder] = useState<string[]>([]);
+interface OrderOpts {
+  /** Sparse manual_order values, keyed by panel id. Lower = earlier. */
+  initial?: Map<string, number>;
+  persist?: (id: string, manual_order: number | null) => void;
+}
 
-  const moveBefore = useCallback((sourceId: string, targetId: string, knownIds: string[]) => {
-    setOrder((current) => reorder(current, knownIds, sourceId, targetId));
-  }, []);
+export function usePanelOrder(opts: OrderOpts = {}) {
+  const { initial, persist } = opts;
+  const [order, setOrder] = useState<string[]>(() => orderFromIntentions(initial));
+
+  const moveBefore = useCallback(
+    (sourceId: string, targetId: string, knownIds: string[]) => {
+      setOrder((current) => {
+        const next = reorder(current, knownIds, sourceId, targetId);
+        // Write through every position whose place actually changed.
+        if (persist) {
+          for (let i = 0; i < next.length; i++) {
+            const id = next[i];
+            if (id && current.indexOf(id) !== i) persist(id, i);
+          }
+        }
+        return next;
+      });
+    },
+    [persist],
+  );
 
   return { order, moveBefore };
 }
 
-export function useWidePanels() {
-  const [wide, setWide] = useState<Set<string>>(() => new Set());
+interface FlagOpts {
+  initial?: Set<string>;
+  persist?: (id: string, value: boolean) => void;
+}
 
-  const toggleWide = useCallback((id: string) => {
-    setWide((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+export function useWidePanels(opts: FlagOpts = {}) {
+  const { initial, persist } = opts;
+  const [wide, setWide] = useState<Set<string>>(() => new Set(initial ?? []));
+
+  const toggleWide = useCallback(
+    (id: string) => {
+      setWide((current) => {
+        const next = new Set(current);
+        const newValue = !next.has(id);
+        if (newValue) next.add(id);
+        else next.delete(id);
+        persist?.(id, newValue);
+        return next;
+      });
+    },
+    [persist],
+  );
 
   return { wide, toggleWide };
 }
 
-export function usePinnedPanels() {
-  const [pinned, setPinned] = useState<Set<string>>(() => new Set());
+export function usePinnedPanels(opts: FlagOpts = {}) {
+  const { initial, persist } = opts;
+  const [pinned, setPinned] = useState<Set<string>>(() => new Set(initial ?? []));
 
-  const togglePin = useCallback((id: string) => {
-    setPinned((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const togglePin = useCallback(
+    (id: string) => {
+      setPinned((current) => {
+        const next = new Set(current);
+        const newValue = !next.has(id);
+        if (newValue) next.add(id);
+        else next.delete(id);
+        persist?.(id, newValue);
+        return next;
+      });
+    },
+    [persist],
+  );
 
   return { pinned, togglePin };
+}
+
+/** Materialize a manual_order Map into an ordered array of panel ids. */
+function orderFromIntentions(initial: Map<string, number> | undefined): string[] {
+  if (!initial || initial.size === 0) return [];
+  return [...initial.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
 }
 
 /**

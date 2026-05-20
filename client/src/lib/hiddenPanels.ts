@@ -26,10 +26,35 @@ import type { PanelState } from '../useDeltaStream.ts';
 
 const STALE_ON_FIRST_SIGHT_SECONDS = 30;
 
-export function usePanelDismissal(panels: Map<string, PanelState>) {
-  const [hiddenAt, setHiddenAt] = useState<Record<string, number>>({});
-  const [userMini, setUserMini] = useState<Set<string>>(() => new Set());
-  const [autoMiniAt, setAutoMiniAt] = useState<Record<string, number>>({});
+export interface DismissalIntentions {
+  userMini?: Set<string>;
+  hiddenAt?: Record<string, number>;
+  autoMiniAt?: Record<string, number>;
+}
+
+export interface DismissalOpts {
+  initial?: DismissalIntentions;
+  /** Persist a single panel's dismissal-related intentions. Called on every
+   * mutation; throttle/debounce upstream if needed. */
+  persist?: (
+    id: string,
+    patch: {
+      user_mini?: boolean;
+      hidden_at?: number | null;
+      auto_mini_at?: number | null;
+    },
+  ) => void;
+}
+
+export function usePanelDismissal(panels: Map<string, PanelState>, opts: DismissalOpts = {}) {
+  const { initial, persist } = opts;
+  const [hiddenAt, setHiddenAt] = useState<Record<string, number>>(() => ({
+    ...(initial?.hiddenAt ?? {}),
+  }));
+  const [userMini, setUserMini] = useState<Set<string>>(() => new Set(initial?.userMini ?? []));
+  const [autoMiniAt, setAutoMiniAt] = useState<Record<string, number>>(() => ({
+    ...(initial?.autoMiniAt ?? {}),
+  }));
   const seenIdsRef = useRef<Set<string>>(new Set());
 
   // First-sight auto-mini: bootstrap replays panels with old
@@ -71,49 +96,59 @@ export function usePanelDismissal(panels: Map<string, PanelState>) {
     });
   }, [panels]);
 
-  const dismiss = useCallback((panel: PanelState) => {
-    // Panels already in the tray (server-side mini) → fully hide; there's
-    // nowhere else for them to go. Everything else (live or done in the
-    // grid) → send to the tray as userMini. Auto-mini entries get
-    // upgraded to userMini so the user's manual intent overrides the
-    // self-clearing behavior.
-    if (panel.status === 'mini') {
-      setHiddenAt((cur) => ({ ...cur, [panel.id]: Date.now() / 1000 }));
-    } else {
+  const dismiss = useCallback(
+    (panel: PanelState) => {
+      // Panels already in the tray (server-side mini) → fully hide; there's
+      // nowhere else for them to go. Everything else (live or done in the
+      // grid) → send to the tray as userMini. Auto-mini entries get
+      // upgraded to userMini so the user's manual intent overrides the
+      // self-clearing behavior.
+      if (panel.status === 'mini') {
+        const at = Date.now() / 1000;
+        setHiddenAt((cur) => ({ ...cur, [panel.id]: at }));
+        persist?.(panel.id, { hidden_at: at });
+      } else {
+        setUserMini((cur) => {
+          const next = new Set(cur);
+          next.add(panel.id);
+          return next;
+        });
+        setAutoMiniAt((cur) => {
+          if (!(panel.id in cur)) return cur;
+          const next = { ...cur };
+          delete next[panel.id];
+          return next;
+        });
+        persist?.(panel.id, { user_mini: true, auto_mini_at: null });
+      }
+    },
+    [persist],
+  );
+
+  const restore = useCallback(
+    (id: string) => {
       setUserMini((cur) => {
+        if (!cur.has(id)) return cur;
         const next = new Set(cur);
-        next.add(panel.id);
+        next.delete(id);
+        return next;
+      });
+      setHiddenAt((cur) => {
+        if (!(id in cur)) return cur;
+        const next = { ...cur };
+        delete next[id];
         return next;
       });
       setAutoMiniAt((cur) => {
-        if (!(panel.id in cur)) return cur;
+        if (!(id in cur)) return cur;
         const next = { ...cur };
-        delete next[panel.id];
+        delete next[id];
         return next;
       });
-    }
-  }, []);
-
-  const restore = useCallback((id: string) => {
-    setUserMini((cur) => {
-      if (!cur.has(id)) return cur;
-      const next = new Set(cur);
-      next.delete(id);
-      return next;
-    });
-    setHiddenAt((cur) => {
-      if (!(id in cur)) return cur;
-      const next = { ...cur };
-      delete next[id];
-      return next;
-    });
-    setAutoMiniAt((cur) => {
-      if (!(id in cur)) return cur;
-      const next = { ...cur };
-      delete next[id];
-      return next;
-    });
-  }, []);
+      persist?.(id, { user_mini: false, hidden_at: null, auto_mini_at: null });
+    },
+    [persist],
+  );
 
   const isHidden = useCallback(
     (panel: PanelState) => {
@@ -145,11 +180,12 @@ export function usePanelDismissal(panels: Map<string, PanelState>) {
     const nextHidden: Record<string, number> = {};
     for (const p of panels.values()) {
       nextHidden[p.id] = Math.max(p.last_event_at, now);
+      persist?.(p.id, { hidden_at: nextHidden[p.id], user_mini: false, auto_mini_at: null });
     }
     setHiddenAt(nextHidden);
     setUserMini(new Set());
     setAutoMiniAt({});
-  }, [panels]);
+  }, [panels, persist]);
 
   return { dismiss, dismissAll, restore, isHidden, isClientMini };
 }
