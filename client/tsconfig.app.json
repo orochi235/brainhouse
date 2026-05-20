@@ -15,7 +15,6 @@
     "isolatedModules": true,
     "useDefineForClassFields": true,
     "verbatimModuleSyntax": true,
-    "baseUrl": ".",
     "paths": {
       "@server/*": ["../server/src/*"]
     }
