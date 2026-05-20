@@ -41,5 +41,25 @@ in the layout state.
 ## Tiled window management
 Replace the auto-fill grid with a tiling layout: drag panels into slots, resize between rows, persist layout per project. Likely needs a dedicated layout state in `App.tsx` and a thin manager component.
 
+## AskUserQuestion: render the user's choice
+We currently transform an `AskUserQuestion` tool call into an assistant
+bubble showing the question + every option. We *don't* indicate which
+option the user actually picked (or that they wrote a custom answer),
+so the bubble reads like an unanswered open question even after the
+turn moved on.
+
+Plan: read the matching `tool_result` payload — it contains
+`{ answers: { <question>: <selected-label> }, annotations? }` — and
+either (a) decorate the chosen option in the bubble (✓ on the row, or
+the un-chosen ones dim/strikethrough), or (b) render a compact "answer:
+<label>" footer below the question. Variant (b) is simpler and handles
+multi-select naturally. If the user added free-text notes via the
+"Other" path, surface those too.
+
+Implement in `pipeline.ts:formatAskUserQuestion` — it already swallows
+the `tool_result` via `absorbedToolUseIds`; instead, pass the result
+through to the formatter and include the chosen labels in the rendered
+markdown.
+
 ## Schema / pipeline buildout
 Continue extending `preprocessEvents` to interpret newer record types as Claude Code adds them. Inventory current passthrough `meta` records (we already saw `custom-title`, `agent-name`, `subagent-meta`, `permission-mode`, `agent-color`, `pr-link`, `queue-operation`, `file-history-snapshot`, `attachment`, `last-prompt`) and decide which deserve first-class rendering.
