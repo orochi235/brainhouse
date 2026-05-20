@@ -112,3 +112,80 @@ in a format where we could compose diagrams out of many of those."
 
 ## Schema / pipeline buildout
 Continue extending `preprocessEvents` to interpret newer record types as Claude Code adds them. Inventory current passthrough `meta` records (we already saw `custom-title`, `agent-name`, `subagent-meta`, `permission-mode`, `agent-color`, `pr-link`, `queue-operation`, `file-history-snapshot`, `attachment`, `last-prompt`) and decide which deserve first-class rendering.
+
+---
+
+# Communication enhancements — parent agent ↔ subprocess
+
+Open-ended list of conventions/protocols that would let parents (and
+brainhouse, as the viewer) understand what a subprocess is *doing* and
+*needs* with higher fidelity than "another assistant_text bubble landed."
+
+Some of these are things Claude Code itself would need to adopt; others
+are just rendering conventions brainhouse can recognize if the agent
+follows them. Treat this list as a wishlist + design scratchpad, not
+ready-to-implement.
+
+## Checklists (already partial)
+Agents emit a ```pensieve-checklist``` fenced block; we render it as a
+pinned progress list above the transcript. Already working but could go
+further:
+- Distinguish "intended plan" vs "ad-hoc todo" — the former is the
+  starting commitment, the latter is mid-stream additions.
+- Surface the *delta* between checklist revisions (added/removed items)
+  in the bubble itself, not just by replacing the pin.
+- Per-item time-elapsed so a stuck item is obvious.
+
+## Progress updates beyond checklists
+For long-running work that isn't naturally checklist-shaped (e.g., "I'm
+running tests, here's the rolling pass/fail count"). Today the agent
+either spams assistant_text or stays silent. Want:
+- A convention for "status only" updates that brainhouse renders as a
+  single replaceable line (not stacked bubbles).
+- Numeric progress (`{done: 23, total: 100}`) that we can show as a bar.
+- "What I'm waiting on" hints (`waiting on: external API`,
+  `waiting on: long-running build`) so the user knows the silence is
+  expected.
+
+## Agent self-assessment: expectation + urgency
+Two signals the agent often *knows* but doesn't communicate:
+
+- **Does this turn expect a reply?** Sometimes the agent finishes a
+  thought and a reply is welcome; other times it's mid-task and a reply
+  would derail it. A small `expects_reply: bool | 'optional'` hint
+  would let brainhouse de-emphasize panels that aren't blocking on
+  anyone.
+- **Is this urgent?** Catastrophic-looking results (test failure, lint
+  red, deploy stuck) and "I need a human decision right now" beats
+  vs. "background progress" should be distinguishable. An `urgency:
+  'info' | 'attention' | 'blocking'` hint would feed the
+  awaiting-input nag system.
+
+These pair with the "nag the user when a session is awaiting their
+input" TODO above — both are about brainhouse knowing *how loudly* to
+surface a panel's state.
+
+## Subprocess intent / "what am I trying to accomplish"
+Subagents have a `description` field on creation (the parent's prompt
+to them). It'd be useful to also surface what the *subagent itself*
+thinks it's doing — a self-summary it updates as the work evolves.
+Lets the parent (and brainhouse) understand drift: "the goal was X but
+the subagent is now off doing Y."
+
+## Confidence / uncertainty signals
+A way for the agent to say "I'm doing this but not confident about it
+— check my work" vs. "this is well-trodden, no need to re-verify." Maps
+naturally to a per-bubble or per-tool-call badge.
+
+## Cost projections (forward-looking, not historical)
+We have *backward-looking* token totals (the resource_usage work above).
+The forward-looking equivalent would be an agent saying "this next step
+will probably need ~50k more tokens." Lets the user kill a session
+early when it's about to spiral.
+
+## Negotiated interruption points
+The agent declares "ok to interrupt here" vs. "in the middle of an
+atomic operation, please wait." Lets the user (or another agent) ctrl-c
+without leaving the work in a half-done state. Pairs with the
+`ended_provenance` work and could replace some of the dance around
+SubagentStop.
