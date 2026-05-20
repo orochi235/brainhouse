@@ -53,12 +53,7 @@ async function main() {
       if (req.method !== 'GET' || req.url.startsWith('/trpc') || req.url.startsWith('/health')) {
         return reply.code(404).send({ error: 'not found' });
       }
-      // `sendFile` comes from @fastify/static's module augmentation; some
-      // recent type updates stopped exposing it cleanly under bundler
-      // resolution. Narrow at the call site.
-      return (reply as typeof reply & { sendFile: (path: string) => unknown }).sendFile(
-        'index.html',
-      );
+      return reply.sendFile('index.html');
     });
   }
 
