@@ -58,7 +58,16 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
       } else if (d.op === 'event_append') {
         const existing = panels.get(d.panel_id);
         if (existing) {
-          panels.set(d.panel_id, { ...existing, events: [...existing.events, d.event] });
+          // Bump last_event_at on every event so client-side observers
+          // (e.g. the auto-mini decay in hiddenPanels) see real-time
+          // activity progression. The server doesn't re-broadcast its
+          // own last_event_at via event_append, so we infer from
+          // arrival time here.
+          panels.set(d.panel_id, {
+            ...existing,
+            events: [...existing.events, d.event],
+            last_event_at: Date.now() / 1000,
+          });
         }
       } else if (d.op === 'panel_status') {
         const existing = panels.get(d.panel_id);

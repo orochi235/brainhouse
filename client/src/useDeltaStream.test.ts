@@ -80,6 +80,19 @@ describe('useDeltaStream reducer', () => {
     expect(seeded.panels.get('a')?.events).toEqual([]);
   });
 
+  it('event_append bumps last_event_at to the arrival time', () => {
+    const seeded = reducer(initialState, {
+      type: 'delta',
+      delta: { op: 'panel_upsert', panel: panelDto({ id: 'a', last_event_at: 0 }) } as Delta,
+    });
+    const before = seeded.panels.get('a')?.last_event_at ?? -1;
+    const next = reducer(seeded, {
+      type: 'delta',
+      delta: { op: 'event_append', panel_id: 'a', event: ev } as Delta,
+    });
+    expect(next.panels.get('a')?.last_event_at).toBeGreaterThan(before);
+  });
+
   it('event_append silently drops an event for an unknown panel', () => {
     const next = reducer(initialState, {
       type: 'delta',

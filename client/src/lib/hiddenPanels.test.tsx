@@ -94,6 +94,44 @@ describe('usePanelDismissal', () => {
     expect(result.current.isHidden(fresh)).toBe(false);
   });
 
+  it('auto-mini panel pops back when activity bumps last_event_at past the routing timestamp', () => {
+    const stale = panel('a', { last_event_at: Date.now() / 1000 - 600 });
+    const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {
+      initialProps: { p: makePanels(stale) },
+    });
+    // Initial: stale on first sight → routed to dock.
+    expect(result.current.isClientMini(stale)).toBe(true);
+    // Activity resumes — `last_event_at` advances past the routing time.
+    const resumed = panel('a', { last_event_at: Date.now() / 1000 + 120 });
+    rerender({ p: makePanels(resumed) });
+    expect(result.current.isClientMini(resumed)).toBe(false);
+  });
+
+  it('explicitly user-dismissed panels stay in the dock even after activity', () => {
+    const live = panel('a', { last_event_at: Date.now() / 1000 });
+    const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {
+      initialProps: { p: makePanels(live) },
+    });
+    act(() => result.current.dismiss(live));
+    expect(result.current.isClientMini(live)).toBe(true);
+    // Activity arrives — still in the dock because user intent was explicit.
+    const resumed = panel('a', { last_event_at: Date.now() / 1000 + 120 });
+    rerender({ p: makePanels(resumed) });
+    expect(result.current.isClientMini(resumed)).toBe(true);
+  });
+
+  it('dismissing an auto-mini panel upgrades it to user-mini (sticky)', () => {
+    const stale = panel('a', { last_event_at: Date.now() / 1000 - 600 });
+    const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {
+      initialProps: { p: makePanels(stale) },
+    });
+    act(() => result.current.dismiss(stale));
+    // Even with fresh activity it stays in the dock — user dismissal wins.
+    const resumed = panel('a', { last_event_at: Date.now() / 1000 + 120 });
+    rerender({ p: makePanels(resumed) });
+    expect(result.current.isClientMini(resumed)).toBe(true);
+  });
+
   it('prunes hiddenAt + clientMini entries when the server forgets a panel', () => {
     const a = panel('a');
     const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {

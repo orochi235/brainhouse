@@ -1,17 +1,24 @@
 /**
  * Client-side window-management for panels. We never mutate server state —
- * the agents are the source of truth. Two states live here:
+ * the agents are the source of truth. Three states live here:
  *
- *   - `clientMini`: a *live* panel the user dismissed. It moves to the
- *     mini-tray (alongside server-side mini panels) but its underlying
- *     session keeps running. Draggable back to the grid.
+ *   - `userMini`: the user *explicitly* dismissed this panel. Sticky —
+ *     stays in the dock even when new activity arrives. The user-intent
+ *     trumps server churn.
  *
- *   - `hiddenAt`: a non-live panel the user dismissed. It disappears
- *     entirely; reappears automatically if the server sends new activity
- *     (`last_event_at > hideAt`).
+ *   - `autoMiniAt`: this panel was *auto-routed* to the dock on first
+ *     sight because it was stale on reload (or because the server moved
+ *     it to mini for idleness — see below). Self-clears when activity
+ *     bumps `last_event_at` past the recorded timestamp. The user can
+ *     still drag it back manually.
  *
- * Both live in memory only — session state is transient. Entries get pruned
- * when the server forgets the panel for real (committed `panel_remove`).
+ *   - `hiddenAt`: the user dismissed a panel that was already in the
+ *     tray, which is "fully hide". Same `last_event_at` resurrection
+ *     rule as autoMiniAt, but the panel disappears entirely instead of
+ *     sitting in the dock.
+ *
+ * All three live in memory only. Entries get pruned when the server
+ * forgets the panel for real (committed `panel_remove`).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -21,27 +28,28 @@ const STALE_ON_FIRST_SIGHT_SECONDS = 30;
 
 export function usePanelDismissal(panels: Map<string, PanelState>) {
   const [hiddenAt, setHiddenAt] = useState<Record<string, number>>({});
-  const [clientMini, setClientMini] = useState<Set<string>>(() => new Set());
+  const [userMini, setUserMini] = useState<Set<string>>(() => new Set());
+  const [autoMiniAt, setAutoMiniAt] = useState<Record<string, number>>({});
   const seenIdsRef = useRef<Set<string>>(new Set());
 
-  // First-sight auto-mini: bootstrap replays panels with old `last_event_at`.
-  // If a panel appears with no recent activity, route it straight to the dock
-  // so a reload doesn't dump 15 stale panels in the grid. The user can still
-  // dig them out of the tray.
+  // First-sight auto-mini: bootstrap replays panels with old
+  // `last_event_at`. If a panel appears with no recent activity, route it
+  // straight to the dock so a reload doesn't dump 15 stale panels in the
+  // grid. Stamped with a timestamp so a future event automatically
+  // promotes it back to the grid — *unlike* userMini, which is sticky.
   useEffect(() => {
-    const cutoff = Date.now() / 1000 - STALE_ON_FIRST_SIGHT_SECONDS;
-    const fresh: string[] = [];
+    const now = Date.now() / 1000;
+    const cutoff = now - STALE_ON_FIRST_SIGHT_SECONDS;
+    const fresh: Record<string, number> = {};
     for (const p of panels.values()) {
       if (seenIdsRef.current.has(p.id)) continue;
       seenIdsRef.current.add(p.id);
-      if (p.last_event_at < cutoff) fresh.push(p.id);
+      if (p.last_event_at < cutoff) {
+        fresh[p.id] = Math.max(p.last_event_at, now);
+      }
     }
-    if (fresh.length > 0) {
-      setClientMini((cur) => {
-        const next = new Set(cur);
-        for (const id of fresh) next.add(id);
-        return next;
-      });
+    if (Object.keys(fresh).length > 0) {
+      setAutoMiniAt((cur) => ({ ...cur, ...fresh }));
     }
   }, [panels]);
 
@@ -50,16 +58,9 @@ export function usePanelDismissal(panels: Map<string, PanelState>) {
     for (const id of seenIdsRef.current) {
       if (!panels.has(id)) seenIdsRef.current.delete(id);
     }
-    setHiddenAt((cur) => {
-      let changed = false;
-      const next: Record<string, number> = {};
-      for (const [id, t] of Object.entries(cur)) {
-        if (panels.has(id)) next[id] = t;
-        else changed = true;
-      }
-      return changed ? next : cur;
-    });
-    setClientMini((cur) => {
+    setHiddenAt((cur) => pruneMap(cur, panels));
+    setAutoMiniAt((cur) => pruneMap(cur, panels));
+    setUserMini((cur) => {
       const next = new Set<string>();
       let changed = false;
       for (const id of cur) {
@@ -73,26 +74,40 @@ export function usePanelDismissal(panels: Map<string, PanelState>) {
   const dismiss = useCallback((panel: PanelState) => {
     // Panels already in the tray (server-side mini) → fully hide; there's
     // nowhere else for them to go. Everything else (live or done in the
-    // grid) → send to the tray. New activity will pop a hidden panel back.
+    // grid) → send to the tray as userMini. Auto-mini entries get
+    // upgraded to userMini so the user's manual intent overrides the
+    // self-clearing behavior.
     if (panel.status === 'mini') {
       setHiddenAt((cur) => ({ ...cur, [panel.id]: Date.now() / 1000 }));
     } else {
-      setClientMini((cur) => {
+      setUserMini((cur) => {
         const next = new Set(cur);
         next.add(panel.id);
+        return next;
+      });
+      setAutoMiniAt((cur) => {
+        if (!(panel.id in cur)) return cur;
+        const next = { ...cur };
+        delete next[panel.id];
         return next;
       });
     }
   }, []);
 
   const restore = useCallback((id: string) => {
-    setClientMini((cur) => {
+    setUserMini((cur) => {
       if (!cur.has(id)) return cur;
       const next = new Set(cur);
       next.delete(id);
       return next;
     });
     setHiddenAt((cur) => {
+      if (!(id in cur)) return cur;
+      const next = { ...cur };
+      delete next[id];
+      return next;
+    });
+    setAutoMiniAt((cur) => {
       if (!(id in cur)) return cur;
       const next = { ...cur };
       delete next[id];
@@ -109,7 +124,21 @@ export function usePanelDismissal(panels: Map<string, PanelState>) {
     [hiddenAt],
   );
 
-  const isClientMini = useCallback((panel: PanelState) => clientMini.has(panel.id), [clientMini]);
+  /** True when the panel should render in the dock instead of the grid,
+   * for *client*-side reasons (user dismissed it or first-sight auto-mini).
+   * Independent of `panel.status === 'mini'` (server-side idleness), which
+   * the layout handles separately. An auto-mini entry stops matching as
+   * soon as `last_event_at` advances past the routing timestamp, so a
+   * resumed session pops back to the grid automatically. */
+  const isClientMini = useCallback(
+    (panel: PanelState) => {
+      if (userMini.has(panel.id)) return true;
+      const at = autoMiniAt[panel.id];
+      if (at !== undefined && panel.last_event_at <= at) return true;
+      return false;
+    },
+    [userMini, autoMiniAt],
+  );
 
   const dismissAll = useCallback(() => {
     const now = Date.now() / 1000;
@@ -118,8 +147,22 @@ export function usePanelDismissal(panels: Map<string, PanelState>) {
       nextHidden[p.id] = Math.max(p.last_event_at, now);
     }
     setHiddenAt(nextHidden);
-    setClientMini(new Set());
+    setUserMini(new Set());
+    setAutoMiniAt({});
   }, [panels]);
 
   return { dismiss, dismissAll, restore, isHidden, isClientMini };
+}
+
+function pruneMap(
+  m: Record<string, number>,
+  panels: Map<string, PanelState>,
+): Record<string, number> {
+  let changed = false;
+  const next: Record<string, number> = {};
+  for (const [id, t] of Object.entries(m)) {
+    if (panels.has(id)) next[id] = t;
+    else changed = true;
+  }
+  return changed ? next : m;
 }

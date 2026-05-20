@@ -17,6 +17,11 @@ UI/server is meant to uphold. New entries go at the bottom.
   that were part of the canceled work are dimmed.
 - On reload, panels whose `last_event_at` is more than 30 seconds old are
   routed straight to the dock instead of the main grid.
+- "Minimized for idleness" and "user-dismissed" are distinct intents. A
+  panel that landed in the dock because it went idle or was stale on
+  reload pops back to the grid automatically when new activity arrives.
+  A panel the user explicitly dismissed stays in the dock until the user
+  restores it, regardless of activity.
 - The thinking indicator inherits the panel's hued theme color (matching the
   dominant bubble — assistant in default view, user in iMessage view).
 - While a panel is actively waiting on a model response, the titlebar's
