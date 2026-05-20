@@ -26,10 +26,15 @@ if (process.platform !== 'darwin') process.exit(0);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // Each row: (anchor we read the version from, cross-arch package we want).
-const pairs = [
-  ['@rollup/rollup-darwin-arm64', '@rollup/rollup-darwin-x64'],
-  ['@esbuild/darwin-arm64', '@esbuild/darwin-x64'],
-];
+//
+// We deliberately only handle rollup. Esbuild has multiple nested copies
+// in our tree at different versions (vite has esbuild@0.25.x, vitest has
+// 0.21.x, vite's own deps pull 0.28.x); installing one cross-arch binary
+// at the hoisted level fights with the version vite's nested JS expects.
+// If we hit the same arch problem with esbuild later, the right fix is to
+// walk every nested esbuild and shim them individually — but rollup-only
+// covers the failure mode we've actually seen.
+const pairs = [['@rollup/rollup-darwin-arm64', '@rollup/rollup-darwin-x64']];
 
 // Always install ALL counterparts in one command, even if some are already
 // present. `npm install --no-save` prunes anything not in the resolved
