@@ -29,18 +29,18 @@ export interface DeltaState {
   panels: Map<string, PanelState>;
 }
 
-type Action =
+export type Action =
   | { type: 'conn'; status: DeltaState['status'] }
   | { type: 'snapshot'; panels: Array<PanelDto & { events: Event[] }> }
   | { type: 'delta'; delta: Delta }
   | { type: 'commit_remove'; panel_id: string };
 
-const initialState: DeltaState = {
+export const initialState: DeltaState = {
   status: 'connecting',
   panels: new Map(),
 };
 
-function reducer(state: DeltaState, action: Action): DeltaState {
+export function reducer(state: DeltaState, action: Action): DeltaState {
   switch (action.type) {
     case 'conn':
       return { ...state, status: action.status };

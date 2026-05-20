@@ -1,0 +1,109 @@
+import type { Event } from '@server/parser.ts';
+import { render } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { LightboxProvider } from '../lib/lightbox.tsx';
+import type { PanelState } from '../useDeltaStream.ts';
+import { PanelCard } from './PanelCard.tsx';
+
+let uid = 0;
+function ev<K extends Event['kind']>(
+  kind: K,
+  payload: Extract<Event, { kind: K }>['payload'],
+): Event {
+  uid += 1;
+  return {
+    kind,
+    payload,
+    uuid: `u${uid}`,
+    parent_uuid: null,
+    session_id: 'p1',
+    agent_id: null,
+    ts: '2026-05-19T00:00:00Z',
+    cwd: null,
+  } as Event;
+}
+
+function panel(overrides: Partial<PanelState> = {}): PanelState {
+  return {
+    id: 'p1',
+    kind: 'parent',
+    parent_panel_id: null,
+    title: 'a session',
+    agent_type: null,
+    account_label: null,
+    status: 'live',
+    started_at: 0,
+    last_event_at: Date.now() / 1000,
+    status_changed_at: 0,
+    event_count: 0,
+    cwd: '/Users/mike/src/brainhouse',
+    theme: null,
+    binned_at: null,
+    awaiting_input: false,
+    events: [],
+    ...overrides,
+  } as PanelState;
+}
+
+function renderPanel(p: PanelState) {
+  return render(
+    <LightboxProvider>
+      <PanelCard panel={p} />
+    </LightboxProvider>,
+  );
+}
+
+describe('<PanelCard>', () => {
+  it('renders the panel title', () => {
+    const { container } = renderPanel(panel({ title: 'my session' }));
+    expect(container.querySelector('.panel-title')?.textContent).toBe('my session');
+  });
+
+  it('carries the status- class for the current panel status', () => {
+    const { container } = renderPanel(panel({ status: 'done' }));
+    expect(container.querySelector('.panel')).toHaveClass('status-done');
+  });
+
+  it('renders the cwd-derived project label in the subtitle', () => {
+    const { container } = renderPanel(panel({ cwd: '/Users/mike/src/brainhouse' }));
+    expect(container.querySelector('.panel-subtitle')?.textContent).toBe('brainhouse');
+  });
+
+  it('shows the live pill while status is live', () => {
+    const { container } = renderPanel(panel({ status: 'live' }));
+    expect(container.querySelector('.panel-status.live')).toBeInTheDocument();
+  });
+
+  it('shows the account badge when the parent passes an account prop', () => {
+    // account is passed via the `account` prop, not derived from panel state —
+    // App.tsx only sets it when >1 account is configured (showAccountBadges).
+    const { container } = render(
+      <LightboxProvider>
+        <PanelCard panel={panel()} account="work" />
+      </LightboxProvider>,
+    );
+    expect(container.querySelector('.panel-account')?.textContent).toBe('work');
+  });
+
+  it('renders the waiting badge when a user_text is pending an assistant reply', () => {
+    const { container } = renderPanel(
+      panel({ status: 'live', events: [ev('user_text', { text: 'help?' })] }),
+    );
+    expect(container.querySelector('.panel-waiting-badge')).toBeInTheDocument();
+  });
+
+  it('does not render the waiting badge when the assistant has responded', () => {
+    const { container } = renderPanel(
+      panel({
+        status: 'live',
+        events: [ev('user_text', { text: 'q' }), ev('assistant_text', { text: 'a' })],
+      }),
+    );
+    expect(container.querySelector('.panel-waiting-badge')).toBeNull();
+  });
+
+  it('renders the "session ended" footer when status is not live', () => {
+    const { container } = renderPanel(panel({ status: 'done' }));
+    expect(container.querySelector('.session-ended')).toBeInTheDocument();
+  });
+});
