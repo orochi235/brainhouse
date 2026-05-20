@@ -250,8 +250,32 @@ body {
   flex: 1;
   min-height: 0;
 }
+/* Each PanelCard renders `<.panel-wrap> <.panel-halo /> <.panel> </>`. The
+ * wrap is the flex child of the grid slot / tray; the panel sits inside
+ * with overflow:hidden (for the completion sweep + rounded-corner content
+ * clipping); the halo is an absolute-positioned sibling *outside* the
+ * panel's clip region, so its box-shadow can project freely while the
+ * cheap thing — opacity — is what we animate. */
+.panel-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.panel-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 0;
+  will-change: opacity;
+  /* box-shadow gets stamped by the state-specific selectors below. */
+}
 .panel {
   position: relative;
+  z-index: 1;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: 6px;
@@ -261,27 +285,14 @@ body {
   min-height: 0;
   overflow: hidden;
   animation: panel-spawn 0.45s cubic-bezier(0.22, 0.85, 0.25, 1);
-  /* Scope layout + paint to the panel so a per-frame box-shadow pulse
-   * doesn't invalidate the rest of the page. ~10–20% perf win with many
-   * live panels; ~free win for everything else. */
   contain: layout paint style;
-}
-.panel-parent.status-live.waiting,
-.panel-subagent.status-live,
-.panel-parent.has-theme.status-live.waiting {
-  /* Hint to the compositor that these pulsing panels should sit on their
-   * own GPU layer so per-frame box-shadow paints don't drag siblings into
-   * the repaint region. */
-  will-change: box-shadow;
 }
 /* Honor OS-level reduced-motion: infinite pulses + the spawn animation
  * disable entirely. Static state (the non-animated `.status-live` glow)
  * stays so the panel still reads as live. */
 @media (prefers-reduced-motion: reduce) {
   .panel,
-  .panel-parent.status-live.waiting,
-  .panel-subagent.status-live,
-  .panel-parent.has-theme.status-live.waiting,
+  .panel-halo,
   .panel-waiting-spinner {
     animation: none;
   }
@@ -303,37 +314,31 @@ body {
     0 0 0 1px color-mix(in srgb, var(--live) 35%, transparent),
     0 6px 22px -6px color-mix(in srgb, var(--live) 35%, transparent);
 }
-.panel-parent.status-live.waiting {
-  animation: waiting-pulse 2.6s ease-in-out infinite;
-}
-@keyframes waiting-pulse {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 1px rgba(167, 139, 250, 0.22),
-      0 0 22px -10px rgba(167, 139, 250, 0.4);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px rgba(167, 139, 250, 0.5),
-      0 0 32px -4px rgba(167, 139, 250, 0.7);
-  }
-}
 .panel-subagent.status-live {
   border-left: 3px solid var(--subagent-active);
-  animation: subagent-pulse 2.4s ease-in-out infinite;
 }
-@keyframes subagent-pulse {
+/* Halo pulse — animates opacity (composited) instead of box-shadow (paint).
+ * The shadow itself is stamped statically on `.panel-halo` per-state via
+ * :has(); the keyframes only fade it in and out. */
+.panel-wrap:has(> .panel-parent.status-live.waiting) > .panel-halo {
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.5),
+    0 0 32px -4px rgba(167, 139, 250, 0.7);
+  animation: halo-pulse 2.6s ease-in-out infinite;
+}
+.panel-wrap:has(> .panel-subagent.status-live) > .panel-halo {
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.5),
+    0 0 32px -4px rgba(249, 115, 22, 0.75);
+  animation: halo-pulse 2.4s ease-in-out infinite;
+}
+@keyframes halo-pulse {
   0%,
   100% {
-    box-shadow:
-      0 0 0 1px rgba(249, 115, 22, 0.22),
-      0 0 22px -10px rgba(249, 115, 22, 0.45);
+    opacity: 0.42;
   }
   50% {
-    box-shadow:
-      0 0 0 1px rgba(249, 115, 22, 0.5),
-      0 0 32px -4px rgba(249, 115, 22, 0.75);
+    opacity: 1;
   }
 }
 /* Idle (status: 'done') panels just look slightly less saturated — no
@@ -988,22 +993,13 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   background: var(--panel-theme-bg);
   color: var(--panel-theme-fg);
 }
-/* Themed waiting glow replaces the violet pulse. */
-.panel-parent.has-theme.status-live.waiting {
-  animation: waiting-pulse-themed 2.6s ease-in-out infinite;
-}
-@keyframes waiting-pulse-themed {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--panel-theme-bg) 22%, transparent),
-      0 0 22px -10px color-mix(in srgb, var(--panel-theme-bg) 45%, transparent);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--panel-theme-bg) 50%, transparent),
-      0 0 32px -4px color-mix(in srgb, var(--panel-theme-bg) 75%, transparent);
-  }
+/* Themed waiting halo — same opacity-pulse pattern as the default, but the
+ * baked box-shadow draws from the panel's hued theme. Overrides the
+ * violet default via selector specificity (3 classes vs 2). */
+.panel-wrap:has(> .panel-parent.has-theme.status-live.waiting) > .panel-halo {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--panel-theme-bg) 50%, transparent),
+    0 0 32px -4px color-mix(in srgb, var(--panel-theme-bg) 75%, transparent);
 }
 
 /* sawtooth divider inside merged user bubbles */

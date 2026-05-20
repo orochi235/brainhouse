@@ -202,26 +202,32 @@ export function PanelCard({
   }
 
   return (
-    <article
-      ref={articleRef}
-      className={classNames(
-        'panel',
-        `panel-${panel.kind}`,
-        `status-${panel.status}`,
-        waiting && 'waiting',
-        progressPct !== null && 'has-progress',
-        panel.theme && 'has-theme',
-        nested && 'nested',
-        pinned && 'pinned',
-        panel.removing && 'removing',
-        panel.ended && 'ended',
-      )}
-      data-panel-id={panel.id}
-      style={style}
-      onMouseDownCapture={() => {
-        lastClickAtRef.current = Date.now();
-      }}
-    >
+    <div className="panel-wrap" style={style}>
+      {/* Halo sibling — sits behind the panel so its box-shadow pulse can
+        * escape the panel's overflow:hidden. Animates `opacity` only
+        * (composited / GPU) instead of `box-shadow` keyframes (paint /
+        * CPU). Visibility + color are driven by the panel's classes
+        * via :has() selectors in app.css. */}
+      <div className="panel-halo" aria-hidden="true" />
+      <article
+        ref={articleRef}
+        className={classNames(
+          'panel',
+          `panel-${panel.kind}`,
+          `status-${panel.status}`,
+          waiting && 'waiting',
+          progressPct !== null && 'has-progress',
+          panel.theme && 'has-theme',
+          nested && 'nested',
+          pinned && 'pinned',
+          panel.removing && 'removing',
+          panel.ended && 'ended',
+        )}
+        data-panel-id={panel.id}
+        onMouseDownCapture={() => {
+          lastClickAtRef.current = Date.now();
+        }}
+      >
       <PanelHeader
         panel={panel}
         now={now}
@@ -257,7 +263,8 @@ export function PanelCard({
           )}
         </div>
       </div>
-    </article>
+      </article>
+    </div>
   );
 }
 
