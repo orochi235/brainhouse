@@ -23,7 +23,7 @@ export interface ViewPipelineScratch {
   absorbedToolUseIds: Set<string>;
   /** True if the panel is currently waiting on Claude (user spoke last). */
   pending: boolean;
-  /** Most recent ```pensieve-checklist block found in any bubble. */
+  /** Most recent ```brainhouse-checklist block found in any bubble. */
   checklist: ChecklistItem[] | null;
 }
 

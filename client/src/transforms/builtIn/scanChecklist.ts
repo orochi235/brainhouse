@@ -1,5 +1,5 @@
 /**
- * Scans every user/assistant text event for a ```pensieve-checklist code
+ * Scans every user/assistant text event for a ```brainhouse-checklist code
  * block. The most recent one wins — surfaced as the panel's pinned
  * progress list in the header.
  *
@@ -15,7 +15,7 @@ export const scanChecklist: Stage1Transform = {
   key: 'built-in.scan-checklist',
   name: 'checklist scan',
   description:
-    "Finds the most recent ```pensieve-checklist code block in any bubble and surfaces it as the panel's pinned progress list.",
+    "Finds the most recent ```brainhouse-checklist code block in any bubble and surfaces it as the panel's pinned progress list.",
   run(event, _items, ctx) {
     if (
       (event.kind === 'user_text' || event.kind === 'assistant_text') &&
@@ -28,7 +28,7 @@ export const scanChecklist: Stage1Transform = {
 };
 
 export function extractLastChecklist(text: string): ChecklistItem[] | null {
-  const re = /```pensieve-checklist\s*\n([\s\S]*?)```/g;
+  const re = /```brainhouse-checklist\s*\n([\s\S]*?)```/g;
   let last: ChecklistItem[] | null = null;
   let m: RegExpExecArray | null;
   while (true) {

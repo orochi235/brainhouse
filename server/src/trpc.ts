@@ -220,7 +220,7 @@ export const appRouter = t.router({
 
   deltas: t.procedure.subscription(async function* ({ ctx, signal }) {
     // Initial snapshot so a fresh subscriber doesn't have to make a separate
-    // query — same pattern as pensieve's WS hello message.
+    // query — same pattern as brainhouse's WS hello message.
     yield { kind: 'snapshot', panels: ctx.monitor.store.snapshot() } satisfies DeltaEvent;
     const iter = on(ctx.monitor.emitter as EventEmitter, 'delta', { signal });
     for await (const [delta] of iter) {

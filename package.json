@@ -2,7 +2,7 @@
   "name": "brainhouse",
   "version": "0.0.1",
   "private": true,
-  "description": "React+Node port of pensieve — local web monitor for Claude Code sessions",
+  "description": "React+Node port of brainhouse — local web monitor for Claude Code sessions",
   "type": "module",
   "bin": {
     "brainhouse": "bin/brainhouse.js"

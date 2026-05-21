@@ -1,7 +1,7 @@
 /**
  * Normalizes raw transcript JSONL records into typed Event objects.
  *
- * Mirrors pensieve/parser.py. Each Claude Code transcript line is one of a
+ * Mirrors brainhouse/parser.py. Each Claude Code transcript line is one of a
  * handful of record shapes; some records (an assistant message with multiple
  * content blocks) fan out into multiple Events with unique uuids.
  */

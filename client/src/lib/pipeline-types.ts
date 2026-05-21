@@ -72,7 +72,7 @@ export interface ChecklistItem {
 
 export interface PreprocessResult {
   items: ViewItem[];
-  /** The most recent ```pensieve-checklist block found in any bubble. */
+  /** The most recent ```brainhouse-checklist block found in any bubble. */
   checklist: ChecklistItem[] | null;
   /** True if the panel is currently awaiting Claude's reply (user → no asst yet). */
   pending: boolean;

@@ -297,14 +297,14 @@ describe('preprocessEvents', () => {
     expect(items.map((i) => i.type)).toEqual(['meta']);
   });
 
-  it('extracts the most recent pensieve-checklist block', () => {
+  it('extracts the most recent brainhouse-checklist block', () => {
     const text = [
-      '```pensieve-checklist',
+      '```brainhouse-checklist',
       '- [x] first',
       '- [ ] second',
       '```',
       'later:',
-      '```pensieve-checklist',
+      '```brainhouse-checklist',
       '- [x] done',
       '- [x] also done',
       '```',
@@ -447,7 +447,7 @@ describe('extractLastChecklist', () => {
   });
 
   it('parses checked + unchecked items', () => {
-    const text = '```pensieve-checklist\n- [x] a\n- [ ] b\n- [X] c\n```';
+    const text = '```brainhouse-checklist\n- [x] a\n- [ ] b\n- [X] c\n```';
     expect(extractLastChecklist(text)).toEqual([
       { done: true, text: 'a' },
       { done: false, text: 'b' },
@@ -456,6 +456,6 @@ describe('extractLastChecklist', () => {
   });
 
   it('returns null for an empty fence', () => {
-    expect(extractLastChecklist('```pensieve-checklist\n\n```')).toBeNull();
+    expect(extractLastChecklist('```brainhouse-checklist\n\n```')).toBeNull();
   });
 });

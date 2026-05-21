@@ -22,6 +22,33 @@ groups Read/Edit/Write/MultiEdit runs on the same path into a
 - Smarter handling of MultiEdit: collapse multiple sub-edits into one
   visual hunk where the regions are adjacent.
 
+## Session names: update more frequently + more accurately
+Today a parent panel's title is set once from the first user message and
+locked in (`session.ts:maybeUpdateTitle`). Subsequent prompts, scope shifts,
+or `/rename`-style retitling don't propagate. Subagent titles do better
+(they pick up the `description` from `subagent-meta`), but parents stay
+frozen on the original opening line — which is often "set up the project"
+or "look at this bug" and rarely captures what the session actually became.
+
+Possible signals to feed a better title:
+- Latest user prompt (most-recent intent often beats first-prompt intent).
+- Heuristic on the dominant tool mix (e.g. session that's mostly Bash on
+  Docker files → "container debugging").
+- LLM-derived 1-sentence summary, computed once per ~N turns or at session
+  end — could share infra with `session_summary.key_decisions`.
+- A `meta`-typed `session-title` record the agent itself emits ("I'm
+  now working on X"). Pairs with the negotiated-interruption-points
+  proposal — the agent already knows what it's doing; let it tell us.
+
+Open questions:
+- Show only the latest title, or layer them ("opened: setup → now: bug")?
+- Manual override still wins (`custom-title` already works); make sure
+  whatever auto-updater we add respects that.
+- Update cadence: every turn is too noisy. Every N turns, or only when
+  the heuristic confidence is high.
+
+Pairs with: `session_summary` rollup, harvest-learnings flow.
+
 ## Universal object drag
 Today drag-and-drop is piecemeal: dragging is only wired up where we've
 explicitly opted in (grid reorder, mini→grid restore, mini panel ordering).
@@ -220,7 +247,7 @@ follows them. Treat this list as a wishlist + design scratchpad, not
 ready-to-implement.
 
 ## Checklists (already partial)
-Agents emit a ```pensieve-checklist``` fenced block; we render it as a
+Agents emit a ```brainhouse-checklist``` fenced block; we render it as a
 pinned progress list above the transcript. Already working but could go
 further:
 - Distinguish "intended plan" vs "ad-hoc todo" — the former is the

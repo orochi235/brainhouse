@@ -565,8 +565,8 @@ describe('SessionStore', () => {
   });
 
   describe('progress_complete subagent finality', () => {
-    const fullList = '```pensieve-checklist\n- [x] a\n- [x] b\n- [X] c\n```';
-    const partialList = '```pensieve-checklist\n- [x] a\n- [ ] b\n```';
+    const fullList = '```brainhouse-checklist\n- [x] a\n- [x] b\n- [X] c\n```';
+    const partialList = '```brainhouse-checklist\n- [x] a\n- [ ] b\n```';
 
     it('fires markEnded with progress_complete when a subagent checklist hits 100%', () => {
       const clock = new FakeClock();

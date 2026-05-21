@@ -6,7 +6,7 @@
  *   <root>/<encoded-cwd>/<session-uuid>/subagents/agent-<id>.jsonl     subagent
  *   <root>/<encoded-cwd>/<session-uuid>/subagents/agent-<id>.meta.json subagent metadata
  *
- * Mirrors pensieve/watcher.py:
+ * Mirrors brainhouse/watcher.py:
  *   - per-file byte offset, partial-line buffering across writes
  *   - first-sight optimization: read sibling .meta.json the first time a
  *     subagent jsonl is encountered so the panel title upgrades immediately

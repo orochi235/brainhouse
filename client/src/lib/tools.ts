@@ -1,7 +1,7 @@
 /**
  * Per-tool icons and smart summary labels for tool capsules.
  *
- * Mirrors pensieve/static/app.js TOOL_ICONS / CLI_ICONS / summarizeTool /
+ * Mirrors brainhouse/static/app.js TOOL_ICONS / CLI_ICONS / summarizeTool /
  * parseBashCommandHead. Kept as a pure-function module so it stays
  * easy-to-test and easy-to-extend.
  *

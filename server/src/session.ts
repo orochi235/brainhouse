@@ -1,7 +1,7 @@
 /**
  * Panel state and lifecycle.
  *
- * Mirrors pensieve/session.py. A Panel is one parent session or one subagent
+ * Mirrors brainhouse/session.py. A Panel is one parent session or one subagent
  * inside it. Lifecycle is time-driven:
  *   live → done   after `idleSeconds` with no new events
  *   done → mini   after `miniSeconds` in the done state
@@ -231,7 +231,7 @@ export class SessionStore {
     this.persistEvent(panel, event, ts);
     this.persistPanel(panel);
     // Subagent finality by checklist: when a subagent's pinned
-    // pensieve-checklist hits 100% completion in a freshly-ingested
+    // brainhouse-checklist hits 100% completion in a freshly-ingested
     // bubble, treat it as an explicit end. Mirrors the client-side
     // sweep so a refresh doesn't resurrect the panel.
     if (panel.kind === 'subagent' && !panel.ended && isChecklistComplete(event)) {
@@ -541,7 +541,7 @@ export class SessionStore {
 
 type PanelEndedProvenance = NonNullable<Panel['ended_provenance']>;
 
-/** Returns true when the event carries a `pensieve-checklist` fenced block
+/** Returns true when the event carries a `brainhouse-checklist` fenced block
  * whose items are *all* done. Mirrors the client-side parser in
  * `client/src/transforms/builtIn/scanChecklist.ts` so the server's
  * progress_complete detection lines up exactly with the UI's completion
@@ -559,7 +559,7 @@ export function isChecklistComplete(event: Event): boolean {
 function extractLastChecklistItems(
   text: string,
 ): Array<{ done: boolean; text: string }> | null {
-  const re = /```pensieve-checklist\s*\n([\s\S]*?)```/g;
+  const re = /```brainhouse-checklist\s*\n([\s\S]*?)```/g;
   let last: Array<{ done: boolean; text: string }> | null = null;
   let m: RegExpExecArray | null;
   while (true) {

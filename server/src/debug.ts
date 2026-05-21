@@ -412,7 +412,7 @@ export async function spawnSubagentIn(
         [
           'progress so far:',
           '',
-          '```pensieve-checklist',
+          '```brainhouse-checklist',
           ...items.map((label, i) => `- [${i < n ? 'x' : ' '}] ${label}`),
           '```',
         ].join('\n');

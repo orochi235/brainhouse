@@ -2,7 +2,7 @@
  * TranscriptMonitor wires the watcher and session store together and exposes
  * a delta stream for subscribers.
  *
- * Mirrors pensieve/app.py:Application — bridges Event arrival → SessionStore
+ * Mirrors brainhouse/app.py:Application — bridges Event arrival → SessionStore
  * mutations → Delta broadcast, plus drives the periodic tick that advances
  * live → done → mini → removed transitions.
  */

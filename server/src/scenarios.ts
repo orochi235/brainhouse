@@ -430,7 +430,7 @@ const checklistProgressive: Scenario = {
   key: 'checklist-progressive',
   name: 'checklist that fills in over time',
   description:
-    'A pinned pensieve-checklist block, refreshed over multiple assistant messages with more items checked each time. Exercises the checklist pin + progress bar.',
+    'A pinned brainhouse-checklist block, refreshed over multiple assistant messages with more items checked each time. Exercises the checklist pin + progress bar.',
   expect:
     'Pinned checklist appears above the panel body. Items tick off one by one as messages stream in.',
   async run(monitor, { sessionId = fresh('checklist'), cwd = SYNTHETIC_CWD } = {}) {
@@ -440,7 +440,7 @@ const checklistProgressive: Scenario = {
       const block = [
         'progress so far:',
         '',
-        '```pensieve-checklist',
+        '```brainhouse-checklist',
         ...items.map((label, i) => `- [${i < n ? 'x' : ' '}] ${label}`),
         '```',
       ].join('\n');
