@@ -1,14 +1,22 @@
 import classNames from 'classnames';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { FlowsModal } from './components/FlowsModal.tsx';
 import { PanelCard } from './components/PanelCard.tsx';
 import { PrefsModal } from './components/PrefsModal.tsx';
 import { ScenariosModal } from './components/ScenariosModal.tsx';
+import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { LightboxProvider, useLightbox } from './lib/lightbox.tsx';
-import { sortByOrder, usePanelOrder, usePinnedPanels, useWidePanels } from './lib/panelOrder.ts';
+import {
+  sortByOrder,
+  useBrokenOutPanels,
+  usePanelOrder,
+  usePinnedPanels,
+  useWidePanels,
+} from './lib/panelOrder.ts';
 import { useTheme } from './lib/preferences.ts';
 import { useIntentions } from './lib/useIntentions.ts';
 import { usePrefs } from './lib/usePrefs.ts';
@@ -20,6 +28,30 @@ export function App() {
   const { status, panels } = useDeltaStream();
   const [theme, setTheme] = useTheme();
   const { prefs, refetch: refetchPrefs } = usePrefs();
+
+  // Suppress mount animations during the initial render burst — when the
+  // first snapshot lands and 20+ panels spawn at once, the `panel-spawn`
+  // animation cost stutters. We carry a `loading-quiet` body class until
+  // the snapshot has been applied, then drop it on the next paint so
+  // subsequent panel arrivals still animate.
+  useEffect(() => {
+    document.body.classList.add('loading-quiet');
+  }, []);
+  useEffect(() => {
+    if (status !== 'live') return;
+    // Two rAFs: one to let the snapshot-driven render commit, one to let
+    // the browser paint it before we re-enable animations.
+    let raf2: number | undefined;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        document.body.classList.remove('loading-quiet');
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2 !== undefined) cancelAnimationFrame(raf2);
+    };
+  }, [status]);
   const { imessage, showElapsed, conversation } = prefs.display;
   const showAccountBadges = prefs.roots.length > 1;
   const accountFor = (p: PanelState): string | null | undefined =>
@@ -47,6 +79,10 @@ export function App() {
     initial: seeded.pinned,
     persist: (id, value) => persistIntention(id, { pinned: value }),
   });
+  const { brokenOut, toggleBrokenOut } = useBrokenOutPanels({
+    initial: seeded.brokenOut,
+    persist: (id, value) => persistIntention(id, { broken_out: value }),
+  });
   const {
     dismiss,
     dismissAll,
@@ -73,7 +109,23 @@ export function App() {
       '--idle-opacity',
       String(prefs.display.idleOpacity),
     );
-  }, [imessage, showElapsed, conversation, prefs.messages, prefs.display.idleOpacity]);
+    document.documentElement.style.setProperty(
+      '--hued-header-strength',
+      String(prefs.display.huedHeaderStrength),
+    );
+    document.body.classList.toggle(
+      'tool-palette-always',
+      prefs.display.toolPaletteDisplay === 'always',
+    );
+  }, [
+    imessage,
+    showElapsed,
+    conversation,
+    prefs.messages,
+    prefs.display.idleOpacity,
+    prefs.display.huedHeaderStrength,
+    prefs.display.toolPaletteDisplay,
+  ]);
 
   // Auto-minimize newly-arriving subagent panels when the pref is on. We
   // track which ids we've already routed so toggling the pref off (or
@@ -110,7 +162,7 @@ export function App() {
     gridPanels: allGridPanels,
     trayPanels: allTrayPanels,
     subsByParent: allSubsByParent,
-  } = layoutPanels(panels);
+  } = layoutPanels(panels, brokenOut);
   // Pinned panels always stay in the grid, never dim, never demote — they
   // override hidden / clientMini / server-mini routing.
   const isPinned = (p: PanelState) => pinned.has(p.id);
@@ -203,6 +255,8 @@ export function App() {
           </button>
           <ScenariosButton />
           <TransformsButton />
+          <StatsButton />
+          <FlowsButton />
           <span className={`conn conn-${status}`}>{status}</span>
           <span className="topbar-icon-buttons">
             <button
@@ -213,7 +267,7 @@ export function App() {
             >
               {theme === 'dark' ? '☾' : '☀'}
             </button>
-            <PrefsButton onSaved={refetchPrefs} />
+            <PrefsButton prefs={prefs} onSaved={refetchPrefs} />
           </span>
         </span>
       </header>
@@ -251,6 +305,8 @@ export function App() {
                 isPinnedSub={(s) => pinned.has(s.id)}
                 onHide={() => dismiss(p)}
                 onHideSub={(s) => dismiss(s)}
+                brokenOutSubs={brokenOut}
+                onToggleBrokenOutSub={(s) => toggleBrokenOut(s.id)}
                 onReorder={(srcId) =>
                   moveBefore(
                     srcId,
@@ -318,6 +374,8 @@ function GridSlot({
   onHide,
   onHideSub,
   onReorder,
+  brokenOutSubs,
+  onToggleBrokenOutSub,
 }: {
   panel: PanelState;
   subagents: PanelState[];
@@ -334,6 +392,8 @@ function GridSlot({
   onHide: () => void;
   onHideSub: (sub: PanelState) => void;
   onReorder: (sourceId: string) => void;
+  brokenOutSubs: Set<string>;
+  onToggleBrokenOutSub: (sub: PanelState) => void;
 }) {
   const [armed, setArmed] = useState(false);
   return (
@@ -406,6 +466,8 @@ function GridSlot({
         isPinnedSub={isPinnedSub}
         onHide={onHide}
         onHideSub={onHideSub}
+        brokenOutSubs={brokenOutSubs}
+        onToggleBrokenOutSub={onToggleBrokenOutSub}
       />
     </motion.div>
   );
@@ -424,6 +486,8 @@ function PanelWithSubagents({
   isPinnedSub,
   onHide,
   onHideSub,
+  brokenOutSubs,
+  onToggleBrokenOutSub,
 }: {
   panel: PanelState;
   subagents: PanelState[];
@@ -437,6 +501,8 @@ function PanelWithSubagents({
   isPinnedSub: (sub: PanelState) => boolean;
   onHide: () => void;
   onHideSub: (sub: PanelState) => void;
+  brokenOutSubs: Set<string>;
+  onToggleBrokenOutSub: (sub: PanelState) => void;
 }) {
   const live = subagents.filter((s) => s.status === 'live');
   const rest = subagents.filter((s) => s.status === 'done');
@@ -447,6 +513,10 @@ function PanelWithSubagents({
         onHide={onHide}
         pinned={pinned}
         onTogglePin={onTogglePin}
+        brokenOut={brokenOutSubs.has(panel.id)}
+        onToggleBrokenOut={
+          panel.kind === 'subagent' ? () => onToggleBrokenOutSub(panel) : undefined
+        }
         account={account}
         accountColor={accountColor}
       />
@@ -460,6 +530,8 @@ function PanelWithSubagents({
               onHide={() => onHideSub(s)}
               pinned={isPinnedSub(s)}
               onTogglePin={() => onTogglePinSub(s)}
+              brokenOut={brokenOutSubs.has(s.id)}
+              onToggleBrokenOut={() => onToggleBrokenOutSub(s)}
               account={accountFor(s)}
               accountColor={accountColorFor(s)}
             />
@@ -501,6 +573,14 @@ function MiniPanel({
         const e = rawE as unknown as React.DragEvent<HTMLDivElement>;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/brainhouse-panel', panel.id);
+        // Pin the drag image to the dragged element itself — otherwise the
+        // browser snapshots a region that ends up including sibling mini
+        // panels (and a sliver of the dock's scrollbar) because the dock
+        // is `overflow-x: auto` and framer-motion's live transform on the
+        // sibling motion.divs confuses the default drag-image heuristic.
+        const target = e.currentTarget as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        e.dataTransfer.setDragImage(target, e.clientX - rect.left, e.clientY - rect.top);
       }}
     >
       <PanelCard
@@ -548,7 +628,38 @@ function TransformsButton() {
   );
 }
 
-function PrefsButton({ onSaved }: { onSaved?: () => void }) {
+function StatsButton() {
+  const lightbox = useLightbox();
+  return (
+    <button
+      type="button"
+      className="debug-spawn"
+      title="Cross-session event-type counts — what kinds + subkeys we actually see"
+      onClick={() => lightbox.open(<StatsModal />)}
+    >
+      stats
+    </button>
+  );
+}
+
+function FlowsButton() {
+  const lightbox = useLightbox();
+  return (
+    <button
+      type="button"
+      className="debug-spawn"
+      title="Sankey of which event types tend to follow which, across all sessions"
+      onClick={() => lightbox.open(<FlowsModal />)}
+    >
+      flows
+    </button>
+  );
+}
+
+function PrefsButton({
+  prefs,
+  onSaved,
+}: { prefs: import('./lib/usePrefs.ts').ClientPrefs; onSaved?: () => void }) {
   const lightbox = useLightbox();
   return (
     <button
@@ -558,6 +669,7 @@ function PrefsButton({ onSaved }: { onSaved?: () => void }) {
       onClick={() =>
         lightbox.open(
           <PrefsModal
+            initial={prefs}
             onClose={() => {
               lightbox.close();
               onSaved?.();
@@ -577,11 +689,16 @@ interface Layout {
   subsByParent: Map<string, PanelState[]>;
 }
 
-function layoutPanels(panels: Map<string, PanelState>): Layout {
+function layoutPanels(panels: Map<string, PanelState>, brokenOut: Set<string>): Layout {
   const all = Array.from(panels.values());
   const subsByParent = new Map<string, PanelState[]>();
   for (const p of all) {
-    if (p.kind === 'subagent' && p.parent_panel_id && panels.has(p.parent_panel_id)) {
+    if (
+      p.kind === 'subagent' &&
+      p.parent_panel_id &&
+      panels.has(p.parent_panel_id) &&
+      !brokenOut.has(p.id)
+    ) {
       const arr = subsByParent.get(p.parent_panel_id) ?? [];
       arr.push(p);
       subsByParent.set(p.parent_panel_id, arr);
@@ -593,8 +710,13 @@ function layoutPanels(panels: Map<string, PanelState>): Layout {
     if (p.kind === 'parent') {
       if (p.status === 'mini') trayPanels.push(p);
       else gridPanels.push(p);
-    } else if (p.parent_panel_id == null || !panels.has(p.parent_panel_id)) {
-      // Orphan subagent: place by its own status.
+    } else if (
+      p.parent_panel_id == null ||
+      !panels.has(p.parent_panel_id) ||
+      brokenOut.has(p.id)
+    ) {
+      // Orphan subagent OR one the user has explicitly broken out: place
+      // by its own status, top-level.
       if (p.status === 'mini') trayPanels.push(p);
       else gridPanels.push(p);
     }

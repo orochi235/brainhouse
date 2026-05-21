@@ -1,14 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { VIEW_TRANSFORMS } from '../transforms/registry.ts';
 import { TransformsModal } from './TransformsModal.tsx';
 
 describe('<TransformsModal>', () => {
-  it('renders an entry for every documented transform', () => {
+  it('renders an entry for every registered transform', () => {
     const { container } = render(<TransformsModal />);
     const items = container.querySelectorAll('.transforms-item');
-    // 10 named transforms today; this assertion locks the count so adding a
-    // new transform without updating the modal trips the test.
-    expect(items.length).toBe(10);
+    expect(items.length).toBe(VIEW_TRANSFORMS.length);
   });
 
   it('groups entries by stage (pass-1 vs pass-2)', () => {

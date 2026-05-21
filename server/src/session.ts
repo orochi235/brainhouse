@@ -85,6 +85,11 @@ export interface Panel {
     cache_read: number;
     model: string | null;
   };
+  /** Size of the current context window — `input + cache_create + cache_read`
+   * from the most recent assistant turn's usage record. Unlike `tokens` (which
+   * accumulates lifetime usage), this is overwritten on every turn and reflects
+   * what's actively in context right now. Zero until first usage record. */
+  context_size: number;
 }
 
 export interface PanelDto {
@@ -111,6 +116,7 @@ export interface PanelDto {
     cache_read: number;
     model: string | null;
   };
+  context_size: number;
 }
 
 export type Delta =
@@ -186,9 +192,15 @@ export class SessionStore {
     // numbers to clients. Don't push it onto panel.events (would clutter
     // the dedupe set + bloat the event list for no UI benefit).
     if (event.kind === 'resource_usage') {
-      accumulateUsage(panel, event.payload);
+      const prevContext = panel.context_size;
+      const changed = accumulateUsage(panel, event.payload);
       panel.last_event_at = Math.max(panel.last_event_at, ts);
-      deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+      // Skip the upsert when nothing visible changed (e.g. an empty usage
+      // record). context_size is overwritten per-turn, so we treat any
+      // delta there as meaningful.
+      if (changed || panel.context_size !== prevContext) {
+        deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+      }
       this.persistPanel(panel);
       this.persistEvent(panel, event, ts);
       return deltas;
@@ -379,6 +391,7 @@ export class SessionStore {
       ended: false,
       ended_provenance: null,
       tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
+      context_size: 0,
       status: 'live',
       // started_at is wall-clock-now so the panel "age" reflects the
       // observation; last_event_at/status_changed_at are stamped with the
@@ -467,6 +480,7 @@ export class SessionStore {
       awaiting_input: p.awaiting_input,
       ended: p.ended,
       tokens: p.tokens,
+      context_size: p.context_size,
     };
   }
 
@@ -508,6 +522,7 @@ export class SessionStore {
   private persistEvent(panel: Panel, event: Event, ts: number): void {
     if (!this.store) return;
     this.store.recordEvent(eventToIndexRow(panel.id, event, ts));
+    this.store.incrementEventStat(event.kind, deriveStatSubkey(event), ts);
   }
 
   private materializeSummary(panel: Panel, provenance: PanelEndedProvenance | 'idle_timeout' | 'never'): void {
@@ -598,21 +613,57 @@ function panelRowToPanel(r: PanelRow): Panel {
     // as the watcher replays the JSONL. Brief flicker on restart;
     // acceptable trade-off vs. the schema work for now.
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
+    context_size: 0,
   };
 }
 
 /** Map an Event into a small row for events_index. Only summary fields —
  * the full payload stays in the JSONL on disk. */
+/** Second-axis breakdown for `event_stats`. Returns the empty string when
+ * no useful subkey applies (the kind alone is the whole story). */
+export function deriveStatSubkey(event: Event): string {
+  const p = (event.payload ?? {}) as Record<string, unknown>;
+  switch (event.kind) {
+    case 'tool_use':
+      return typeof p.name === 'string' ? p.name : '(unknown)';
+    case 'tool_result':
+      return p.is_error === true ? 'error' : 'ok';
+    case 'resource_usage':
+      return typeof p.model === 'string' ? p.model : '(no model)';
+    case 'system':
+      return typeof p.subtype === 'string' && p.subtype ? p.subtype : '(no subtype)';
+    case 'meta':
+      return typeof p.record_type === 'string' && p.record_type
+        ? p.record_type
+        : '(no record_type)';
+    default:
+      return '';
+  }
+}
+
 function eventToIndexRow(panelId: string, event: Event, fallbackTs: number): EventIndexRow {
   const ts = parseEventTs(event.ts) ?? fallbackTs;
   const p = (event.payload ?? {}) as Record<string, unknown>;
   let toolName: string | null = null;
   let filePath: string | null = null;
+  let summary: string | null = null;
   if (event.kind === 'tool_use' && typeof p.name === 'string') {
     toolName = p.name;
     const input = (p.input ?? {}) as Record<string, unknown>;
     if (typeof input.file_path === 'string') filePath = input.file_path;
     else if (typeof input.path === 'string') filePath = input.path;
+    // Stash extra metadata for cross-session aggregations (flows graph).
+    // Task → subagent_type drives the `subagent:<type>` node taxonomy.
+    // tool_use_id lets downstream readers tie a later tool_result back
+    // to its tool name (which tool_result events otherwise don't carry).
+    const meta: Record<string, string> = {};
+    if (typeof p.tool_use_id === 'string') meta.tool_use_id = p.tool_use_id;
+    if (toolName === 'Task' && typeof input.subagent_type === 'string') {
+      meta.subagent_type = input.subagent_type;
+    }
+    if (Object.keys(meta).length > 0) summary = JSON.stringify(meta);
+  } else if (event.kind === 'tool_result' && typeof p.tool_use_id === 'string') {
+    summary = JSON.stringify({ tool_use_id: p.tool_use_id });
   }
   return {
     panel_id: panelId,
@@ -621,7 +672,7 @@ function eventToIndexRow(panelId: string, event: Event, fallbackTs: number): Eve
     kind: event.kind,
     tool_name: toolName,
     file_path: filePath,
-    summary: null,
+    summary,
   };
 }
 
@@ -692,10 +743,23 @@ function accumulateUsage(
     cache_creation_input_tokens: number;
     cache_read_input_tokens: number;
   },
-): void {
+): boolean {
   panel.tokens.input += usage.input_tokens;
   panel.tokens.output += usage.output_tokens;
   panel.tokens.cache_create += usage.cache_creation_input_tokens;
   panel.tokens.cache_read += usage.cache_read_input_tokens;
   if (usage.model) panel.tokens.model = usage.model;
+  // context_size is *overwritten*, not accumulated: it's the size of the
+  // active context window for the most recent turn (input + both cache
+  // buckets, since cache_read is the prompt-cached portion of input that
+  // still counts toward what's in context).
+  panel.context_size =
+    usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens;
+  return (
+    usage.input_tokens > 0 ||
+    usage.output_tokens > 0 ||
+    usage.cache_creation_input_tokens > 0 ||
+    usage.cache_read_input_tokens > 0 ||
+    usage.model !== null
+  );
 }

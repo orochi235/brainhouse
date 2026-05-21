@@ -16,6 +16,7 @@ import { type EventEmitter, on } from 'node:events';
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
+import { aggregateFlows } from './flows.js';
 import { getScenario, listScenarios } from './scenarios.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
@@ -131,6 +132,7 @@ export const appRouter = t.router({
           user_mini: z.boolean().optional(),
           hidden_at: z.number().nullable().optional(),
           auto_mini_at: z.number().nullable().optional(),
+          broken_out: z.boolean().optional(),
         }),
       )
       .mutation(({ ctx, input }) => {
@@ -148,6 +150,7 @@ export const appRouter = t.router({
             input.hidden_at !== undefined ? input.hidden_at : (existing?.hidden_at ?? null),
           auto_mini_at:
             input.auto_mini_at !== undefined ? input.auto_mini_at : (existing?.auto_mini_at ?? null),
+          broken_out: input.broken_out ?? existing?.broken_out ?? false,
           updated_at: Date.now() / 1000,
         });
         return { ok: true, persisted: true };
@@ -156,6 +159,25 @@ export const appRouter = t.router({
       ctx.store?.deleteIntentions(input.panel_id);
       return { ok: true };
     }),
+  }),
+
+  /** Cross-session event-type frequency counters. Counts every event the
+   * monitor has ingested since the DB was created, broken down by (kind,
+   * subkey). Used by the debug StatsModal to surface "what are we actually
+   * seeing in the wild." */
+  eventStats: t.procedure.query(({ ctx }) => ctx.store?.getEventStats() ?? []),
+
+  /** Cross-session "flows" sankey: bucket events by ordinal position in
+   * their session, then count consecutive (K,X) → (K+1,Y) transitions
+   * over the last `days` (default 30). Returns nodes + links shaped for
+   * d3-sankey on the client. Empty result when persistence is disabled. */
+  flows: t.router({
+    aggregate: t.procedure
+      .input(z.object({ days: z.number().int().positive().max(365).default(30) }).optional())
+      .query(({ ctx, input }) => {
+        if (!ctx.store) return { nodes: [], links: [] };
+        return aggregateFlows(ctx.store, input?.days ?? 30);
+      }),
   }),
 
   debug: t.router({

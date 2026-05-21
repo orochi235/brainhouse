@@ -107,6 +107,16 @@ export const DisplaySchema = z.object({
   /** How much idle (`done`) panels fade. 1 = no dim, 0 = invisible.
    * Mini panels in the dock dim a touch more on top of this. */
   idleOpacity: z.number().min(0.2).max(1).default(0.5),
+  /** Strength of the .hued background wash on panel title bars, 0–1.
+   * Multiplied by 100 to drive a `color-mix` percentage. 0 = no tint,
+   * 1 = the title bar is the .hued color. Default 0.14 matches the
+   * legacy hardcoded value. */
+  huedHeaderStrength: z.number().min(0).max(1).default(0.14),
+  /** Reveal mode for the floating tool palette on live panels.
+   *   - `hover`: hidden by default, faint affordance on panel hover,
+   *     full reveal when the cursor approaches the top-right.
+   *   - `always`: pinned visible. */
+  toolPaletteDisplay: z.enum(['hover', 'always']).default('hover'),
 });
 export type Display = z.infer<typeof DisplaySchema>;
 

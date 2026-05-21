@@ -1,5 +1,14 @@
 # brainhouse — project todos
 
+## [HIGH] Filename links
+Render file paths that appear in transcripts (tool inputs/outputs, assistant
+text, capsule labels) as clickable links that open the file. Recognize both
+absolute paths and `path:line[:col]` patterns. Resolve relative to the panel's
+`cwd`. Action on click: open via the user's configured editor (e.g.
+`cursor://`, `vscode://`, or a shell command) — pref-driven, default to the
+`$EDITOR`-equivalent URL scheme. Should work in tool capsule summaries,
+file-change rows, and assistant-text bubbles.
+
 ## Coalesce file ops — richer diff rendering
 Basic coalescing already lands (`coalesceFileOps()` in `pipeline.ts`
 groups Read/Edit/Write/MultiEdit runs on the same path into a
@@ -12,6 +21,37 @@ groups Read/Edit/Write/MultiEdit runs on the same path into a
   package is the obvious dep.
 - Smarter handling of MultiEdit: collapse multiple sub-edits into one
   visual hunk where the regions are adjacent.
+
+## Universal object drag
+Today drag-and-drop is piecemeal: dragging is only wired up where we've
+explicitly opted in (grid reorder, mini→grid restore, mini panel ordering).
+A subagent in a nested tray can't be dragged anywhere; a done panel can't
+be picked up to reorder against live panels; ended panels can't be
+dragged into the trash; etc.
+
+Goal: **any session in any state can be picked up as a drag source, and
+every plausible drop target accepts it pre-validation.** The drop site
+decides at drop-time whether the move is meaningful (and renders a "no"
+cursor or just no-ops if it isn't) — but the *attempt* should always be
+expressible. This means:
+
+- Drag handle on every PanelCard regardless of nested / live / done / mini
+  / ended / pinned state.
+- Drop targets: main grid (reorder + accept from anywhere), mini dock
+  (demote-to-tray), parent's nested subagent tray (re-dock a broken-out
+  subagent), trash button (move to bin), each individual panel header
+  (could mean "merge" or "open relative to" — future).
+- Common dataTransfer protocol: `text/brainhouse-panel` carries the id;
+  `text/brainhouse-panel-source` carries the origin region. Each target
+  validates source-vs-destination compatibility on drop.
+
+Side benefit: re-attaching a broken-out subagent could just be a drag
+back onto its parent's panel-subagents tray rather than a button click —
+discoverable once the universal mechanic exists.
+
+Open question: do we need a visual "ghost" preview at the drop target
+before commit, or is the existing native drag-image enough? Probably
+native + a `.drop-target` outline class (already used on grid slots).
 
 ## Session window drag-to-resize
 Real tiling: drag edges/corners of a panel to give it more grid cells.
@@ -260,6 +300,29 @@ a panel), brainhouse shows whatever the agent volunteered and lets the
 user accept/edit/discard each item before it gets written to memory.
 The accept-before-write step matters — agents will sometimes volunteer
 things that aren't actually worth remembering.
+
+## Title-bar timers / timestamps menagerie
+Today the title bar shows one timer: live → elapsed-since-last-event, done/mini
+→ `+5m`. There are several others that could be useful, and they're each
+relevant in different states:
+
+- **Session start** — when the parent session was first spawned (wall-clock
+  or absolute).
+- **Last user prompt** — useful for "how long has the agent been working
+  unattended since my last input?"
+- **Time in current state** — distinct from time-since-last-event. A live
+  panel that's been busy for 20 minutes is different from one that's been
+  idle 20 minutes.
+- **Time-to-first-token** of the current turn (latency).
+- **Active think/tool time** vs **idle/waiting** — sums for the whole session.
+- **Hooks-observed end timestamp** — when SubagentStop / Stop actually
+  fired, distinct from the "last event we ingested" wall-clock.
+- **Time since pin** — for pinned panels, since they don't auto-demote.
+
+Open question: which are valuable enough to surface by default vs which
+belong in a tooltip / lightbox / hover-card. Probably one default + a
+hover reveal for the rest. Pairs with the existing two-row meta layout
+(could occupy the second row).
 
 ## Negotiated interruption points
 The agent declares "ok to interrupt here" vs. "in the middle of an

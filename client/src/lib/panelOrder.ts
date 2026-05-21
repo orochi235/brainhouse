@@ -87,6 +87,30 @@ export function usePinnedPanels(opts: FlagOpts = {}) {
   return { pinned, togglePin };
 }
 
+/** Track which subagent panels have been pulled out of their parent's
+ * nested tray into the top-level grid. Mirrors usePinnedPanels — Set of
+ * panel ids, toggle persists to intentions. */
+export function useBrokenOutPanels(opts: FlagOpts = {}) {
+  const { initial, persist } = opts;
+  const [brokenOut, setBrokenOut] = useState<Set<string>>(() => new Set(initial ?? []));
+
+  const toggleBrokenOut = useCallback(
+    (id: string) => {
+      setBrokenOut((current) => {
+        const next = new Set(current);
+        const newValue = !next.has(id);
+        if (newValue) next.add(id);
+        else next.delete(id);
+        persist?.(id, newValue);
+        return next;
+      });
+    },
+    [persist],
+  );
+
+  return { brokenOut, toggleBrokenOut };
+}
+
 /** Materialize a manual_order Map into an ordered array of panel ids. */
 function orderFromIntentions(initial: Map<string, number> | undefined): string[] {
   if (!initial || initial.size === 0) return [];

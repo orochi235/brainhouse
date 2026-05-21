@@ -71,9 +71,11 @@ describe('<PanelCard>', () => {
     expect(container.querySelector('.panel-subtitle')?.textContent).toBe('brainhouse');
   });
 
-  it('shows the live pill while status is live', () => {
+  it('renders the green status light while status is live', () => {
     const { container } = renderPanel(panel({ status: 'live' }));
-    expect(container.querySelector('.panel-status.live')).toBeInTheDocument();
+    // Live state is now communicated via the status icon (green LED) rather
+    // than a textual "live" badge.
+    expect(container.querySelector('.panel.status-live .panel-status-icon')).toBeInTheDocument();
   });
 
   it('shows the account badge when the parent passes an account prop', () => {

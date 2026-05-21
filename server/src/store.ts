@@ -47,7 +47,7 @@ const { DatabaseSync } = require('node:sqlite') as { DatabaseSync: any };
 // biome-ignore lint/suspicious/noExplicitAny: same as above
 type DatabaseSync = any;
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export interface IntentionsRow {
   panel_id: string;
@@ -57,6 +57,9 @@ export interface IntentionsRow {
   user_mini: boolean;
   hidden_at: number | null;
   auto_mini_at: number | null;
+  /** Subagent that's been pulled out of its parent's nested tray and
+   * promoted to a top-level grid panel. Only meaningful for kind=subagent. */
+  broken_out: boolean;
   updated_at: number;
 }
 
@@ -97,6 +100,17 @@ export interface EventIndexRow {
   file_path: string | null;
   /** Bounded short text — full content stays in the JSONL on disk. */
   summary: string | null;
+}
+
+export interface EventStatsRow {
+  kind: string;
+  /** Second-axis breakdown: tool name for tool_use, ok/error for
+   * tool_result, model id for resource_usage, subtype for system,
+   * record_type for meta. Empty string when no useful subkey applies. */
+  subkey: string;
+  count: number;
+  /** Epoch seconds of the most recent event matching (kind, subkey). */
+  last_seen: number;
 }
 
 export interface SessionSummaryRow {
@@ -154,6 +168,7 @@ CREATE TABLE IF NOT EXISTS intentions (
   user_mini    INTEGER NOT NULL DEFAULT 0,
   hidden_at    REAL,
   auto_mini_at REAL,
+  broken_out   INTEGER NOT NULL DEFAULT 0,
   updated_at   REAL NOT NULL
 );
 
@@ -220,6 +235,20 @@ CREATE TABLE IF NOT EXISTS session_summary (
 CREATE INDEX IF NOT EXISTS session_summary_cwd     ON session_summary (cwd);
 CREATE INDEX IF NOT EXISTS session_summary_started ON session_summary (started_at);
 CREATE INDEX IF NOT EXISTS session_summary_parent  ON session_summary (parent_session_id);
+
+-- Cross-session frequency counters for "what event types do we actually see".
+-- Cheap to maintain (one UPSERT per ingested event); read via getEventStats()
+-- to drive the debug StatsModal. subkey is the second-axis breakdown: tool
+-- name for tool_use, ok/error for tool_result, model for resource_usage,
+-- subtype for system, record_type for meta. Empty string for kinds without
+-- a useful subkey (user_text, assistant_text, thinking).
+CREATE TABLE IF NOT EXISTS event_stats (
+  kind      TEXT NOT NULL,
+  subkey    TEXT NOT NULL,
+  count     INTEGER NOT NULL DEFAULT 0,
+  last_seen REAL NOT NULL,
+  PRIMARY KEY (kind, subkey)
+);
 `;
 
 function defaultDbPath(): string {
@@ -246,6 +275,13 @@ export class Store {
     db.exec('PRAGMA foreign_keys = ON');
     db.exec(SCHEMA);
     db.exec(`INSERT OR IGNORE INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
+    // Idempotent column adds for forward-compat with older databases. Each
+    // wrapped in try/catch so re-running on an up-to-date DB is a no-op.
+    try {
+      db.exec('ALTER TABLE intentions ADD COLUMN broken_out INTEGER NOT NULL DEFAULT 0');
+    } catch {
+      // column already exists
+    }
     return new Store(db);
   }
 
@@ -271,9 +307,9 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO intentions
-           (panel_id, pinned, wide, manual_order, user_mini, hidden_at, auto_mini_at, updated_at)
+           (panel_id, pinned, wide, manual_order, user_mini, hidden_at, auto_mini_at, broken_out, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?)
+           (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(panel_id) DO UPDATE SET
            pinned       = excluded.pinned,
            wide         = excluded.wide,
@@ -281,6 +317,7 @@ export class Store {
            user_mini    = excluded.user_mini,
            hidden_at    = excluded.hidden_at,
            auto_mini_at = excluded.auto_mini_at,
+           broken_out   = excluded.broken_out,
            updated_at   = excluded.updated_at`,
       )
       .run(
@@ -291,6 +328,7 @@ export class Store {
         row.user_mini ? 1 : 0,
         row.hidden_at,
         row.auto_mini_at,
+        row.broken_out ? 1 : 0,
         row.updated_at,
       );
   }
@@ -390,6 +428,42 @@ export class Store {
     return this.db
       .prepare('SELECT * FROM events_index WHERE panel_id = ? ORDER BY ts ASC LIMIT ?')
       .all(panelId, limit) as EventIndexRow[];
+  }
+
+  // ---- event_stats (cross-session frequency counters) ----
+
+  /** Bump the count for one (kind, subkey) pair. UPSERT semantics: row
+   * gets created on first hit, count + last_seen advance thereafter.
+   * Idempotent only at the row level (callers shouldn't call this twice
+   * for the same uuid; persistEvent's caller is responsible for that). */
+  incrementEventStat(kind: string, subkey: string, ts: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO event_stats (kind, subkey, count, last_seen)
+         VALUES (?, ?, 1, ?)
+         ON CONFLICT(kind, subkey) DO UPDATE SET
+           count     = count + 1,
+           last_seen = MAX(last_seen, excluded.last_seen)`,
+      )
+      .run(kind, subkey, ts);
+  }
+
+  /** All (kind, subkey, count, last_seen) rows, count-desc then kind asc. */
+  getEventStats(): EventStatsRow[] {
+    return this.db
+      .prepare('SELECT kind, subkey, count, last_seen FROM event_stats ORDER BY count DESC, kind ASC')
+      .all() as EventStatsRow[];
+  }
+
+  /** Every row newer than `sinceTs`, ordered by panel then ts. Used by
+   * cross-session aggregators (e.g. the flows sankey) that need to walk
+   * each session's chronological event sequence. */
+  eventsSince(sinceTs: number): EventIndexRow[] {
+    return this.db
+      .prepare(
+        'SELECT * FROM events_index WHERE ts >= ? ORDER BY panel_id ASC, ts ASC',
+      )
+      .all(sinceTs) as EventIndexRow[];
   }
 
   eventsTouchingFile(filePath: string, limit = 200): EventIndexRow[] {
@@ -527,6 +601,7 @@ interface RawIntentions {
   user_mini: number;
   hidden_at: number | null;
   auto_mini_at: number | null;
+  broken_out?: number;
   updated_at: number;
 }
 
@@ -539,6 +614,7 @@ function deserializeIntentions(r: RawIntentions): IntentionsRow {
     user_mini: !!r.user_mini,
     hidden_at: r.hidden_at,
     auto_mini_at: r.auto_mini_at,
+    broken_out: !!r.broken_out,
     updated_at: r.updated_at,
   };
 }

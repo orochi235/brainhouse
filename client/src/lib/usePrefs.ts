@@ -17,6 +17,8 @@ export interface ClientPrefs {
     showElapsed: boolean;
     conversation: boolean;
     idleOpacity: number;
+    huedHeaderStrength: number;
+    toolPaletteDisplay: 'hover' | 'always';
   };
   messages: {
     thinking: boolean;
@@ -39,10 +41,21 @@ export interface ClientPrefs {
     tickIntervalMs: number;
   };
   roots: Array<{ path: string; label?: string; color?: string }>;
+  storage: {
+    persistEnabled: boolean;
+    eventsIndexRetentionDays: number;
+  };
 }
 
 const DEFAULT_PREFS: ClientPrefs = {
-  display: { imessage: false, showElapsed: false, conversation: false, idleOpacity: 0.5 },
+  display: {
+    imessage: false,
+    showElapsed: false,
+    conversation: false,
+    idleOpacity: 0.5,
+    huedHeaderStrength: 0.14,
+    toolPaletteDisplay: 'hover',
+  },
   messages: {
     thinking: true,
     system: true,
@@ -54,6 +67,7 @@ const DEFAULT_PREFS: ClientPrefs = {
   workspace: { minCols: 1, minRows: 1, maxTileSpan: 0, spawnSubagentsMinimized: false },
   timings: { idleSeconds: 60, miniSeconds: 300, removeAfterSeconds: 86400, tickIntervalMs: 5000 },
   roots: [],
+  storage: { persistEnabled: false, eventsIndexRetentionDays: 30 },
 };
 
 export function usePrefs() {

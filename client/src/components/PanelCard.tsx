@@ -37,6 +37,11 @@ interface Props {
   /** Pinned panels stay in the grid + don't dim regardless of status/age. */
   pinned?: boolean;
   onTogglePin?: () => void;
+  /** True when a subagent has been pulled out of its parent's nested tray. */
+  brokenOut?: boolean;
+  /** Toggle whether a subagent renders nested under its parent or as a
+   * standalone top-level panel. Only meaningful for subagent panels. */
+  onToggleBrokenOut?: () => void;
   /** Account label to badge in the header. Parent typically passes
    * `panel.account_label` when more than one account is configured;
    * undefined/null suppresses the badge. */
@@ -59,6 +64,8 @@ export function PanelCard({
   onRestore,
   pinned,
   onTogglePin,
+  brokenOut,
+  onToggleBrokenOut,
   account,
   accountColor,
 }: Props) {
@@ -237,6 +244,7 @@ export function PanelCard({
           `panel-${panel.kind}`,
           `status-${panel.status}`,
           waiting && 'waiting',
+          panel.awaiting_input && 'awaiting-input',
           progressPct !== null && 'has-progress',
           panel.theme && 'has-theme',
           nested && 'nested',
@@ -260,6 +268,14 @@ export function PanelCard({
         waiting={waiting}
         waitingSince={waiting ? lastUserActivity(items, now) : null}
       />
+      {panel.status !== 'mini' && (
+        <PanelToolPalette
+          panel={panel}
+          onHide={onHide}
+          brokenOut={!!brokenOut}
+          onToggleBrokenOut={onToggleBrokenOut}
+        />
+      )}
       {checklist && <ChecklistPin items={checklist} />}
       <div
         className="panel-body"
@@ -354,13 +370,29 @@ function PanelHeader({
   let idleLabel: string;
   if (isLive) {
     idleLabel = formatIdle(Math.max(0, now - panel.last_event_at));
-  } else if (panel.status === 'mini') {
-    idleLabel = `${formatIdleCoarse(Math.max(0, now - panel.status_changed_at))} ago`;
   } else {
-    idleLabel = `${panel.status} ${formatIdleCoarse(Math.max(0, now - panel.status_changed_at))} ago`;
+    // done + mini: `+5m` style — status icon already communicates which
+    // lifecycle state we're in, so the label is just the elapsed delta.
+    idleLabel = `+${formatIdleCoarse(Math.max(0, now - panel.status_changed_at))}`;
   }
   const showWaitingBadge = !!waiting && waitingSince != null;
   const waitingLabel = showWaitingBadge ? formatIdle(Math.max(0, now - waitingSince)) : '';
+
+  // Spin the status icon when pinned changes: clockwise on pin, counter-
+  // clockwise on unpin. A one-shot class drives the keyframe animation
+  // and clears itself after it ends so the resting shape (.pinned or not)
+  // takes over cleanly.
+  const [spinDir, setSpinDir] = useState<'cw' | 'ccw' | null>(null);
+  const prevPinnedRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevPinnedRef.current;
+    prevPinnedRef.current = pinned;
+    if (prev === undefined) return; // first render — no transition
+    if (prev === pinned) return;
+    setSpinDir(pinned ? 'cw' : 'ccw');
+    const t = setTimeout(() => setSpinDir(null), 550);
+    return () => clearTimeout(t);
+  }, [pinned]);
   const totalTokens =
     panel.tokens.input +
     panel.tokens.output +
@@ -378,37 +410,44 @@ function PanelHeader({
         }
       }}
     >
-      {onRestore ? (
+      {onRestore || onTogglePin ? (
         <button
           type="button"
-          className="panel-pin panel-restore"
-          title="Restore to the grid"
+          className={classNames('panel-status-slot', 'panel-status-slot-button', pinned && 'pinned')}
+          title={
+            onRestore
+              ? `Restore to the grid · ${statusIconTitle(panel.status, !!waiting, !!pinned)}`
+              : pinned
+                ? `Unpin · ${statusIconTitle(panel.status, !!waiting, true)}`
+                : `Pin · ${statusIconTitle(panel.status, !!waiting, false)}`
+          }
+          aria-pressed={onRestore ? undefined : !!pinned}
           onClick={(e) => {
             e.stopPropagation();
-            onRestore();
+            if (onRestore) onRestore();
+            else onTogglePin?.();
           }}
         >
-          ↖
+          {panel.ended ? (
+            <CheckGlyph />
+          ) : (
+            <span
+              className={classNames(
+                'panel-status-icon',
+                spinDir === 'cw' && 'panel-status-icon-spin-cw',
+                spinDir === 'ccw' && 'panel-status-icon-spin-ccw',
+              )}
+              aria-hidden="true"
+            />
+          )}
         </button>
       ) : (
-        onTogglePin && (
-          <button
-            type="button"
-            className={classNames('panel-pin', pinned && 'pinned')}
-            title={
-              pinned
-                ? 'Unpin (let this session age normally)'
-                : 'Pin (keep visible regardless of age)'
-            }
-            aria-pressed={pinned}
-            onClick={(e) => {
-              e.stopPropagation();
-              onTogglePin();
-            }}
-          >
-            {pinned ? '📍' : '📌'}
-          </button>
-        )
+        <span
+          className="panel-status-slot"
+          title={statusIconTitle(panel.status, !!waiting, !!pinned)}
+        >
+          {panel.ended ? <CheckGlyph /> : <span className="panel-status-icon" aria-hidden="true" />}
+        </span>
       )}
       <span className="panel-titles">
         <span className="panel-title">{renderInlineCode(panel.title)}</span>
@@ -416,7 +455,7 @@ function PanelHeader({
           {panel.kind === 'subagent' && panel.agent_type ? (
             <span className="panel-subtitle">{panel.agent_type}</span>
           ) : panel.cwd ? (
-            <span className="panel-subtitle">{projectLabel(panel.cwd)}</span>
+            <span className="panel-subtitle panel-subtitle-cwd">{projectLabel(panel.cwd)}</span>
           ) : null}
           {account && (
             <span className="panel-account" title={`account: ${account}`}>
@@ -429,29 +468,66 @@ function PanelHeader({
         </span>
       </span>
       <span className="panel-meta">
-        {showWaitingBadge ? (
-          <span
-            className="panel-waiting-badge"
-            title="awaiting response from the model"
-            aria-live="polite"
-          >
-            <span className="panel-waiting-spinner" aria-hidden="true" />
-            <span className="panel-waiting-elapsed">{waitingLabel}</span>
+        <span className="panel-meta-row panel-meta-row-top">
+          {showWaitingBadge ? (
+            <span
+              className="panel-waiting-badge"
+              title="awaiting response from the model"
+              aria-live="polite"
+            >
+              <span className="panel-waiting-spinner" aria-hidden="true" />
+              <span className="panel-waiting-elapsed">{waitingLabel}</span>
+            </span>
+          ) : (
+            panel.status !== 'mini' && <span className="panel-idle">{idleLabel}</span>
+          )}
+          {panel.kind === 'subagent' && panel.status !== 'mini' && (
+            <span
+              className="panel-runtime"
+              title="total runtime of this subagent"
+              aria-label="subagent total runtime"
+            >
+              {formatIdleCoarse(
+                Math.max(
+                  0,
+                  (isLive ? now : panel.last_event_at) - panel.started_at,
+                ),
+              )}
+            </span>
+          )}
+          <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} />
+        </span>
+        {panel.status !== 'mini' && (
+          <span className="panel-meta-row panel-meta-row-bottom">
+            <span
+              className="panel-session-time"
+              title="total elapsed time since this session started"
+              aria-label="total session time"
+            >
+              {formatIdleCoarse(
+                Math.max(0, (isLive ? now : panel.last_event_at) - panel.started_at),
+              )}
+            </span>
+            {totalTokens > 0 && (
+              <span
+                className="panel-tokens"
+                title={tokensTooltip(panel.tokens)}
+                aria-label="token usage"
+              >
+                {formatTokens(totalTokens)}
+              </span>
+            )}
+            {panel.context_size > 0 && (
+              <span
+                className="panel-context"
+                title={`current context window size — ${panel.context_size.toLocaleString()} tokens (most recent turn's input + cache_create + cache_read)`}
+                aria-label="context window size"
+              >
+                {formatTokens(panel.context_size)}
+              </span>
+            )}
           </span>
-        ) : (
-          panel.status !== 'mini' && <span className="panel-idle">{idleLabel}</span>
         )}
-        {isLive && !showWaitingBadge && <span className="panel-status live">live</span>}
-        {totalTokens > 0 && panel.status !== 'mini' && (
-          <span
-            className="panel-tokens"
-            title={tokensTooltip(panel.tokens)}
-            aria-label="token usage"
-          >
-            {formatTokens(totalTokens)}
-          </span>
-        )}
-        <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} />
       </span>
     </header>
   );
@@ -473,40 +549,8 @@ function HeaderActions({
   const inTray = !!onRestore;
   return (
     <>
-      {isLive && panel.kind === 'subagent' && (
-        <button
-          type="button"
-          className="panel-btn panel-btn-faint"
-          title="Open this subagent in its own window"
-          onClick={(e) => {
-            e.stopPropagation();
-            window.open(
-              `/?panel=${encodeURIComponent(panel.id)}`,
-              `brainhouse-${panel.id}`,
-              'width=900,height=900',
-            );
-          }}
-        >
-          ⤢
-        </button>
-      )}
-      {isLive && (
-        <button
-          type="button"
-          className="panel-btn panel-btn-faint"
-          title="Full-screen (Esc to close)"
-          onClick={(e) => {
-            e.stopPropagation();
-            const article = (e.currentTarget.closest('.panel') as HTMLElement) ?? null;
-            if (article) {
-              const on = article.classList.toggle('fullscreen');
-              document.body.classList.toggle('has-fullscreen-panel', on);
-            }
-          }}
-        >
-          ⛶
-        </button>
-      )}
+      {/* Live panels host popout / fullscreen / close in the floating
+       * PanelToolPalette; the header only renders these for done/mini. */}
       {panel.status === 'mini' && (
         <button
           type="button"
@@ -520,7 +564,9 @@ function HeaderActions({
           🗑
         </button>
       )}
-      {!inTray && onHide && (
+      {/* Live + done panels have × in the floating palette; mini keeps it
+       * in the header since the palette doesn't render there. */}
+      {!inTray && panel.status === 'mini' && onHide && (
         <button
           type="button"
           className="panel-btn"
@@ -536,6 +582,107 @@ function HeaderActions({
     </>
   );
 }
+
+/**
+ * Floating top-right palette for live panels. Lives inside the article, not
+ * the header — so it can sit visually on top of the content area where there's
+ * room. Visibility is two-tier:
+ *   - cursor on the panel: faint affordance (opacity ~0.3)
+ *   - cursor near the corner (inside the palette's expanded hit region):
+ *     full reveal
+ * Hidden entirely once the cursor leaves the panel. Mini/done panels don't
+ * get this — they keep the simple header buttons.
+ */
+function PanelToolPalette({
+  panel,
+  onHide,
+  brokenOut,
+  onToggleBrokenOut,
+}: {
+  panel: PanelState;
+  onHide?: () => void;
+  brokenOut?: boolean;
+  onToggleBrokenOut?: () => void;
+}) {
+  const lightbox = useLightbox();
+  const isParent = panel.kind === 'parent';
+  const isSubWithParent = panel.kind === 'subagent' && !!panel.parent_panel_id;
+  return (
+    <div className="panel-tool-palette" aria-label="panel actions">
+      <div className="panel-tool-palette-chips">
+        <button
+          type="button"
+          className="panel-tool-btn"
+          title="Open in lightbox"
+          onClick={(e) => {
+            e.stopPropagation();
+            lightbox.open(<PanelLightboxContent panel={panel} />, { theme: panel.theme });
+          }}
+        >
+          ⛶
+        </button>
+        {isSubWithParent && onToggleBrokenOut && (
+          <button
+            type="button"
+            className="panel-tool-btn"
+            title={
+              brokenOut
+                ? 'Dock back into the parent session'
+                : 'Break out into its own panel'
+            }
+            aria-pressed={!!brokenOut}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleBrokenOut();
+            }}
+          >
+            {brokenOut ? '⇱' : '⇲'}
+          </button>
+        )}
+        {isParent && (
+          <>
+            <button
+              type="button"
+              className="panel-tool-btn panel-tool-debug"
+              title="Debug: spawn a mock subagent in this session"
+              onClick={(e) => {
+                e.stopPropagation();
+                trpc.debug.spawnSubagentIn.mutate({ sessionId: panel.id });
+              }}
+            >
+              +sub
+            </button>
+            <button
+              type="button"
+              className="panel-tool-btn panel-tool-debug"
+              title="Debug: spawn a counting subagent (runs to 10)"
+              onClick={(e) => {
+                e.stopPropagation();
+                trpc.debug.spawnSubagentIn.mutate({ sessionId: panel.id, stopAt: 10 });
+              }}
+            >
+              +count
+            </button>
+          </>
+        )}
+        {onHide && (
+          <button
+            type="button"
+            className="panel-tool-btn"
+            title="Send this panel to the dock. The session keeps running; this panel reappears on new activity."
+            onClick={(e) => {
+              e.stopPropagation();
+              onHide();
+            }}
+          >
+            ⤓
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function ChecklistPin({ items }: { items: ChecklistItem[] }) {
   const done = items.filter((i) => i.done).length;
@@ -580,6 +727,38 @@ function PanelLightboxContent({ panel }: { panel: PanelState }) {
 }
 
 /** Multi-line tooltip with the per-bucket token breakdown + model. */
+/**
+ * Checkmark used in the status slot when the server is sure a session has
+ * ended (panel.ended === true — set by SubagentStop, Stop hooks, etc.).
+ * Replaces the LED glyph; the slot still pins/unpins on click.
+ */
+function CheckGlyph() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="panel-status-check"
+      aria-hidden="true"
+    >
+      <polyline points="4 12 10 18 20 6" />
+    </svg>
+  );
+}
+
+function statusIconTitle(status: 'live' | 'done' | 'mini', waiting: boolean, pinned: boolean): string {
+  const shape = pinned ? 'pinned' : 'session';
+  if (status === 'live') return `${shape} — live${waiting ? ', awaiting model' : ''}`;
+  if (status === 'done') return `${shape} — done`;
+  return `${shape} — mini`;
+}
+
 function tokensTooltip(t: PanelState['tokens']): string {
   const total = t.input + t.output + t.cache_create + t.cache_read;
   const lines = [

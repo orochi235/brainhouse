@@ -29,6 +29,8 @@ interface PrefsDraft {
     showElapsed: boolean;
     conversation: boolean;
     idleOpacity: number;
+    huedHeaderStrength: number;
+    toolPaletteDisplay: 'hover' | 'always';
   };
   messages: {
     thinking: boolean;
@@ -66,24 +68,16 @@ const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
   { key: 'trash', icon: '🗑', label: 'Trash' },
 ];
 
-export function PrefsModal({ onClose }: { onClose: () => void }) {
-  const [draft, setDraft] = useState<PrefsDraft | null>(null);
+export function PrefsModal({
+  initial,
+  onClose,
+}: { initial: PrefsDraft; onClose: () => void }) {
+  // Seeded synchronously from App's cached prefs — no fetch on mount, no
+  // "Loading prefs…" flash. The cache is already kept fresh by usePrefs.
+  const [draft, setDraft] = useState<PrefsDraft>(initial);
   const [active, setActive] = useState<SectionKey>('accounts');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    trpc.prefs.get.query().then((p) => {
-      if (cancelled) return;
-      setDraft(p as PrefsDraft);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!draft) return <p className="prefs-loading">Loading prefs…</p>;
 
   const save = async () => {
     setBusy(true);
@@ -242,6 +236,33 @@ function DisplaySection({ draft, setDraft }: SectionProps) {
         step={0.05}
         format={(v) => `${Math.round(v * 100)}%`}
       />
+      <SliderField
+        label="Title-bar tint strength"
+        hint="How strongly each project's color washes the panel title bar. 0% = no tint; 100% = the title bar is the project color."
+        value={draft.display.huedHeaderStrength}
+        onChange={(v) => set({ huedHeaderStrength: v })}
+        min={0}
+        max={1}
+        step={0.02}
+        format={(v) => `${Math.round(v * 100)}%`}
+      />
+      <label className="prefs-field prefs-select-field">
+        <span className="prefs-slider-label">Tool palette</span>
+        <span className="prefs-hint">
+          Where the floating session tools (pin, lightbox, debug, ×) appear on
+          live panels. Hover keeps the panel clean; Always pins the palette
+          visible.
+        </span>
+        <select
+          value={draft.display.toolPaletteDisplay}
+          onChange={(e) =>
+            set({ toolPaletteDisplay: e.currentTarget.value as 'hover' | 'always' })
+          }
+        >
+          <option value="hover">Hover</option>
+          <option value="always">Always</option>
+        </select>
+      </label>
     </Section>
   );
 }

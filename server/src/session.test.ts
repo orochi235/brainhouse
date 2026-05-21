@@ -443,6 +443,68 @@ describe('SessionStore', () => {
       expect(p?.tokens.model).toBe('claude-opus-4-7');
     });
 
+    it('context_size tracks the latest assistant turn, not the cumulative sum', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      // Turn 1: 100 input + 10 cache_create + 0 cache_read = 110.
+      store.apply(
+        ev('resource_usage', {
+          uuid: 'u-1',
+          payload: {
+            model: 'claude-opus-4-7',
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_creation_input_tokens: 10,
+            cache_read_input_tokens: 0,
+          },
+        }),
+      );
+      expect(store.panel('S')?.context_size).toBe(110);
+      // Turn 2: 5 input + 0 cache_create + 500 cache_read = 505.
+      // Cumulative tokens would be 100+50+10+0+5+30+0+500 = 695; context_size
+      // must be 505 (just turn 2), not 110+505 or 695.
+      store.apply(
+        ev('resource_usage', {
+          uuid: 'u-2',
+          payload: {
+            model: 'claude-opus-4-7',
+            input_tokens: 5,
+            output_tokens: 30,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 500,
+          },
+        }),
+      );
+      const p = store.panel('S');
+      expect(p?.context_size).toBe(505);
+      // Sanity: cumulative tokens still accumulate.
+      expect(p?.tokens.input).toBe(105);
+      expect(p?.tokens.cache_read).toBe(500);
+    });
+
+    it('context_size surfaces on the panel_upsert DTO', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      const deltas = store.apply(
+        ev('resource_usage', {
+          uuid: 'u-1',
+          payload: {
+            model: 'claude-opus-4-7',
+            input_tokens: 7,
+            output_tokens: 1,
+            cache_creation_input_tokens: 2,
+            cache_read_input_tokens: 3,
+          },
+        }),
+      );
+      const upsert = deltas.find((d) => d.op === 'panel_upsert');
+      if (upsert?.op === 'panel_upsert') {
+        expect(upsert.panel.context_size).toBe(12);
+      } else throw new Error('expected panel_upsert');
+    });
+
     it('panel_upsert delta carries the new totals to clients', () => {
       const clock = new FakeClock();
       const store = new SessionStore({ clock: clock.now });

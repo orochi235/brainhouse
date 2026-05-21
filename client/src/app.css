@@ -297,6 +297,12 @@ body {
     animation: none;
   }
 }
+/* During the initial page load (until the first snapshot is painted),
+ * suppress per-panel mount animations so 20+ panels arriving at once
+ * doesn't stutter. App.tsx adds + removes `loading-quiet` on body. */
+body.loading-quiet .panel {
+  animation: none;
+}
 .panel-subagent {
   border-left: 2px solid var(--accent);
   max-width: 280px;
@@ -366,6 +372,205 @@ body {
 }
 
 /* Pin button — sits on the left of the panel header, vertically centered. */
+/* Fixed-width slot for the status icon so the title text doesn't shift
+ * when the icon swaps between a 9px circle and a 14px diamond. Collapses
+ * to nothing if no icon is rendered inside (`:empty`). */
+.panel-status-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  line-height: 0;
+  margin-left: 0.1rem;
+  align-self: center;
+  flex: 0 0 auto;
+}
+.panel-status-slot:empty {
+  display: none;
+}
+
+/* Checkmark replacement for panels the server is sure are ended. Inherits
+ * currentColor so it follows whatever the slot is set to; nudged toward a
+ * confident green so it reads as "finished cleanly." */
+.panel-status-check {
+  color: #2ecc71;
+  opacity: 0.85;
+}
+.panel.pinned .panel-status-check {
+  /* Pinned-and-ended is rare, but if it happens, scale up like the diamond
+   * does so the pinned state still reads at a glance. */
+  width: 18px;
+  height: 18px;
+}
+
+/* Register --status-color as a typed property so the browser interpolates
+ * it as a real color over the transition window — otherwise class-driven
+ * changes snap immediately (CSS can't interpolate raw custom-property
+ * strings). 0.4s fade applied below makes status changes feel like a lens
+ * cooling down rather than a discrete switch. */
+@property --status-color {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #888888;
+}
+
+/* Far-left status indicator: an LED-style dot for ordinary sessions; a
+ * much larger diamond when the panel is pinned. Color encodes status:
+ * green for live, dim gray for done/mini. A calm pulse plays while the
+ * agent is actively responding. */
+.panel-status-icon {
+  --status-color: var(--muted, #888);
+  /* True LED look: an unlit lens is nearly black with a tiny white specular
+   * "glint" near the top-left. When lit, the lens fills with the status color
+   * but the glint persists, so it always reads as a glassy dot. */
+  --status-glint: rgba(255, 255, 255, 0.32);
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  /* Two stacked radials: top layer is the white specular highlight at ~30%,
+   * bottom layer is the lit-or-unlit body. The body radial dims at the rim
+   * before the box-shadow halo takes over outside the dot. */
+  background:
+    radial-gradient(
+      circle at 30% 28%,
+      var(--status-glint) 0%,
+      transparent 38%
+    ),
+    radial-gradient(
+      circle at center,
+      var(--status-color) 25%,
+      color-mix(in srgb, var(--status-color) 55%, #000) 100%
+    );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--status-color) 40%, #000),
+    0 0 6px color-mix(in srgb, var(--status-color) 60%, transparent);
+  transition: width 0.2s ease, height 0.2s ease, background 0.2s ease,
+    box-shadow 0.45s ease, transform 0.2s ease, border-radius 0.2s ease,
+    --status-color 0.45s ease;
+}
+.panel.status-live .panel-status-icon {
+  --status-color: #2ecc71;
+}
+/* Done: still green, just dimmer. Session can resume on new events, so it
+ * shouldn't read as fully "off" — just cooled. */
+.panel.status-done .panel-status-icon {
+  --status-color: color-mix(in srgb, #2ecc71 55%, #000);
+}
+/* Mini: actually off — nearly black with a faint hint of fg so it doesn't
+ * vanish in dark mode. The specular glint still shows. */
+.panel.status-mini .panel-status-icon {
+  --status-color: color-mix(in srgb, var(--fg) 24%, #000);
+}
+.panel.pinned .panel-status-icon {
+  /* Diamond = a rotated square. Larger so the pinned state reads at a
+   * glance even when the panel header is crowded. The slot wrapper keeps
+   * surrounding layout stable across the shape swap. */
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--status-color) 60%, transparent),
+    0 0 10px color-mix(in srgb, var(--status-color) 70%, transparent);
+}
+/* Waiting on the model OR blocking on user input: a dim amber LED. The
+ * pulse keeps playing for `waiting` so it reads as "in progress"; the
+ * `awaiting-input` state holds steady so it reads as "stalled on you." */
+.panel.waiting .panel-status-icon,
+.panel.awaiting-input .panel-status-icon {
+  --status-color: #c08a30;
+}
+.panel.waiting .panel-status-icon {
+  animation: status-icon-pulse 1.8s ease-in-out infinite;
+}
+@keyframes status-icon-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--status-color) 50%, transparent),
+      0 0 6px color-mix(in srgb, var(--status-color) 50%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--status-color) 75%, transparent),
+      0 0 14px color-mix(in srgb, var(--status-color) 90%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel.waiting .panel-status-icon {
+    animation: none;
+  }
+}
+
+/* One-shot morph + spin when pinned toggles. CW on pin: starts as a
+ * circle, rotates 405° (one full revolution + the 45° offset) while
+ * morphing to a diamond. CCW on unpin: starts at the diamond's 45°
+ * and rotates -405° back to a circle at 0°. After the animation ends,
+ * the resting `.panel.pinned` (or default) CSS takes over. */
+.panel-status-icon-spin-cw {
+  animation: status-icon-pin-cw 0.5s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+}
+.panel-status-icon-spin-ccw {
+  animation: status-icon-pin-ccw 0.5s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+}
+/* 2 full revolutions plus the 45° offset for pin; -2 full minus 45° for
+ * unpin so it settles back to 0°. (The 45° is the diamond's rest angle —
+ * required to keep the square shape rendering as a diamond.) */
+@keyframes status-icon-pin-cw {
+  from {
+    transform: rotate(0deg);
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+  }
+  to {
+    transform: rotate(765deg);
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+  }
+}
+@keyframes status-icon-pin-ccw {
+  from {
+    transform: rotate(45deg);
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+  }
+  to {
+    transform: rotate(-720deg);
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel-status-icon-spin-cw,
+  .panel-status-icon-spin-ccw {
+    animation: none;
+  }
+}
+
+/* Status slot becomes interactive when onTogglePin is wired. Faint hover
+ * lift so it reads as "yes, you can click me" without competing with the
+ * panel header itself. */
+.panel-status-slot-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: filter 0.15s ease;
+}
+.panel-status-slot-button:hover {
+  filter: brightness(1.25);
+}
+.panel-status-slot-button:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
 .panel-pin {
   background: transparent;
   border: none;
@@ -378,6 +583,86 @@ body {
   display: inline-flex;
   align-items: center;
   align-self: center;
+}
+
+/* Floating top-right tool palette — only on live panels. Three states:
+ *   - cursor not on panel: hidden (opacity 0, pointer-events: none)
+ *   - cursor on panel: faint hint (opacity 0.3)
+ *   - cursor near corner: full reveal (opacity 1)
+ *
+ * The hover region is intentionally larger than the visible chips so the
+ * "near it" reveal triggers before the cursor reaches the buttons. We do
+ * this by giving the wrapper transparent padding; the wrapper handles its
+ * own hover, the chips inside ride along. */
+.panel-tool-palette {
+  position: absolute;
+  /* Tucked under the header so it floats over content, not chrome. The
+   * header is ~2.3rem tall; small gap below it. */
+  top: 3.1rem;
+  right: 0;
+  /* Expanded hit area extends well down + left from the visible chips
+   * so "close to the palette" snaps to full opacity well before the cursor
+   * actually reaches the buttons. Kept compact upward to avoid the title bar. */
+  padding: 0.25rem 0.5rem 6rem 8rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 50;
+}
+.panel:hover .panel-tool-palette {
+  opacity: 0.3;
+  pointer-events: auto;
+}
+/* Specificity-matched so it beats the 0.3 rule above when both match. */
+.panel:hover .panel-tool-palette:hover {
+  opacity: 1;
+}
+/* Always-on mode: palette stays at full opacity regardless of hover. */
+body.tool-palette-always .panel-tool-palette {
+  opacity: 1;
+  pointer-events: auto;
+}
+.panel-tool-palette-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.12rem 0.28rem;
+  /* Inverted from the panel: dark-mode panels get a light pill with dark
+   * glyphs, and vice versa. Stands out against the panel body without
+   * needing a halo or shadow trick. */
+  background: var(--fg);
+  color: var(--panel-bg);
+  border: 1px solid color-mix(in srgb, var(--fg) 75%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.35);
+}
+.panel-tool-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.panel-tool-btn:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--panel-bg) 18%, transparent);
+}
+.panel-tool-btn.pinned {
+  opacity: 1;
+  color: var(--accent);
+}
+.panel-tool-debug {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  opacity: 0.55;
 }
 .panel-pin:hover {
   opacity: 0.85;
@@ -402,20 +687,7 @@ body {
   display: none;
 }
 .panel.status-mini .panel-header {
-  position: relative;
   align-items: flex-start;
-  padding-left: 1.9rem;
-  padding-right: 2.4rem;
-}
-.panel.status-mini .panel-pin {
-  position: absolute;
-  top: 0.4rem;
-  left: 0.4rem;
-}
-.panel.status-mini .panel-meta {
-  position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
 }
 .panel.status-mini .panel-titles {
   flex: 1 1 100%;
@@ -465,8 +737,12 @@ body {
   background-position: 130% 0;
   opacity: 0;
 }
+/* Sweep is disabled for now — live → done fires too often (every Stop hook /
+ * idle timeout) to justify the visual disruption. Keep the keyframes around
+ * so we can re-enable for a more discriminating signal later (e.g. only
+ * when the session emits its "really done" event). */
 .panel.completing::after {
-  animation: completion-sweep 0.75s cubic-bezier(0.3, 0.7, 0.3, 1) forwards;
+  animation: none;
 }
 @keyframes completion-sweep {
   0% {
@@ -554,7 +830,8 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   flex-direction: column;
   min-width: 0;
   flex: 1;
-  gap: 0.05rem;
+  gap: 0.18rem;
+  margin-left: 0.35rem;
 }
 .panel-title {
   font-weight: 600;
@@ -580,7 +857,22 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Project / cwd subtitle: ALL CAPS, wider tracking, heavier weight so it
+ * reads as a label rather than free text. Subagent's agentType keeps the
+ * default .panel-subtitle styling. */
+.panel-subtitle-cwd {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
+}
 .panel-meta {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+.panel-meta-row {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -619,6 +911,19 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+/* Subagent total-runtime badge: sits next to the current-state timer in
+ * the meta row. Inverted from the panel's normal palette so it reads as
+ * a distinct, persistent metric rather than a state-changing timer. */
+.panel-runtime {
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--fg);
+  color: var(--panel-bg);
+  border: 1px solid color-mix(in srgb, var(--fg) 75%, transparent);
+  white-space: nowrap;
+}
 /* Waiting badge — replaces the idle/done timer in the header while the
  * panel is actively awaiting a model response. Picks up the hued theme
  * color (falling back to --accent) so it matches the rest of the panel. */
@@ -637,18 +942,54 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
  * header. Shows the running total (formatted as 1.5k / 1.5m); the
  * `title` attr carries the full breakdown for hover-reveal. */
 .panel-tokens {
+  --token-gold: #e6b455;
   font-size: 0.6rem;
   font-variant-numeric: tabular-nums;
   padding: 0.05rem 0.4rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 18%, transparent);
-  color: var(--muted);
+  background: color-mix(in srgb, var(--token-gold) 22%, transparent);
+  color: color-mix(in srgb, var(--token-gold) 92%, var(--fg));
   cursor: help;
   white-space: pre;
 }
+/* Total session time chip — leftmost of the bottom-row badge trio.
+ * Soft lavender to balance the gold token chip and teal context chip;
+ * same chroma intensity so they read as a coordinated set. */
+.panel-session-time {
+  --session-lavender: #a489d0;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--session-lavender) 22%, transparent);
+  color: color-mix(in srgb, var(--session-lavender) 92%, var(--fg));
+  white-space: nowrap;
+}
+.panel-session-time::before {
+  content: '⏱ ';
+  opacity: 0.9;
+}
 .panel-tokens::before {
   content: '⛁ ';
-  opacity: 0.7;
+  opacity: 0.9;
+}
+/* Context-window-size capsule — sits next to .panel-tokens. Different hue
+ * (cool teal) so it doesn't read as "more tokens" but as a distinct metric:
+ * how full the current context window is right now. */
+.panel-context {
+  --context-teal: #5fb8c4;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--context-teal) 22%, transparent);
+  color: color-mix(in srgb, var(--context-teal) 92%, var(--fg));
+  cursor: help;
+  white-space: pre;
+}
+.panel-context::before {
+  content: '⊡ ';
+  opacity: 0.9;
 }
 .panel-waiting-spinner {
   width: 0.7em;
@@ -997,7 +1338,11 @@ body.imessage .event-assistant_text .bubble {
 }
 .panel.has-theme .panel-header,
 .panel.has-theme .panel-pinned {
-  background: color-mix(in srgb, var(--panel-theme-bg) 14%, var(--header-bg));
+  background: color-mix(
+    in srgb,
+    var(--panel-theme-bg) calc(var(--hued-header-strength, 0.14) * 100%),
+    var(--header-bg)
+  );
   border-bottom-color: color-mix(
     in srgb,
     var(--panel-theme-bg) 35%,
@@ -1336,6 +1681,110 @@ body.imessage .panel.has-theme .event-user_text .bubble {
 .transforms-blurb {
   margin: 0.3rem 0 0;
   color: color-mix(in srgb, var(--fg) 80%, transparent);
+}
+
+/* Cross-session flows sankey — column-bucketed event sequence graph.
+ * Reuses .transforms-modal chrome; SVG is the centerpiece. */
+.flows-modal {
+  max-width: 80vw;
+  width: 80vw;
+}
+.flows-days {
+  font: inherit;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  color: inherit;
+}
+.flows-svg {
+  display: block;
+  margin-top: 0.4rem;
+}
+.flows-node-label {
+  fill: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+}
+.flows-links path:hover {
+  stroke-opacity: 0.75 !important;
+  cursor: pointer;
+}
+.flows-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.flows-tooltip-arrow {
+  color: var(--muted);
+}
+.flows-tooltip-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Event-type stats — sortable table. Reuses .transforms-modal for the
+ * outer chrome; the table itself is plain. */
+.stats-modal {
+  max-width: 760px;
+}
+.stats-total {
+  font-variant-numeric: tabular-nums;
+}
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.stats-table th,
+.stats-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+.stats-table th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.stats-th-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+.stats-th-button:hover {
+  color: var(--fg);
+}
+.stats-table .stats-count,
+.stats-table .stats-last-seen {
+  text-align: right;
+  white-space: nowrap;
+}
+.stats-subkey {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+}
+.stats-subkey .muted {
+  color: var(--muted);
+}
+.stats-error {
+  color: #e57373;
+  margin: 0;
 }
 
 /* Inline-SVG icons inherit their color from `currentColor` on the parent

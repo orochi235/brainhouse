@@ -41,8 +41,11 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
         <span className={`tool-status status-${status}`} aria-label={status}>
           {status === 'pending' ? '' : status === 'ok' ? '✓' : '✗'}
         </span>
-        <EventTime ts={item.ts} startedAt={startedAt} />
       </div>
+      {/* Time lives as a sibling of the capsule (not inside it) so its
+       * absolute positioning anchors to the `.event` li — same right-edge
+       * alignment as every other log entry. */}
+      <EventTime ts={item.ts} startedAt={startedAt} />
       {item.ack && (
         <div className="tool-note">
           <Markdown text={item.ack} />
