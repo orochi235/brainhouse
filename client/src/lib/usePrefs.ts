@@ -19,6 +19,9 @@ export interface ClientPrefs {
     idleOpacity: number;
     huedHeaderStrength: number;
     toolPaletteDisplay: 'hover' | 'always';
+    showSessionTime: boolean;
+    showTokens: boolean;
+    showContext: boolean;
   };
   messages: {
     thinking: boolean;
@@ -55,6 +58,9 @@ const DEFAULT_PREFS: ClientPrefs = {
     idleOpacity: 0.5,
     huedHeaderStrength: 0.14,
     toolPaletteDisplay: 'hover',
+    showSessionTime: true,
+    showTokens: true,
+    showContext: true,
   },
   messages: {
     thinking: true,

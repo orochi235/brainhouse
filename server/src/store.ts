@@ -86,6 +86,7 @@ export interface PanelRow {
     | 'hook_subagent_stop'
     | 'idle_timeout'
     | 'server_close'
+    | 'progress_complete'
     | null;
   updated_at: number;
 }
@@ -130,6 +131,7 @@ export interface SessionSummaryRow {
     | 'hook_subagent_stop'
     | 'idle_timeout'
     | 'server_close'
+    | 'progress_complete'
     | 'never';
   event_count: number;
   tool_call_count: number;

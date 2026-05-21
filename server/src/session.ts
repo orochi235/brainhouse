@@ -74,6 +74,7 @@ export interface Panel {
     | 'hook_subagent_stop'
     | 'idle_timeout'
     | 'server_close'
+    | 'progress_complete'
     | null;
   /** Running token counters, accumulated from `resource_usage` events.
    * `model` is the last model_id seen on a usage record (sessions can
@@ -229,6 +230,13 @@ export class SessionStore {
     deltas.push({ op: 'event_append', panel_id: panel.id, event });
     this.persistEvent(panel, event, ts);
     this.persistPanel(panel);
+    // Subagent finality by checklist: when a subagent's pinned
+    // pensieve-checklist hits 100% completion in a freshly-ingested
+    // bubble, treat it as an explicit end. Mirrors the client-side
+    // sweep so a refresh doesn't resurrect the panel.
+    if (panel.kind === 'subagent' && !panel.ended && isChecklistComplete(event)) {
+      for (const d of this.markEnded(panel.id, 'progress_complete')) deltas.push(d);
+    }
     return deltas;
   }
 
@@ -532,6 +540,43 @@ export class SessionStore {
 }
 
 type PanelEndedProvenance = NonNullable<Panel['ended_provenance']>;
+
+/** Returns true when the event carries a `pensieve-checklist` fenced block
+ * whose items are *all* done. Mirrors the client-side parser in
+ * `client/src/transforms/builtIn/scanChecklist.ts` so the server's
+ * progress_complete detection lines up exactly with the UI's completion
+ * sweep. Only considers the *last* checklist block in the text (matches
+ * the "most recent wins" rule the client uses). */
+export function isChecklistComplete(event: Event): boolean {
+  if (event.kind !== 'user_text' && event.kind !== 'assistant_text') return false;
+  const text = (event.payload as { text?: unknown }).text;
+  if (typeof text !== 'string') return false;
+  const items = extractLastChecklistItems(text);
+  if (!items || items.length === 0) return false;
+  return items.every((i) => i.done);
+}
+
+function extractLastChecklistItems(
+  text: string,
+): Array<{ done: boolean; text: string }> | null {
+  const re = /```pensieve-checklist\s*\n([\s\S]*?)```/g;
+  let last: Array<{ done: boolean; text: string }> | null = null;
+  let m: RegExpExecArray | null;
+  while (true) {
+    m = re.exec(text);
+    if (!m) break;
+    const items: Array<{ done: boolean; text: string }> = [];
+    const body = m[1] ?? '';
+    for (const line of body.split('\n')) {
+      const im = line.match(/^\s*-\s*\[([ xX])\]\s*(.+?)\s*$/);
+      if (im?.[1] !== undefined && im[2] !== undefined) {
+        items.push({ done: /[xX]/.test(im[1]), text: im[2] });
+      }
+    }
+    if (items.length) last = items;
+  }
+  return last;
+}
 
 function parseEventTs(ts: string): number | null {
   if (!ts) return null;

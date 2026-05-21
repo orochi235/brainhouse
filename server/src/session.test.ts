@@ -564,6 +564,75 @@ describe('SessionStore', () => {
     });
   });
 
+  describe('progress_complete subagent finality', () => {
+    const fullList = '```pensieve-checklist\n- [x] a\n- [x] b\n- [X] c\n```';
+    const partialList = '```pensieve-checklist\n- [x] a\n- [ ] b\n```';
+
+    it('fires markEnded with progress_complete when a subagent checklist hits 100%', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      // Seed the subagent panel.
+      store.apply(
+        ev('user_text', { agent_id: 'agent-x', uuid: 'u1', payload: { text: 'go' } }),
+      );
+      // Ingest an assistant_text with a fully-checked checklist.
+      store.apply(
+        ev('assistant_text', {
+          agent_id: 'agent-x',
+          uuid: 'u2',
+          payload: { text: `done!\n${fullList}` },
+        }),
+      );
+      const panel = store.panel('agent-x');
+      expect(panel?.ended).toBe(true);
+      expect(panel?.ended_provenance).toBe('progress_complete');
+    });
+
+    it('does NOT fire on partial completion', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(
+        ev('user_text', { agent_id: 'agent-x', uuid: 'u1', payload: { text: 'go' } }),
+      );
+      store.apply(
+        ev('assistant_text', {
+          agent_id: 'agent-x',
+          uuid: 'u2',
+          payload: { text: partialList },
+        }),
+      );
+      expect(store.panel('agent-x')?.ended).toBe(false);
+    });
+
+    it('does NOT fire on parent panels', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(
+        ev('assistant_text', {
+          uuid: 'u1',
+          payload: { text: fullList },
+        }),
+      );
+      expect(store.panel('S')?.ended).toBe(false);
+    });
+
+    it('persists progress_complete provenance through the Store', () => {
+      const store = Store.open(':memory:');
+      const sess = new SessionStore({ clock: () => 1000, store });
+      sess.apply(ev('user_text', { agent_id: 'agent-x', uuid: 'u1', payload: { text: 'go' } }));
+      sess.apply(
+        ev('assistant_text', {
+          agent_id: 'agent-x',
+          uuid: 'u2',
+          payload: { text: fullList },
+        }),
+      );
+      const summary = store.getSession('agent-x');
+      expect(summary?.ended_provenance).toBe('progress_complete');
+      store.close();
+    });
+  });
+
   describe('Store integration', () => {
     it('apply() writes the panel + event through to the Store', () => {
       const store = Store.open(':memory:');

@@ -622,6 +622,16 @@ body.tool-palette-always .panel-tool-palette {
   opacity: 1;
   pointer-events: auto;
 }
+/* Pref-driven badge visibility — toggled via Prefs → Display. */
+body.hide-session-time .panel-session-time {
+  display: none;
+}
+body.hide-tokens .panel-tokens {
+  display: none;
+}
+body.hide-context .panel-context {
+  display: none;
+}
 .panel-tool-palette-chips {
   display: inline-flex;
   align-items: center;

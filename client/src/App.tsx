@@ -117,6 +117,9 @@ export function App() {
       'tool-palette-always',
       prefs.display.toolPaletteDisplay === 'always',
     );
+    document.body.classList.toggle('hide-session-time', !prefs.display.showSessionTime);
+    document.body.classList.toggle('hide-tokens', !prefs.display.showTokens);
+    document.body.classList.toggle('hide-context', !prefs.display.showContext);
   }, [
     imessage,
     showElapsed,
@@ -125,6 +128,9 @@ export function App() {
     prefs.display.idleOpacity,
     prefs.display.huedHeaderStrength,
     prefs.display.toolPaletteDisplay,
+    prefs.display.showSessionTime,
+    prefs.display.showTokens,
+    prefs.display.showContext,
   ]);
 
   // Auto-minimize newly-arriving subagent panels when the pref is on. We

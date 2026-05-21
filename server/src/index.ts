@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static';
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import Fastify from 'fastify';
 import { TranscriptMonitor } from './monitor.js';
+import { ONBOARDING_WARNING_LINES, checkOnboarding } from './onboarding.js';
 import { PrefsStore } from './prefs.js';
 import { resolveRoots } from './roots.js';
 import { Store } from './store.js';
@@ -66,6 +67,18 @@ async function main() {
   await app.listen({ host: HOST, port: PORT });
   app.log.info(`brainhouse listening at http://${HOST}:${PORT}`);
   for (const r of roots) app.log.info(`  watch: ${r}`);
+
+  // One-shot onboarding nudge: if the user clearly uses subagents but
+  // hasn't installed the hook dispatcher, completion will be guessed via
+  // idle-timeout. Surface the gap loudly-but-briefly.
+  try {
+    const check = checkOnboarding(roots);
+    if (check.shouldWarn) {
+      for (const line of ONBOARDING_WARNING_LINES) app.log.warn(line);
+    }
+  } catch {
+    // never let the nudge break startup
+  }
 }
 
 main().catch((err) => {

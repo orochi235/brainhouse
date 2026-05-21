@@ -117,6 +117,10 @@ export const DisplaySchema = z.object({
    *     full reveal when the cursor approaches the top-right.
    *   - `always`: pinned visible. */
   toolPaletteDisplay: z.enum(['hover', 'always']).default('hover'),
+  /** Bottom-row badge visibility. Each toggle hides its chip if false. */
+  showSessionTime: z.boolean().default(true),
+  showTokens: z.boolean().default(true),
+  showContext: z.boolean().default(true),
 });
 export type Display = z.infer<typeof DisplaySchema>;
 

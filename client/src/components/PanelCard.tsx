@@ -497,7 +497,7 @@ function PanelHeader({
           )}
           <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} />
         </span>
-        {panel.status !== 'mini' && (
+        {panel.status !== 'mini' && !onRestore && (
           <span className="panel-meta-row panel-meta-row-bottom">
             <span
               className="panel-session-time"

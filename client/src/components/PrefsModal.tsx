@@ -31,6 +31,9 @@ interface PrefsDraft {
     idleOpacity: number;
     huedHeaderStrength: number;
     toolPaletteDisplay: 'hover' | 'always';
+    showSessionTime: boolean;
+    showTokens: boolean;
+    showContext: boolean;
   };
   messages: {
     thinking: boolean;
@@ -263,6 +266,21 @@ function DisplaySection({ draft, setDraft }: SectionProps) {
           <option value="always">Always</option>
         </select>
       </label>
+      <CheckboxField
+        label="Show session-time badge"
+        checked={draft.display.showSessionTime}
+        onChange={(v) => set({ showSessionTime: v })}
+      />
+      <CheckboxField
+        label="Show token-usage badge"
+        checked={draft.display.showTokens}
+        onChange={(v) => set({ showTokens: v })}
+      />
+      <CheckboxField
+        label="Show context-size badge"
+        checked={draft.display.showContext}
+        onChange={(v) => set({ showContext: v })}
+      />
     </Section>
   );
 }
