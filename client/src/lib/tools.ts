@@ -10,18 +10,26 @@
  * hand-rolled `{}` glyph (no Simple Icons entry exists).
  */
 
+import awsIcon from '../assets/icons/aws.svg?raw';
+import azIcon from '../assets/icons/az.svg?raw';
 import brewIcon from '../assets/icons/brew.svg?raw';
 import bunIcon from '../assets/icons/bun.svg?raw';
 import cargoIcon from '../assets/icons/cargo.svg?raw';
+import cloudflareIcon from '../assets/icons/cloudflare.svg?raw';
 import curlIcon from '../assets/icons/curl.svg?raw';
 import denoIcon from '../assets/icons/deno.svg?raw';
 import dockerIcon from '../assets/icons/docker.svg?raw';
+import gcloudIcon from '../assets/icons/gcloud.svg?raw';
 import ghIcon from '../assets/icons/gh.svg?raw';
 import gitIcon from '../assets/icons/git.svg?raw';
+import glabIcon from '../assets/icons/glab.svg?raw';
 import goIcon from '../assets/icons/go.svg?raw';
+import helmIcon from '../assets/icons/helm.svg?raw';
 import jqIcon from '../assets/icons/jq.svg?raw';
 import kubectlIcon from '../assets/icons/kubectl.svg?raw';
 import makeIcon from '../assets/icons/make.svg?raw';
+import netlifyIcon from '../assets/icons/netlify.svg?raw';
+import ngrokIcon from '../assets/icons/ngrok.svg?raw';
 import nodeIcon from '../assets/icons/node.svg?raw';
 import npmIcon from '../assets/icons/npm.svg?raw';
 import npxIcon from '../assets/icons/npx.svg?raw';
@@ -32,7 +40,11 @@ import pytestIcon from '../assets/icons/pytest.svg?raw';
 import pythonIcon from '../assets/icons/python.svg?raw';
 import python3Icon from '../assets/icons/python3.svg?raw';
 import rustcIcon from '../assets/icons/rustc.svg?raw';
+import supabaseIcon from '../assets/icons/supabase.svg?raw';
+import tailscaleIcon from '../assets/icons/tailscale.svg?raw';
+import terraformIcon from '../assets/icons/terraform.svg?raw';
 import uvIcon from '../assets/icons/uv.svg?raw';
+import vercelIcon from '../assets/icons/vercel.svg?raw';
 import vimIcon from '../assets/icons/vim.svg?raw';
 import wgetIcon from '../assets/icons/wget.svg?raw';
 import yarnIcon from '../assets/icons/yarn.svg?raw';
@@ -78,29 +90,51 @@ export const TOOL_ICONS: Record<string, string> = {
 };
 
 export const CLI_ICONS: Record<string, string> = {
+  // version control
   gh: ghIcon,
   git: gitIcon,
+  glab: glabIcon,
+  // http
   curl: curlIcon,
   wget: wgetIcon,
+  // node ecosystem
   npm: npmIcon,
   npx: npxIcon,
   pnpm: pnpmIcon,
   yarn: yarnIcon,
+  node: nodeIcon,
+  deno: denoIcon,
+  bun: bunIcon,
+  // python ecosystem
   python: pythonIcon,
   python3: python3Icon,
   pip: pipIcon,
   uv: uvIcon,
   pytest: pytestIcon,
+  // build / package
   make: makeIcon,
-  docker: dockerIcon,
-  kubectl: kubectlIcon,
-  node: nodeIcon,
-  deno: denoIcon,
-  bun: bunIcon,
+  brew: brewIcon,
   cargo: cargoIcon,
   rustc: rustcIcon,
   go: goIcon,
-  brew: brewIcon,
+  // containers / orchestration
+  docker: dockerIcon,
+  kubectl: kubectlIcon,
+  helm: helmIcon,
+  // cloud + infra
+  aws: awsIcon,
+  gcloud: gcloudIcon,
+  az: azIcon,
+  terraform: terraformIcon,
+  cloudflare: cloudflareIcon,
+  tailscale: tailscaleIcon,
+  ngrok: ngrokIcon,
+  // edge / deploy
+  vercel: vercelIcon,
+  netlify: netlifyIcon,
+  // backend platforms
+  supabase: supabaseIcon,
+  // tools
   jq: jqIcon,
   vim: vimIcon,
   nvim: nvimIcon,
