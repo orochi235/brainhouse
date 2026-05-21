@@ -145,9 +145,15 @@ export function aggregateRows(rows: EventIndexRow[]): FlowsGraph {
         nodes.set(id, { id, label: t.label, column, kind: t.kind });
       }
       if (prev) {
-        // Skip self-loops: rare but possible at the tail column where many
-        // events land in the same bucket. Sankey can't draw them.
-        if (prev.id !== id) {
+        // Columns 0..MAX_COLUMN each hold at most one event per session
+        // (position increments every row), so cycles can only form inside
+        // the tail bucket where multiple types from the same session land
+        // in the same column — e.g. user_text → assistant_text → user_text
+        // all at col TAIL_COLUMN. d3-sankey rejects any cycle, so we drop
+        // every intra-tail link (and any direct self-loop). The tail's
+        // internal dynamics aren't useful at this zoom level anyway.
+        const intraTail = prev.column === TAIL_COLUMN && column === TAIL_COLUMN;
+        if (prev.id !== id && !intraTail) {
           const lk = `${prev.id}${id}`;
           const cur = linkCounts.get(lk);
           if (cur) cur.value += 1;

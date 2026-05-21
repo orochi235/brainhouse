@@ -114,8 +114,11 @@ export function FlowsModal() {
     const innerH = HEIGHT - MARGIN.top - MARGIN.bottom;
 
     try {
+      // Links carry integer source/target indices (see the idToIdx map
+      // above) — d3-sankey's default nodeId is the array index, so we
+      // don't override it. The previous custom .nodeId() read `d.index`
+      // before layout had populated it, so every link resolved to "missing".
       const layout = sankey<SankeyNode, SankeyLink>()
-        .nodeId((d) => String((d as SankeyNode).index ?? ''))
         .nodeWidth(12)
         .nodePadding(8)
         .extent([

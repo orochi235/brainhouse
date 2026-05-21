@@ -1020,6 +1020,19 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   color: #ef4444;
   border-color: #ef4444;
 }
+/* Trash on mini panels: hidden until you hover the panel itself. Keeps
+ * the dock clean unless you're actually targeting a panel for cleanup.
+ * Focus-within keeps it reachable for keyboard users. */
+.panel.status-mini .panel-trash {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.panel.status-mini:hover .panel-trash,
+.panel.status-mini:focus-within .panel-trash {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 /* ---- pinned checklist ---- */
 .panel-pinned {
