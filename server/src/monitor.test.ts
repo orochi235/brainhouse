@@ -118,6 +118,19 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.panel('S')?.ended).toBe(false);
   });
 
+  it('SessionEnd hook marks the parent ended + demotes live subagents', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({}));
+    monitor.ingest(userTextEvent({ agent_id: 'sub1', uuid: 'u2' }));
+    monitor.ingest(userTextEvent({ agent_id: 'sub2', uuid: 'u3' }));
+    monitor.applyHookEvent({ session_id: 'S', kind: 'session_end' });
+    expect(monitor.store.panel('S')?.status).toBe('done');
+    expect(monitor.store.panel('S')?.ended).toBe(true);
+    expect(monitor.store.panel('S')?.ended_provenance).toBe('hook_session_end');
+    expect(monitor.store.panel('sub1')?.ended).toBe(true);
+    expect(monitor.store.panel('sub2')?.ended).toBe(true);
+  });
+
   it('setTimings forwards to the store and changes idle behavior', () => {
     const monitor = newMonitor();
     monitor.setTimings({ idleSeconds: 1 });

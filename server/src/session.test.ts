@@ -548,14 +548,30 @@ describe('SessionStore', () => {
       expect(store.markEnded('S')).toEqual([]);
     });
 
-    it('fresh activity clears the ended flag', () => {
+    it('ended is sticky — late writes do not revive the panel', () => {
+      // A terminal close-out flush, a late tool_result echo, or any other
+      // post-end JSONL write would previously flip `ended` back to false
+      // and bounce the panel to `live`. Now the panel stays dim; the
+      // event is still appended for audit but the lifecycle holds.
       const clock = new FakeClock();
       const store = new SessionStore({ clock: clock.now });
       store.apply(ev('user_text', { payload: { text: 'hi' } }));
       store.markEnded('S');
+      store.forceStatus('S', 'done');
       expect(store.panel('S')?.ended).toBe(true);
-      store.apply(ev('assistant_text', { uuid: 'u2', payload: { text: 'back' } }));
-      expect(store.panel('S')?.ended).toBe(false);
+      expect(store.panel('S')?.status).toBe('done');
+
+      const deltas = store.apply(
+        ev('assistant_text', { uuid: 'u2', payload: { text: 'late' } }),
+      );
+
+      expect(store.panel('S')?.ended).toBe(true);
+      expect(store.panel('S')?.status).toBe('done');
+      // Event is appended (audit) but no status flip emitted.
+      expect(deltas.some((d) => d.op === 'event_append')).toBe(true);
+      expect(
+        deltas.some((d) => d.op === 'panel_status' && d.status === 'live'),
+      ).toBe(false);
     });
 
     it('does nothing for an unknown panel', () => {

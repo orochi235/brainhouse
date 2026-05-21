@@ -184,6 +184,19 @@ export class TranscriptMonitor {
       for (const d of this.store.setAwaiting(sid, true)) this.broadcast(d);
       return;
     }
+    if (event.kind === 'session_end') {
+      // Authoritative terminate signal — Claude Code is shutting down this
+      // session for real. Mark the parent panel ended and demote any live
+      // subagents under it. Stop hooks only end the assistant turn;
+      // session_end is the whole-session terminator.
+      for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
+      for (const d of this.store.markEnded(sid, 'hook_session_end')) this.broadcast(d);
+      for (const sub of this.store.liveSubagentsOf(sid)) {
+        for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
+        for (const d of this.store.markEnded(sub.id, 'hook_session_end')) this.broadcast(d);
+      }
+      return;
+    }
   }
 
   /**

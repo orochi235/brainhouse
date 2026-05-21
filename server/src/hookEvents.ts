@@ -19,7 +19,7 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 
 export const HookEventSchema = z.object({
-  kind: z.enum(['stop', 'subagent_stop', 'notification']),
+  kind: z.enum(['stop', 'subagent_stop', 'notification', 'session_end']),
   session_id: z.string().min(1),
   /** Absolute path of the transcript that triggered the hook, if Claude
    * Code provided one. Reserved for future per-subagent routing. */

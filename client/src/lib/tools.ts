@@ -7,7 +7,8 @@
  *
  * CLI logo SVGs in ../assets/icons/ are sourced from Simple Icons
  * (https://simpleicons.org/), licensed CC0-1.0. The jq icon is a
- * hand-rolled `{}` glyph (no Simple Icons entry exists).
+ * hand-rolled `{}` glyph (no Simple Icons entry exists). The skull (used
+ * for kill/pkill/killall) comes from Lucide (https://lucide.dev/), MIT.
  */
 
 import awsIcon from '../assets/icons/aws.svg?raw';
@@ -40,6 +41,7 @@ import pytestIcon from '../assets/icons/pytest.svg?raw';
 import pythonIcon from '../assets/icons/python.svg?raw';
 import python3Icon from '../assets/icons/python3.svg?raw';
 import rustcIcon from '../assets/icons/rustc.svg?raw';
+import skullIcon from '../assets/icons/skull.svg?raw';
 import supabaseIcon from '../assets/icons/supabase.svg?raw';
 import tailscaleIcon from '../assets/icons/tailscale.svg?raw';
 import terraformIcon from '../assets/icons/terraform.svg?raw';
@@ -138,6 +140,11 @@ export const CLI_ICONS: Record<string, string> = {
   jq: jqIcon,
   vim: vimIcon,
   nvim: nvimIcon,
+  // destructive ops — kill/pkill/killall surface a skull so they're
+  // visually unmistakable in a long Bash run.
+  kill: skullIcon,
+  pkill: skullIcon,
+  killall: skullIcon,
 };
 
 const BASH_SKIP = new Set(['sudo', 'time', 'command', 'exec', 'nice', 'env']);

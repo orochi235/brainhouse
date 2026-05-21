@@ -8,7 +8,7 @@
  * exits 0 — silently swallowing any error so Claude Code never blocks on us.
  *
  * Usage: node dispatcher.mjs <kind>
- *   kind ∈ {stop, subagent_stop, notification}
+ *   kind ∈ {stop, subagent_stop, notification, session_end}
  *
  * Env:
  *   BRAINHOUSE_EVENTS_DIR  override sidecar directory (default ~/.brainhouse/events)
@@ -18,7 +18,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const VALID_KINDS = new Set(['stop', 'subagent_stop', 'notification']);
+const VALID_KINDS = new Set(['stop', 'subagent_stop', 'notification', 'session_end']);
 
 async function main() {
   const kind = process.argv[2];

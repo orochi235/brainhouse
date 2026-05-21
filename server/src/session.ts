@@ -72,6 +72,7 @@ export interface Panel {
   ended_provenance:
     | 'hook_stop'
     | 'hook_subagent_stop'
+    | 'hook_session_end'
     | 'idle_timeout'
     | 'server_close'
     | 'progress_complete'
@@ -212,15 +213,17 @@ export class SessionStore {
       panel.events.splice(0, Math.ceil(MAX_EVENTS_PER_PANEL * EVICT_FRACTION));
     }
     panel.last_event_at = Math.max(panel.last_event_at, ts);
-    // Any fresh activity clears the awaiting-input + ended flags. Spoke
-    // again → not ended after all.
-    if (panel.awaiting_input || panel.ended) {
+    // Clear awaiting-input on any new activity (it's a transient blocker
+    // flag). Do NOT clear `ended` — terminal close-out flushes, late
+    // tool_result echoes, and other death-rattle writes shouldn't undo
+    // an authoritative end signal (Stop hook, SubagentStop, checklist
+    // completion). Ended panels still get the event appended for audit,
+    // but stay dimmed instead of bouncing back to live.
+    if (panel.awaiting_input) {
       panel.awaiting_input = false;
-      panel.ended = false;
-      panel.ended_provenance = null;
       deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
     }
-    if (panel.status !== 'live') {
+    if (!panel.ended && panel.status !== 'live') {
       panel.status = 'live';
       panel.status_changed_at = panel.last_event_at;
       deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'live' });

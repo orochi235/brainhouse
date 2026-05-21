@@ -84,6 +84,7 @@ export interface PanelRow {
   ended_provenance:
     | 'hook_stop'
     | 'hook_subagent_stop'
+    | 'hook_session_end'
     | 'idle_timeout'
     | 'server_close'
     | 'progress_complete'
@@ -129,6 +130,7 @@ export interface SessionSummaryRow {
   ended_provenance:
     | 'hook_stop'
     | 'hook_subagent_stop'
+    | 'hook_session_end'
     | 'idle_timeout'
     | 'server_close'
     | 'progress_complete'
