@@ -8,7 +8,7 @@
  * When omitted, behavior matches the pre-persistence default: in-memory only.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface OrderOpts {
   /** Sparse manual_order values, keyed by panel id. Lower = earlier. */
@@ -19,9 +19,18 @@ interface OrderOpts {
 export function usePanelOrder(opts: OrderOpts = {}) {
   const { initial, persist } = opts;
   const [order, setOrder] = useState<string[]>(() => orderFromIntentions(initial));
+  const touched = useRef(false);
+  // Re-seed when `initial` arrives async from useIntentions (empty on mount
+  // → real Set/Map once trpc resolves). Skip if the user has already
+  // interacted, so we don't clobber an in-flight click with the (now
+  // stale) server snapshot.
+  useEffect(() => {
+    if (!touched.current) setOrder(orderFromIntentions(initial));
+  }, [initial]);
 
   const moveBefore = useCallback(
     (sourceId: string, targetId: string, knownIds: string[]) => {
+      touched.current = true;
       setOrder((current) => {
         const next = reorder(current, knownIds, sourceId, targetId);
         // Write through every position whose place actually changed.
@@ -45,13 +54,22 @@ interface FlagOpts {
   persist?: (id: string, value: boolean) => void;
 }
 
-export function useWidePanels(opts: FlagOpts = {}) {
+/** Shared shape for the boolean-flag hooks below (pinned / wide / brokenOut).
+ * Holds a `Set<string>` of ids the flag is true for, with toggle + write-
+ * through-to-server. Late-arriving `initial` from `useIntentions` re-seeds
+ * the state on first hydration, gated by a `touched` ref so we don't
+ * clobber an in-flight click. */
+function useFlagSet(opts: FlagOpts) {
   const { initial, persist } = opts;
-  const [wide, setWide] = useState<Set<string>>(() => new Set(initial ?? []));
-
-  const toggleWide = useCallback(
+  const [set, setSet] = useState<Set<string>>(() => new Set(initial ?? []));
+  const touched = useRef(false);
+  useEffect(() => {
+    if (!touched.current) setSet(new Set(initial ?? []));
+  }, [initial]);
+  const toggle = useCallback(
     (id: string) => {
-      setWide((current) => {
+      touched.current = true;
+      setSet((current) => {
         const next = new Set(current);
         const newValue = !next.has(id);
         if (newValue) next.add(id);
@@ -62,28 +80,16 @@ export function useWidePanels(opts: FlagOpts = {}) {
     },
     [persist],
   );
+  return [set, toggle] as const;
+}
 
+export function useWidePanels(opts: FlagOpts = {}) {
+  const [wide, toggleWide] = useFlagSet(opts);
   return { wide, toggleWide };
 }
 
 export function usePinnedPanels(opts: FlagOpts = {}) {
-  const { initial, persist } = opts;
-  const [pinned, setPinned] = useState<Set<string>>(() => new Set(initial ?? []));
-
-  const togglePin = useCallback(
-    (id: string) => {
-      setPinned((current) => {
-        const next = new Set(current);
-        const newValue = !next.has(id);
-        if (newValue) next.add(id);
-        else next.delete(id);
-        persist?.(id, newValue);
-        return next;
-      });
-    },
-    [persist],
-  );
-
+  const [pinned, togglePin] = useFlagSet(opts);
   return { pinned, togglePin };
 }
 
@@ -91,22 +97,7 @@ export function usePinnedPanels(opts: FlagOpts = {}) {
  * nested tray into the top-level grid. Mirrors usePinnedPanels — Set of
  * panel ids, toggle persists to intentions. */
 export function useBrokenOutPanels(opts: FlagOpts = {}) {
-  const { initial, persist } = opts;
-  const [brokenOut, setBrokenOut] = useState<Set<string>>(() => new Set(initial ?? []));
-
-  const toggleBrokenOut = useCallback(
-    (id: string) => {
-      setBrokenOut((current) => {
-        const next = new Set(current);
-        const newValue = !next.has(id);
-        if (newValue) next.add(id);
-        else next.delete(id);
-        persist?.(id, newValue);
-        return next;
-      });
-    },
-    [persist],
-  );
+  const [brokenOut, toggleBrokenOut] = useFlagSet(opts);
 
   return { brokenOut, toggleBrokenOut };
 }

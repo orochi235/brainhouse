@@ -56,6 +56,16 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
     ...(initial?.autoMiniAt ?? {}),
   }));
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const touched = useRef(false);
+  // Re-seed when `initial` arrives async from useIntentions (empty on mount
+  // → real values once trpc resolves). Skip if the user has already
+  // dismissed/restored, so the click isn't clobbered by the late snapshot.
+  useEffect(() => {
+    if (touched.current) return;
+    setHiddenAt({ ...(initial?.hiddenAt ?? {}) });
+    setUserMini(new Set(initial?.userMini ?? []));
+    setAutoMiniAt({ ...(initial?.autoMiniAt ?? {}) });
+  }, [initial]);
 
   // First-sight auto-mini: bootstrap replays panels with old
   // `last_event_at`. If a panel appears with no recent activity, route it
@@ -98,6 +108,7 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
 
   const dismiss = useCallback(
     (panel: PanelState) => {
+      touched.current = true;
       // Panels already in the tray (server-side mini) → fully hide; there's
       // nowhere else for them to go. Everything else (live or done in the
       // grid) → send to the tray as userMini. Auto-mini entries get
@@ -127,6 +138,7 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
 
   const restore = useCallback(
     (id: string) => {
+      touched.current = true;
       setUserMini((cur) => {
         if (!cur.has(id)) return cur;
         const next = new Set(cur);
