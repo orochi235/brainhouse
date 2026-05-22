@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# SessionStart hook: register this Claude session for focus tracking.
+#
+# - Writes ~/.claude/focus/registry/<session_id>.json with pid/tty/cwd/title.
+# - Emits OSC 2 (window title) marking the terminal window/tab as
+#   "claude:<session_id> — <cwd>". Hammerspoon parses this title to map the
+#   focused window back to a session id and update ~/.claude/focus/active.
+set -euo pipefail
+
+FOCUS_DIR="${HOME}/.claude/focus"
+REG_DIR="${FOCUS_DIR}/registry"
+mkdir -p "${REG_DIR}"
+
+# Hook payload arrives on stdin as JSON. Read once, parse with python (no jq dep).
+PAYLOAD="$(cat)"
+
+read_field() {
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get(sys.argv[2],''))" "$PAYLOAD" "$1"
+}
+
+SESSION_ID="$(read_field session_id)"
+CWD="$(read_field cwd)"
+[ -n "$SESSION_ID" ] || exit 0
+
+PID="$$"
+PPID_="${PPID:-}"
+TTY_="$(tty 2>/dev/null || echo '')"
+NOW_MS="$(python3 -c 'import time; print(int(time.time()*1000))')"
+SHORT_ID="${SESSION_ID:0:8}"
+TITLE="claude:${SESSION_ID} — ${CWD##*/}"
+
+REG_FILE="${REG_DIR}/${SESSION_ID}.json"
+TMP="${REG_FILE}.tmp.$$"
+python3 - <<PY > "$TMP"
+import json
+print(json.dumps({
+    "session_id": "${SESSION_ID}",
+    "short_id": "${SHORT_ID}",
+    "pid": ${PID},
+    "ppid": "${PPID_}",
+    "tty": "${TTY_}",
+    "cwd": "${CWD}",
+    "started_at_ms": ${NOW_MS},
+}, indent=2))
+PY
+mv -f "$TMP" "$REG_FILE"
+
+# Emit OSC 2 to the controlling tty. /dev/tty is the right destination — hook
+# stdout may be captured/parsed by Claude Code in some modes.
+if [ -w /dev/tty ]; then
+  printf '\033]2;%s\007' "$TITLE" > /dev/tty
+fi
+
+exit 0

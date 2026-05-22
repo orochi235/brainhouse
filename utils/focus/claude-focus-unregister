@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# SessionEnd hook: deregister this Claude session.
+# - Removes ~/.claude/focus/registry/<session_id>.json
+# - If ~/.claude/focus/active points at this session, clears it.
+set -euo pipefail
+
+FOCUS_DIR="${HOME}/.claude/focus"
+REG_DIR="${FOCUS_DIR}/registry"
+ACTIVE_FILE="${FOCUS_DIR}/active"
+
+PAYLOAD="$(cat)"
+SESSION_ID="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('session_id',''))" "$PAYLOAD")"
+[ -n "$SESSION_ID" ] || exit 0
+
+rm -f "${REG_DIR}/${SESSION_ID}.json"
+
+if [ -f "$ACTIVE_FILE" ]; then
+  CURRENT="$(awk -F'\t' '{print $1; exit}' "$ACTIVE_FILE" 2>/dev/null || true)"
+  if [ "$CURRENT" = "$SESSION_ID" ]; then
+    TMP="${ACTIVE_FILE}.tmp.$$"
+    : > "$TMP"
+    mv -f "$TMP" "$ACTIVE_FILE"
+  fi
+fi
+
+exit 0
