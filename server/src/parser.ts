@@ -28,7 +28,20 @@ interface EventBase {
 }
 
 export type Event =
-  | (EventBase & { kind: 'user_text'; payload: { text: string } })
+  | (EventBase & {
+      kind: 'user_text';
+      payload: {
+        text: string;
+        /** True when the record had `isMeta: true` — typically a synthetic
+         * follow-up injected by Claude Code (e.g. a Skill's SKILL.md prelude
+         * after a Skill tool_use). Lets transforms route these elsewhere
+         * instead of rendering a giant user bubble. */
+        is_meta?: boolean;
+        /** When present, this user_text was produced by the named tool_use
+         * (e.g. Skill prelude → the Skill tool_use_id). */
+        source_tool_use_id?: string;
+      };
+    })
   | (EventBase & { kind: 'assistant_text'; payload: { text: string } })
   | (EventBase & { kind: 'thinking'; payload: { text: string } })
   | (EventBase & {
@@ -104,6 +117,11 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
   if (rtype === 'user' || rtype === 'assistant') {
     const msg = (raw.message as Raw | undefined) ?? {};
     const content = (msg as Raw).content;
+    const isMeta = rtype === 'user' && raw.isMeta === true;
+    const srcToolUseId = rtype === 'user' ? asString(raw.sourceToolUseID) : null;
+    const userMetaExtras: { is_meta?: boolean; source_tool_use_id?: string } = {};
+    if (isMeta) userMetaExtras.is_meta = true;
+    if (srcToolUseId) userMetaExtras.source_tool_use_id = srcToolUseId;
 
     // Emit a resource_usage event for every assistant message that carries
     // a `usage` block. Comes through as a sibling event with a `:usage`
@@ -114,7 +132,11 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
 
     if (typeof content === 'string') {
       const kind = rtype === 'user' ? 'user_text' : 'assistant_text';
-      const events: Event[] = [{ ...base(''), kind, payload: { text: content } }];
+      const payload =
+        kind === 'user_text'
+          ? { text: content, ...userMetaExtras }
+          : { text: content };
+      const events: Event[] = [{ ...base(''), kind, payload } as Event];
       if (usageEvent) events.push(usageEvent);
       return events;
     }
@@ -129,7 +151,9 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
 
       if (btype === 'text') {
         const kind = rtype === 'user' ? 'user_text' : 'assistant_text';
-        out.push({ ...base(sfx), kind, payload: { text: asString(b.text) ?? '' } });
+        const text = asString(b.text) ?? '';
+        const payload = kind === 'user_text' ? { text, ...userMetaExtras } : { text };
+        out.push({ ...base(sfx), kind, payload } as Event);
       } else if (btype === 'thinking') {
         out.push({
           ...base(sfx),

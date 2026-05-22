@@ -309,6 +309,13 @@ body.loading-quiet .panel {
   justify-self: start;
   max-height: none;
 }
+/* Nested subagent tray: cap at 4 cards visible, scroll beyond. Each
+ * nested card is header-only (`.panel-body { display: none }`), ~2rem
+ * tall — 4 stacked rows ≈ 8rem. */
+.panel-subagents {
+  max-height: 8rem;
+  overflow-y: auto;
+}
 .panel-subagent.nested {
   max-width: none;
   justify-self: stretch;
@@ -924,19 +931,6 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   font-size: 0.7rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-}
-/* Subagent total-runtime badge: sits next to the current-state timer in
- * the meta row. Inverted from the panel's normal palette so it reads as
- * a distinct, persistent metric rather than a state-changing timer. */
-.panel-runtime {
-  font-size: 0.65rem;
-  font-variant-numeric: tabular-nums;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: var(--fg);
-  color: var(--panel-bg);
-  border: 1px solid color-mix(in srgb, var(--fg) 75%, transparent);
-  white-space: nowrap;
 }
 /* Waiting badge — replaces the idle/done timer in the header while the
  * panel is actively awaiting a model response. Picks up the hued theme

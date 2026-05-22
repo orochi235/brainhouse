@@ -1,6 +1,7 @@
 import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import trashIcon from '../assets/icons/trash.svg?raw';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
@@ -486,17 +487,6 @@ function PanelHeader({
           ) : (
             panel.status !== 'mini' && <span className="panel-idle">{idleLabel}</span>
           )}
-          {panel.kind === 'subagent' && panel.status !== 'mini' && (
-            <span
-              className="panel-runtime"
-              title="total runtime of this subagent"
-              aria-label="subagent total runtime"
-            >
-              {formatIdleCoarse(
-                Math.max(0, (isLive ? now : panel.last_event_at) - panel.started_at),
-              )}
-            </span>
-          )}
           <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} />
         </span>
         {panel.status !== 'mini' && !onRestore && (
@@ -563,7 +553,12 @@ function HeaderActions({
             trpc.remove.mutate({ panelId: panel.id });
           }}
         >
-          🗑
+          <span
+            className="svg-glyph"
+            aria-hidden="true"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
+            dangerouslySetInnerHTML={{ __html: trashIcon }}
+          />
         </button>
       )}
       {/* Live + done panels have × in the floating palette; mini keeps it
@@ -694,6 +689,20 @@ function PanelToolPalette({
             ⤓
           </ToolChip>
         )}
+        <ToolChip
+          title="Move to trash (reversible from prefs → Trash)"
+          onClick={(e) => {
+            e.stopPropagation();
+            trpc.remove.mutate({ panelId: panel.id });
+          }}
+        >
+          <span
+            className="svg-glyph"
+            aria-hidden="true"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
+            dangerouslySetInnerHTML={{ __html: trashIcon }}
+          />
+        </ToolChip>
       </ToolChips>
     </div>
   );

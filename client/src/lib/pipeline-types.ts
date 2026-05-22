@@ -23,6 +23,10 @@ export interface ToolItem {
   /** True when the user pressed ctrl-c mid-turn and this tool's call was
    * part of the canceled work. Rendered dimmed. */
   canceled?: boolean;
+  /** Long-form content injected as a synthetic user-meta message tied to
+   * this tool_use (e.g. a Skill's SKILL.md prelude). Hidden from the panel
+   * body — surfaced only in the tool lightbox. */
+  prelude?: string;
 }
 
 export interface FileChangeItem {

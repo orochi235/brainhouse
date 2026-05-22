@@ -380,3 +380,18 @@ atomic operation, please wait." Lets the user (or another agent) ctrl-c
 without leaving the work in a half-done state. Pairs with the
 `ended_provenance` work and could replace some of the dance around
 SubagentStop.
+
+## Detail layers for renderable artifacts
+Generalize the "collapse noisy tool results" problem into a verbosity-level
+system. Layers (rough): `summary` (one-line chip) → `standard` (current
+panel view) → `full` (lightbox).
+
+Classification axis: per *artifact type*, not per tool. e.g. "skill load",
+"file read", "tool input", "tool result", "agent prompt", "agent final
+message" — each gets a default level and is promotable/demotable. User can
+shift the global floor or pin specific types.
+
+Lightbox already exists (op-strip dual-view), so `full` view reuses it.
+First concrete instance: skill-load tool results (entire SKILL.md dumped
+inline today — should be a one-line chip with skill name + base dir,
+expandable to full).

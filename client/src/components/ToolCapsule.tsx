@@ -93,6 +93,14 @@ function ToolLightboxContent({ item }: { item: ToolItem }) {
       ) : (
         <div className="lightbox-section">result pending…</div>
       )}
+      {item.prelude && (
+        <>
+          <div className="lightbox-section">skill content</div>
+          <pre className="lightbox-code">
+            <LinkifyText text={item.prelude} />
+          </pre>
+        </>
+      )}
     </>
   );
 }
