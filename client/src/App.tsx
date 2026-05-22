@@ -1,7 +1,9 @@
 import classNames from 'classnames';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { ConnTooltip } from './components/ConnTooltip.tsx';
 import { FlowsModal } from './components/FlowsModal.tsx';
+import { HoverPopover } from './components/HoverPopover.tsx';
 import { PanelCard } from './components/PanelCard.tsx';
 import { PrefsModal } from './components/PrefsModal.tsx';
 import { ScenariosModal } from './components/ScenariosModal.tsx';
@@ -244,7 +246,12 @@ export function App() {
       <LightboxProvider>
         <header className="topbar">
           <h1>Brainhouse · {focused?.title ?? focusedId}</h1>
-          <span className={`conn conn-${status}`}>{status}</span>
+          <HoverPopover
+            className={`conn conn-${status}`}
+            content={<ConnTooltip status={status} />}
+          >
+            <span>{status}</span>
+          </HoverPopover>
         </header>
         <main className="session-grid focused">
           {focused && (
@@ -289,7 +296,12 @@ export function App() {
           {prefs.debug?.enabled && <TransformsButton />}
           <StatsButton />
           {prefs.debug?.enabled && <FlowsButton />}
-          <span className={`conn conn-${status}`}>{status}</span>
+          <HoverPopover
+            className={`conn conn-${status}`}
+            content={<ConnTooltip status={status} />}
+          >
+            <span>{status}</span>
+          </HoverPopover>
           <span className="topbar-icon-buttons">
             <button
               type="button"

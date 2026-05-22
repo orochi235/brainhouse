@@ -3,14 +3,9 @@ import classNames from 'classnames';
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import trashIcon from '../assets/icons/trash.svg?raw';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
-import {
-  TOKEN_COEFFICIENTS,
-  cacheHealth,
-  cacheHitRate,
-  estimateCostUsd,
-  formatUsd,
-  inputEquivalentTokens,
-} from '../lib/tokenCost.ts';
+import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
+import { HoverPopover } from './HoverPopover.tsx';
+import { TokenTooltip } from './TokenTooltip.tsx';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
@@ -511,13 +506,12 @@ function PanelHeader({
               )}
             </span>
             {totalTokens > 0 && (
-              <span
+              <HoverPopover
                 className={classNames('panel-tokens', `cache-${cacheHealth(panel.tokens)}`)}
-                title={tokensTooltip(panel.tokens)}
-                aria-label="token usage"
+                content={<TokenTooltip tokens={panel.tokens} />}
               >
-                {formatTokens(totalTokens)}
-              </span>
+                <span aria-label="token usage">{formatTokens(totalTokens)}</span>
+              </HoverPopover>
             )}
             {panel.context_size > 0 && (
               <span
@@ -794,29 +788,6 @@ function statusIconTitle(
   if (status === 'live') return `${shape} — live${waiting ? ', awaiting model' : ''}`;
   if (status === 'done') return `${shape} — done`;
   return `${shape} — mini`;
-}
-
-function tokensTooltip(t: PanelState['tokens']): string {
-  const weighted = inputEquivalentTokens(t);
-  const rawTotal = t.input + t.output + t.cache_create + t.cache_read;
-  const lines = [
-    `tokens — ${formatTokens(weighted)} input-equivalent`,
-    `  input:        ${t.input.toLocaleString().padStart(11)}  ×${TOKEN_COEFFICIENTS.input}`,
-    `  cache_create: ${t.cache_create.toLocaleString().padStart(11)}  ×${TOKEN_COEFFICIENTS.cache_create}`,
-    `  cache_read:   ${t.cache_read.toLocaleString().padStart(11)}  ×${TOKEN_COEFFICIENTS.cache_read}`,
-    `  output:       ${t.output.toLocaleString().padStart(11)}  ×${TOKEN_COEFFICIENTS.output}`,
-    `  raw sum:      ${rawTotal.toLocaleString().padStart(11)}`,
-  ];
-  const usd = estimateCostUsd(t);
-  if (usd != null) lines.push(`  est. cost:    ${formatUsd(usd).padStart(11)}`);
-  const hit = cacheHitRate(t);
-  if (hit != null) {
-    const health = cacheHealth(t);
-    const flag = health === 'unknown' ? '' : `  (${health})`;
-    lines.push(`  cache hit:    ${`${(hit * 100).toFixed(1)}%`.padStart(11)}${flag}`);
-  }
-  if (t.model) lines.push(`  model: ${t.model}`);
-  return lines.join('\n');
 }
 
 function progressPercent(items: ChecklistItem[]): number {

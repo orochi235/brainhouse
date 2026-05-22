@@ -1798,6 +1798,143 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- HoverPopover ----
+ * Reusable hover-driven popover (position: fixed, escapes overflow
+ * clipping via z-index). Coordinates are set inline by the component.
+ * Inner content components own their own layout. */
+.hover-popover {
+  position: fixed;
+  z-index: 110;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--fg);
+  box-shadow: 0 6px 24px -4px rgba(0, 0, 0, 0.4);
+  max-width: 320px;
+}
+
+/* ---- ConnTooltip ---- */
+.conn-tooltip {
+  font-family: var(--ui-font, ui-sans-serif, system-ui);
+  max-width: 280px;
+}
+.conn-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+.conn-tooltip-body {
+  margin: 0;
+  color: color-mix(in srgb, var(--fg) 85%, var(--muted));
+}
+.conn-tooltip-detail {
+  margin: 0.45rem 0 0;
+  padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+/* ---- TokenTooltip ---- */
+.token-tooltip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.token-tooltip-title {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+.token-tooltip-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.token-tooltip-table td {
+  padding: 0.05rem 0;
+  font-variant-numeric: tabular-nums;
+}
+.token-tooltip-table td.label {
+  padding-right: 0.7rem;
+  color: var(--muted);
+}
+.token-tooltip-table td.num {
+  text-align: right;
+}
+.token-tooltip-table td.coef {
+  padding-left: 0.5rem;
+  color: var(--muted);
+  text-align: right;
+  min-width: 2.5em;
+}
+.token-tooltip-table tr.divider td {
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  padding-top: 0.2rem;
+}
+.token-tooltip-table tr.total td.label {
+  color: var(--fg);
+  font-weight: 600;
+}
+.token-tooltip-table tr.total td.num {
+  font-weight: 600;
+}
+.token-tooltip-table tr.raw td,
+.token-tooltip-table tr.cost td.label {
+  color: var(--muted);
+}
+.token-tooltip-cache {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+}
+.token-tooltip-cache .cache-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.token-tooltip-cache .cache-label {
+  color: var(--muted);
+  margin-right: auto;
+}
+.token-tooltip-cache .cache-rate {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.token-tooltip-cache .cache-badge {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.token-tooltip-cache.cache-mixed .cache-badge {
+  color: #e6884a;
+  background: color-mix(in srgb, #e6884a 18%, transparent);
+}
+.token-tooltip-cache.cache-poor .cache-badge {
+  color: #d85a4a;
+  background: color-mix(in srgb, #d85a4a 18%, transparent);
+}
+.token-tooltip-cache.cache-healthy .cache-badge {
+  color: #5fb98c;
+  background: color-mix(in srgb, #5fb98c 18%, transparent);
+}
+.token-tooltip-cache .cache-note {
+  margin: 0.35rem 0 0;
+  font-family: var(--ui-font, ui-sans-serif, system-ui);
+  font-size: 0.7rem;
+  color: color-mix(in srgb, var(--fg) 80%, var(--muted));
+}
+.token-tooltip-model {
+  margin-top: 0.5rem;
+  font-size: 0.65rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* Event-type stats — sortable table. Reuses .transforms-modal for the
  * outer chrome; the table itself is plain. */
 .stats-modal {
@@ -1863,11 +2000,17 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   align-items: center;
   justify-content: center;
   line-height: 0;
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
 }
 .svg-glyph > svg {
   width: 100%;
   height: 100%;
 }
+/* Legacy override kept for explicit tool-icon callers; .svg-glyph now
+ * carries the 1em default so chips/buttons without a wrapper class
+ * (trash chip, panel-trash button) render at the surrounding font size. */
 .tool-icon .svg-glyph {
   width: 1em;
   height: 1em;
