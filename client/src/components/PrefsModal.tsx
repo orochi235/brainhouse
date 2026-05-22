@@ -10,6 +10,11 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import {
+  DEFAULT_EDITOR_TEMPLATE,
+  EDITOR_PRESETS,
+  editorPresetIdForTemplate,
+} from '../lib/filenameLinks.ts';
 import { trpc } from '../trpc.ts';
 
 type Root = { path: string; label?: string; color?: string };
@@ -19,6 +24,7 @@ type SectionKey =
   | 'messages'
   | 'lifecycle'
   | 'workspace'
+  | 'editor'
   | 'storage'
   | 'trash';
 
@@ -59,6 +65,9 @@ interface PrefsDraft {
     persistEnabled: boolean;
     eventsIndexRetentionDays: number;
   };
+  editor: {
+    urlTemplate: string;
+  };
 }
 
 const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
@@ -67,14 +76,12 @@ const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
   { key: 'messages', icon: '◇', label: 'Messages' },
   { key: 'lifecycle', icon: '◷', label: 'Lifecycle' },
   { key: 'workspace', icon: '▦', label: 'Workspace' },
+  { key: 'editor', icon: '↗', label: 'Editor' },
   { key: 'storage', icon: '◫', label: 'Storage' },
   { key: 'trash', icon: '🗑', label: 'Trash' },
 ];
 
-export function PrefsModal({
-  initial,
-  onClose,
-}: { initial: PrefsDraft; onClose: () => void }) {
+export function PrefsModal({ initial, onClose }: { initial: PrefsDraft; onClose: () => void }) {
   // Seeded synchronously from App's cached prefs — no fetch on mount, no
   // "Loading prefs…" flash. The cache is already kept fresh by usePrefs.
   const [draft, setDraft] = useState<PrefsDraft>(initial);
@@ -121,6 +128,7 @@ export function PrefsModal({
           {active === 'messages' && <MessagesSection draft={draft} setDraft={setDraft} />}
           {active === 'lifecycle' && <LifecycleSection draft={draft} setDraft={setDraft} />}
           {active === 'workspace' && <WorkspaceSection draft={draft} setDraft={setDraft} />}
+          {active === 'editor' && <EditorSection draft={draft} setDraft={setDraft} />}
           {active === 'storage' && <StorageSection draft={draft} setDraft={setDraft} />}
           {active === 'trash' && <TrashSection />}
         </div>
@@ -252,15 +260,12 @@ function DisplaySection({ draft, setDraft }: SectionProps) {
       <label className="prefs-field prefs-select-field">
         <span className="prefs-slider-label">Tool palette</span>
         <span className="prefs-hint">
-          Where the floating session tools (pin, lightbox, debug, ×) appear on
-          live panels. Hover keeps the panel clean; Always pins the palette
-          visible.
+          Where the floating session tools (pin, lightbox, debug, ×) appear on live panels. Hover
+          keeps the panel clean; Always pins the palette visible.
         </span>
         <select
           value={draft.display.toolPaletteDisplay}
-          onChange={(e) =>
-            set({ toolPaletteDisplay: e.currentTarget.value as 'hover' | 'always' })
-          }
+          onChange={(e) => set({ toolPaletteDisplay: e.currentTarget.value as 'hover' | 'always' })}
         >
           <option value="hover">Hover</option>
           <option value="always">Always</option>
@@ -442,6 +447,60 @@ function WorkspaceSection({ draft, setDraft }: SectionProps) {
         checked={draft.workspace.spawnSubagentsMinimized}
         onChange={(v) => set({ spawnSubagentsMinimized: v })}
       />
+    </Section>
+  );
+}
+
+function EditorSection({ draft, setDraft }: SectionProps) {
+  const template = draft.editor.urlTemplate;
+  const presetId = editorPresetIdForTemplate(template);
+  const setTemplate = (t: string) => setDraft({ ...draft, editor: { urlTemplate: t } });
+  const onPresetChange = (id: string) => {
+    if (id === 'custom') {
+      // Leave the current template alone; the user will edit it below.
+      return;
+    }
+    const hit = EDITOR_PRESETS.find((p) => p.id === id);
+    if (hit) setTemplate(hit.template);
+  };
+  return (
+    <Section
+      title="Editor"
+      hint={
+        <>
+          Where filename links open. The template uses{' '}
+          <code className="inline-code">{'{path}'}</code>,{' '}
+          <code className="inline-code">{'{line}'}</code>, and{' '}
+          <code className="inline-code">{'{col}'}</code> placeholders.{' '}
+          <code className="inline-code">{'{path}'}</code> is URL-encoded. Pick a preset or write
+          your own URL scheme — anything your OS will hand to an installed editor.
+        </>
+      }
+    >
+      <label className="prefs-field">
+        <span>Editor</span>
+        <select value={presetId} onChange={(e) => onPresetChange(e.target.value)}>
+          {EDITOR_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+          <option value="custom">Custom…</option>
+        </select>
+      </label>
+      <label className="prefs-field">
+        <span>URL template</span>
+        <input
+          type="text"
+          spellCheck={false}
+          value={template}
+          placeholder={DEFAULT_EDITOR_TEMPLATE}
+          onChange={(e) => setTemplate(e.target.value)}
+        />
+        <span className="prefs-hint">
+          Empty disables editor deeplinks (paths render as plain text).
+        </span>
+      </label>
     </Section>
   );
 }

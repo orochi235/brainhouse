@@ -6,12 +6,15 @@
  *   - Write:     the new file content as one big "all replaced" hunk
  */
 
+import { LinkifyText } from '../lib/filenameLinksContext.tsx';
 import type { FileChangeItem } from '../lib/pipeline.ts';
 
 export function FileChangeLightbox({ item }: { item: FileChangeItem }) {
   return (
     <div className="file-change-lightbox">
-      <h3 className="lightbox-title">{item.path}</h3>
+      <h3 className="lightbox-title">
+        <LinkifyText text={item.path} />
+      </h3>
       <p className="file-change-subtitle">
         {item.ops.length} operations · {summarize(item)}
       </p>

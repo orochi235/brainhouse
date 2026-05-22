@@ -300,14 +300,20 @@ export function PanelCard({
           <EventList
             events={panel.events}
             startedAt={panel.started_at}
+            cwd={panel.cwd}
             onBubbleClick={onBubbleClick}
           />
           {waiting && <ThinkingIndicator started={lastUserActivity(items, now)} now={now} />}
-          {panel.status !== 'live' && (
-            <div className="session-ended" aria-label="session ended">
-              <span>session ended</span>
-            </div>
-          )}
+          {panel.status !== 'live' &&
+            (() => {
+              const cleared = panel.ended_provenance === 'hook_session_start_supersede';
+              const label = cleared ? 'session cleared' : 'session ended';
+              return (
+                <div className="session-ended" aria-label={label}>
+                  <span>{label}</span>
+                </div>
+              );
+            })()}
         </div>
       </div>
       </article>
@@ -319,7 +325,7 @@ function TurnLightbox({ panel, events }: { panel: PanelState; events: Event[] })
   return (
     <>
       <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
-      <EventList events={events} startedAt={panel.started_at} />
+      <EventList events={events} startedAt={panel.started_at} cwd={panel.cwd} />
     </>
   );
 }
@@ -721,7 +727,7 @@ function PanelLightboxContent({ panel }: { panel: PanelState }) {
   return (
     <>
       <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
-      <EventList events={panel.events} />
+      <EventList events={panel.events} cwd={panel.cwd} />
     </>
   );
 }

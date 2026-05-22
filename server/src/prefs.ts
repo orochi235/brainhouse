@@ -136,6 +136,17 @@ export const MessagesSchema = z.object({
 });
 export type Messages = z.infer<typeof MessagesSchema>;
 
+/**
+ * Editor deeplink template used when the user clicks a filename link in the
+ * UI. `{path}` (URL-encoded), `{line}`, and `{col}` placeholders. Defaults
+ * to Cursor; PrefsModal offers presets for VS Code, JetBrains IDEs, etc.
+ * The placeholder substitution lives in `client/src/lib/filenameLinks.ts`.
+ */
+export const EditorSchema = z.object({
+  urlTemplate: z.string().default('cursor://file/{path}:{line}'),
+});
+export type Editor = z.infer<typeof EditorSchema>;
+
 export const StorageSchema = z.object({
   /** When true, brainhouse persists panel state + intentions + a windowed
    * event index to a local SQLite db at ~/.brainhouse/state.db (override
@@ -159,6 +170,7 @@ export const PrefsSchema = z.object({
   timings: TimingsSchema.default(TimingsSchema.parse({})),
   workspace: WorkspaceSchema.default(WorkspaceSchema.parse({})),
   storage: StorageSchema.default(StorageSchema.parse({})),
+  editor: EditorSchema.default(EditorSchema.parse({})),
 });
 export type Prefs = z.infer<typeof PrefsSchema>;
 

@@ -8,7 +8,7 @@
  * exits 0 — silently swallowing any error so Claude Code never blocks on us.
  *
  * Usage: node dispatcher.mjs <kind>
- *   kind ∈ {stop, subagent_stop, notification, session_end}
+ *   kind ∈ {stop, subagent_stop, notification, session_end, session_start}
  *
  * Env:
  *   BRAINHOUSE_EVENTS_DIR  override sidecar directory (default ~/.brainhouse/events)
@@ -18,7 +18,13 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const VALID_KINDS = new Set(['stop', 'subagent_stop', 'notification', 'session_end']);
+const VALID_KINDS = new Set([
+  'stop',
+  'subagent_stop',
+  'notification',
+  'session_end',
+  'session_start',
+]);
 
 async function main() {
   const kind = process.argv[2];
@@ -50,6 +56,11 @@ async function main() {
   if (typeof transcriptPath === 'string') event.transcript_path = transcriptPath;
   const message = payload?.message;
   if (typeof message === 'string') event.message = message;
+  // SessionStart carries a `source` ∈ {startup, resume, clear, compact}.
+  // Brainhouse uses this to decide whether a prior live panel should be
+  // superseded (clear/compact) vs left alone (startup/resume).
+  const source = payload?.source;
+  if (typeof source === 'string') event.source = source;
 
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, `${sessionId}.jsonl`);

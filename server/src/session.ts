@@ -11,12 +11,7 @@
  */
 
 import type { Event } from './parser.js';
-import type {
-  EventIndexRow,
-  PanelRow,
-  SessionSummaryRow,
-  Store,
-} from './store.js';
+import type { EventIndexRow, PanelRow, SessionSummaryRow, Store } from './store.js';
 
 export type PanelKind = 'parent' | 'subagent';
 export type PanelStatus = 'live' | 'done' | 'mini';
@@ -73,6 +68,7 @@ export interface Panel {
     | 'hook_stop'
     | 'hook_subagent_stop'
     | 'hook_session_end'
+    | 'hook_session_start_supersede'
     | 'idle_timeout'
     | 'server_close'
     | 'progress_complete'
@@ -111,6 +107,7 @@ export interface PanelDto {
   binned_at: number | null;
   awaiting_input: boolean;
   ended: boolean;
+  ended_provenance: Panel['ended_provenance'];
   tokens: {
     input: number;
     output: number;
@@ -286,7 +283,7 @@ export class SessionStore {
     for (const panel of toRemove) {
       // Last-chance materialize before the panel is forgotten; covers the
       // case where it aged all the way out without ever flipping ended.
-      this.materializeSummary(panel, panel.ended ? panel.ended_provenance ?? 'never' : 'never');
+      this.materializeSummary(panel, panel.ended ? (panel.ended_provenance ?? 'never') : 'never');
       this.panels.delete(panel.id);
       this.store?.deletePanel(panel.id);
       deltas.push({ op: 'panel_remove', panel_id: panel.id });
@@ -365,6 +362,44 @@ export class SessionStore {
     return Array.from(this.panels.values()).filter(
       (p) => p.kind === 'subagent' && p.parent_panel_id === parentSessionId && p.status === 'live',
     );
+  }
+
+  /** Find the parent panel most likely to have been superseded by a brand-new
+   * SessionStart with source=clear/compact.
+   *
+   * Narrowing:
+   *   - not already ended (don't re-end something we've already retired)
+   *   - kind=parent (subagents inherit ended via the parent's transitions)
+   *   - Claude Code's encoding of panel.cwd matches `encodedCwdDir` — i.e.
+   *     the prior panel and the new session live under the same
+   *     `<projectsDir>/<encoded-cwd>/` (so a `/clear` in project A can't end
+   *     a panel still active in project B opened from a different terminal)
+   *   - panel.id ≠ `excludeId` (don't end the new session itself, if it has
+   *     already been observed)
+   *   - last_event_at within `withinSeconds` (a `/clear` immediately follows
+   *     real activity — a panel idle for hours in the same cwd is much more
+   *     likely a different terminal that's still around)
+   *
+   * Returns the single best candidate (most recent last_event_at) or null. */
+  findSupersedablePanel(opts: {
+    encodedCwdDir: string;
+    excludeId: string;
+    now: number;
+    withinSeconds: number;
+  }): Panel | null {
+    const floor = opts.now - opts.withinSeconds;
+    let best: Panel | null = null;
+    for (const p of this.panels.values()) {
+      if (p.kind !== 'parent') continue;
+      if (p.ended) continue;
+      if (p.binned_at !== null) continue;
+      if (p.id === opts.excludeId) continue;
+      if (!p.cwd) continue;
+      if (encodeCwdToProjectDir(p.cwd) !== opts.encodedCwdDir) continue;
+      if (p.last_event_at < floor) continue;
+      if (!best || p.last_event_at > best.last_event_at) best = p;
+    }
+    return best;
   }
 
   snapshot(): Array<PanelDto & { events: Event[] }> {
@@ -458,6 +493,11 @@ export class SessionStore {
       if (event.kind !== 'user_text') return;
       const text = (event.payload.text ?? '').trim();
       if (!text) return;
+      // Skip the `/clear` (and other slash-command) artifact messages —
+      // caveat, command-name, command-message, command-args, stdout. They
+      // arrive before the user's first real prompt and would otherwise
+      // become the panel title.
+      if (/^<(local-command-(caveat|stdout)|command-(name|message|args))>/.test(text)) return;
       const firstLine =
         text
           .split('\n')
@@ -490,6 +530,7 @@ export class SessionStore {
       theme: p.theme,
       awaiting_input: p.awaiting_input,
       ended: p.ended,
+      ended_provenance: p.ended_provenance,
       tokens: p.tokens,
       context_size: p.context_size,
     };
@@ -536,7 +577,10 @@ export class SessionStore {
     this.store.incrementEventStat(event.kind, deriveStatSubkey(event), ts);
   }
 
-  private materializeSummary(panel: Panel, provenance: PanelEndedProvenance | 'idle_timeout' | 'never'): void {
+  private materializeSummary(
+    panel: Panel,
+    provenance: PanelEndedProvenance | 'idle_timeout' | 'never',
+  ): void {
     if (!this.store) return;
     this.store.materializeSession(buildSessionSummary(panel, provenance, this.clock()));
   }
@@ -559,9 +603,7 @@ export function isChecklistComplete(event: Event): boolean {
   return items.every((i) => i.done);
 }
 
-function extractLastChecklistItems(
-  text: string,
-): Array<{ done: boolean; text: string }> | null {
+function extractLastChecklistItems(text: string): Array<{ done: boolean; text: string }> | null {
   const re = /```brainhouse-checklist\s*\n([\s\S]*?)```/g;
   let last: Array<{ done: boolean; text: string }> | null = null;
   let m: RegExpExecArray | null;
@@ -579,6 +621,14 @@ function extractLastChecklistItems(
     if (items.length) last = items;
   }
   return last;
+}
+
+/** Reproduce Claude Code's mapping from `cwd` → project-dir basename.
+ * Both `/` and `.` are replaced with `-` (so `/Users/me/.config/x` and
+ * `/Users/me/-config/x` collide — that's fine, it matches Claude's own
+ * encoding and we only use this for equality comparison). */
+export function encodeCwdToProjectDir(cwd: string): string {
+  return cwd.replace(/[/.]/g, '-');
 }
 
 function parseEventTs(ts: string): number | null {

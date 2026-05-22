@@ -131,6 +131,171 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.panel('sub2')?.ended).toBe(true);
   });
 
+  describe('SessionStart supersede', () => {
+    const PROJECTS = '/Users/x/.claude/projects';
+    const CWD = '/Users/x/work/foo';
+    const ENCODED_DIR = '-Users-x-work-foo';
+    const oldTranscript = `${PROJECTS}/${ENCODED_DIR}/OLD.jsonl`;
+    const newTranscript = `${PROJECTS}/${ENCODED_DIR}/NEW.jsonl`;
+    const recentTs = Date.now() / 1000;
+    // ISO timestamp ~ "now" so the seeded panel's last_event_at lands inside
+    // the supersede window. userTextEvent's default ts is a fixed historical
+    // string which would always fall outside.
+    const recentIso = new Date(recentTs * 1000).toISOString();
+
+    function seedOld(monitor: TranscriptMonitor): void {
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'OLD', uuid: 'u1', cwd: CWD }),
+        ts: recentIso,
+      } as Event);
+    }
+
+    it('source=clear ends the prior live panel in the same project dir', () => {
+      const monitor = newMonitor();
+      seedOld(monitor);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      const old = monitor.store.panel('OLD');
+      expect(old?.ended).toBe(true);
+      expect(old?.ended_provenance).toBe('hook_session_start_supersede');
+      expect(old?.status).toBe('done');
+    });
+
+    it('source=compact also supersedes', () => {
+      const monitor = newMonitor();
+      seedOld(monitor);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'compact',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('OLD')?.ended).toBe(true);
+    });
+
+    it('source=startup does NOT supersede', () => {
+      const monitor = newMonitor();
+      seedOld(monitor);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'startup',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('OLD')?.ended).toBe(false);
+    });
+
+    it('source=resume does NOT supersede', () => {
+      const monitor = newMonitor();
+      seedOld(monitor);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'resume',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('OLD')?.ended).toBe(false);
+    });
+
+    it('skips panels in a different project dir', () => {
+      const monitor = newMonitor();
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'OLD', uuid: 'u1', cwd: '/Users/x/work/other' }),
+        ts: recentIso,
+      } as Event);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('OLD')?.ended).toBe(false);
+    });
+
+    it('skips panels whose last activity is outside the recency window', () => {
+      const monitor = newMonitor();
+      seedOld(monitor);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        // 1 hour ahead → seeded panel's last_event_at is far older than the
+        // 5-minute window, so no supersession.
+        ts: recentTs + 3600,
+      });
+      expect(monitor.store.panel('OLD')?.ended).toBe(false);
+    });
+
+    it('does not end already-ended panels', () => {
+      const monitor = newMonitor();
+      seedOld(monitor);
+      monitor.applyHookEvent({ session_id: 'OLD', kind: 'session_end', ts: recentTs });
+      expect(monitor.store.panel('OLD')?.ended_provenance).toBe('hook_session_end');
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      // Provenance from the first authoritative end is preserved.
+      expect(monitor.store.panel('OLD')?.ended_provenance).toBe('hook_session_end');
+    });
+
+    it('demotes live subagents under the superseded parent', () => {
+      const monitor = newMonitor();
+      seedOld(monitor);
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'OLD', agent_id: 'sub1', uuid: 'u2', cwd: CWD }),
+        ts: recentIso,
+      } as Event);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('sub1')?.ended).toBe(true);
+      expect(monitor.store.panel('sub1')?.ended_provenance).toBe(
+        'hook_session_start_supersede',
+      );
+    });
+
+    it('picks the most recently active panel when multiple match', () => {
+      const monitor = newMonitor();
+      // Two panels in the same cwd; OLDER seeded first with an earlier ts.
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'OLDER', uuid: 'a', cwd: CWD }),
+        ts: '2026-05-19T00:00:00Z',
+      } as Event);
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'NEWER', uuid: 'b', cwd: CWD }),
+        ts: '2026-05-19T00:00:30Z',
+      } as Event);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        // Far enough ahead to keep both inside the 5-min window.
+        ts: Date.parse('2026-05-19T00:02:00Z') / 1000,
+      });
+      expect(monitor.store.panel('NEWER')?.ended).toBe(true);
+      expect(monitor.store.panel('OLDER')?.ended).toBe(false);
+    });
+  });
+
   it('setTimings forwards to the store and changes idle behavior', () => {
     const monitor = newMonitor();
     monitor.setTimings({ idleSeconds: 1 });

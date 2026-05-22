@@ -1507,6 +1507,24 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   flex-shrink: 0;
 }
 
+/* Filename links: subtle underline, picks up panel theme color on hover.
+ * Inside file-change rows the path span already has its own layout rules,
+ * so we just style the link affordance. */
+.filename-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.filename-link:hover {
+  text-decoration-color: currentColor;
+  color: var(--panel-theme-fg, var(--accent, currentColor));
+}
+.file-change-path.filename-link {
+  text-decoration-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+
 /* File-change lightbox: each op stacked as its own hunk. */
 .file-change-lightbox {
   display: flex;

@@ -48,6 +48,9 @@ export interface ClientPrefs {
     persistEnabled: boolean;
     eventsIndexRetentionDays: number;
   };
+  editor: {
+    urlTemplate: string;
+  };
 }
 
 const DEFAULT_PREFS: ClientPrefs = {
@@ -74,6 +77,7 @@ const DEFAULT_PREFS: ClientPrefs = {
   timings: { idleSeconds: 60, miniSeconds: 300, removeAfterSeconds: 86400, tickIntervalMs: 5000 },
   roots: [],
   storage: { persistEnabled: false, eventsIndexRetentionDays: 30 },
+  editor: { urlTemplate: 'cursor://file/{path}:{line}' },
 };
 
 export function usePrefs() {

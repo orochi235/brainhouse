@@ -23,6 +23,7 @@ const HOOK_EVENTS = /** @type {const} */ ([
   ['SubagentStop', 'subagent_stop'],
   ['Notification', 'notification'],
   ['SessionEnd', 'session_end'],
+  ['SessionStart', 'session_start'],
 ]);
 const MARKER = 'brainhouse';
 
@@ -121,7 +122,7 @@ export async function runInit(argv) {
     console.log('');
     console.log('Hooks installed. Start brainhouse and any new Claude Code session');
     console.log(
-      'will emit Stop / SubagentStop / Notification / SessionEnd events to the sidecar.',
+      'will emit Stop / SubagentStop / Notification / SessionEnd / SessionStart events to the sidecar.',
     );
   }
 }

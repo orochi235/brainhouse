@@ -351,6 +351,29 @@ belong in a tooltip / lightbox / hover-card. Probably one default + a
 hover reveal for the rest. Pairs with the existing two-row meta layout
 (could occupy the second row).
 
+## Description-derived classification for subagents
+`general-purpose` has no formal subtypes — every invocation just carries
+a free-form `description` string ("Branch ship-readiness audit", "Find
+callers of X", …). Different descriptions on identical
+`agentType: general-purpose` panels read like categories, but there's no
+structure to lean on for grouping / iconography / filtering today.
+
+Options, roughly ordered by ambition:
+- **Keyword chips.** Extract verbs from the description ("review",
+  "find", "audit", "fix") and surface as small tags next to the title.
+  Cheap, heuristic, no schema change.
+- **Convention via brainhouse.** Ship a recommended prefix vocabulary
+  (`review:`, `search:`, `audit:`, …) and document it. Programmers opt
+  in by writing prompts that way; brainhouse renders the prefix as a
+  real category badge. Matches the "design for programmers, expose
+  primitives" lean.
+- **Embed-and-cluster.** Embed each description and cluster across the
+  session history. Principled, overkill for current volume.
+
+Pairs with the agent-type icon work in `docs/claude-code-agents.md` —
+that handles distinguishing built-in agents from each other; this
+handles distinguishing many `general-purpose` dispatches from each other.
+
 ## Negotiated interruption points
 The agent declares "ok to interrupt here" vs. "in the middle of an
 atomic operation, please wait." Lets the user (or another agent) ctrl-c

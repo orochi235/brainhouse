@@ -1,4 +1,9 @@
 import classNames from 'classnames';
+import {
+  FilenameLinksProvider,
+  LinkifyText,
+  useFilenameLinks,
+} from '../lib/filenameLinksContext.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
 import type { ViewItem } from '../lib/pipeline.ts';
 import { iconForTool, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
@@ -12,6 +17,7 @@ type ToolItem = Extract<ViewItem, { type: 'tool' }>;
  */
 export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: number }) {
   const lightbox = useLightbox();
+  const { cwd, template } = useFilenameLinks();
   const use = item.use ?? { tool_use_id: '', name: 'output', input: {} };
   const result = item.result;
   const status = result ? (result.is_error ? 'error' : 'ok') : 'pending';
@@ -23,7 +29,13 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
       <div
         className={classNames('tool-capsule', status, item.canceled && 'canceled')}
         data-tool-name={use.name}
-        onClick={() => lightbox.open(<ToolLightboxContent item={item} />)}
+        onClick={() =>
+          lightbox.open(
+            <FilenameLinksProvider cwd={cwd} template={template}>
+              <ToolLightboxContent item={item} />
+            </FilenameLinksProvider>,
+          )
+        }
       >
         <span className="tool-icon">
           {icon.kind === 'svg' ? (
@@ -37,7 +49,9 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
             icon.text
           )}
         </span>
-        <span className="tool-label">{label}</span>
+        <span className="tool-label">
+          <LinkifyText text={label} />
+        </span>
         <span className={`tool-status status-${status}`} aria-label={status}>
           {status === 'pending' ? '' : status === 'ok' ? '✓' : '✗'}
         </span>
@@ -64,13 +78,17 @@ function ToolLightboxContent({ item }: { item: ToolItem }) {
       {use && (
         <>
           <div className="lightbox-section">input</div>
-          <pre className="lightbox-code">{stringifyToolValue(use.input)}</pre>
+          <pre className="lightbox-code">
+            <LinkifyText text={stringifyToolValue(use.input)} />
+          </pre>
         </>
       )}
       {result ? (
         <>
           <div className="lightbox-section">{result.is_error ? 'result (error)' : 'result'}</div>
-          <pre className="lightbox-code">{stringifyToolValue(result.content)}</pre>
+          <pre className="lightbox-code">
+            <LinkifyText text={stringifyToolValue(result.content)} />
+          </pre>
         </>
       ) : (
         <div className="lightbox-section">result pending…</div>

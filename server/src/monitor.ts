@@ -8,7 +8,8 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { HookEventWatcher, type HookEvent, defaultEventsDir } from './hookEvents.js';
+import path from 'node:path';
+import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
 import type { Event } from './parser.js';
 import { type Delta, SessionStore } from './session.js';
 import type { Store } from './store.js';
@@ -39,6 +40,11 @@ export interface MonitorOptions {
 
 const DEFAULT_EVENTS_RETENTION_DAYS = 30;
 const DAILY_PRUNE_MS = 24 * 60 * 60 * 1000;
+/** Recency window for SessionStart supersession. A `/clear` or `/compact`
+ * follows immediately on the heels of real activity; if the most recent
+ * non-ended panel in the same project dir has been idle longer than this
+ * we assume it's a different terminal and leave it alone. */
+const SUPERSEDE_WITHIN_SECONDS = 5 * 60;
 
 export class TranscriptMonitor {
   readonly store: SessionStore;
@@ -76,8 +82,7 @@ export class TranscriptMonitor {
       { store: opts.store ?? null },
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
-    this.eventsIndexRetentionDays =
-      opts.eventsIndexRetentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS;
+    this.eventsIndexRetentionDays = opts.eventsIndexRetentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS;
     const dir = opts.hookEventsDir === undefined ? defaultEventsDir() : opts.hookEventsDir;
     if (dir) {
       this.hookWatcher = new HookEventWatcher(dir, (e) => this.applyHookEvent(e));
@@ -158,6 +163,38 @@ export class TranscriptMonitor {
     if (this.hookWatcher) await this.hookWatcher.stop();
   }
 
+  /** When SessionStart fires with source ∈ {clear, compact}, retire the
+   * prior live panel in the same project dir. Other sources (startup,
+   * resume) leave the world alone — they don't imply a predecessor was
+   * abandoned. We can't trust cwd alone (multiple terminals in the same
+   * directory is common) so we narrow further via a recency window in
+   * `findSupersedablePanel`. */
+  private applySessionStartSupersede(event: HookEvent): void {
+    if (event.kind !== 'session_start') return;
+    const source = event.source;
+    if (source !== 'clear' && source !== 'compact') return;
+    if (!event.transcript_path) return;
+    const encodedCwdDir = path.basename(path.dirname(event.transcript_path));
+    if (!encodedCwdDir) return;
+    const target = this.store.findSupersedablePanel({
+      encodedCwdDir,
+      excludeId: event.session_id,
+      now: event.ts,
+      withinSeconds: SUPERSEDE_WITHIN_SECONDS,
+    });
+    if (!target) return;
+    for (const d of this.store.forceStatus(target.id, 'done')) this.broadcast(d);
+    for (const d of this.store.markEnded(target.id, 'hook_session_start_supersede')) {
+      this.broadcast(d);
+    }
+    for (const sub of this.store.liveSubagentsOf(target.id)) {
+      for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
+      for (const d of this.store.markEnded(sub.id, 'hook_session_start_supersede')) {
+        this.broadcast(d);
+      }
+    }
+  }
+
   /** Translate a sidecar hook event into lifecycle deltas. Each event kind
    * targets the parent panel by `session_id`; SubagentStop also demotes any
    * live subagents under that parent. */
@@ -182,6 +219,10 @@ export class TranscriptMonitor {
     }
     if (event.kind === 'notification') {
       for (const d of this.store.setAwaiting(sid, true)) this.broadcast(d);
+      return;
+    }
+    if (event.kind === 'session_start') {
+      this.applySessionStartSupersede(event);
       return;
     }
     if (event.kind === 'session_end') {

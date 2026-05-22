@@ -19,14 +19,19 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 
 export const HookEventSchema = z.object({
-  kind: z.enum(['stop', 'subagent_stop', 'notification', 'session_end']),
+  kind: z.enum(['stop', 'subagent_stop', 'notification', 'session_end', 'session_start']),
   session_id: z.string().min(1),
   /** Absolute path of the transcript that triggered the hook, if Claude
-   * Code provided one. Reserved for future per-subagent routing. */
+   * Code provided one. Used by session_start to locate the prior panel
+   * (same encoded-cwd directory) that should be superseded. */
   transcript_path: z.string().optional(),
   /** Short human-readable reason from Notification ("permission required",
    * "input requested"). Unused today; carried through for the UI. */
   message: z.string().optional(),
+  /** SessionStart only. ∈ {startup, resume, clear, compact}. Brainhouse
+   * only acts on clear/compact — startup/resume don't supersede a prior
+   * panel. Other values pass through but are ignored. */
+  source: z.string().optional(),
   /** Unix seconds, set by the dispatcher. */
   ts: z.number(),
 });

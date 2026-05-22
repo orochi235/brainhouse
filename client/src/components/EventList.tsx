@@ -1,6 +1,8 @@
 import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
 import { useMemo } from 'react';
+import { buildEditorUrl, DEFAULT_EDITOR_TEMPLATE, resolveAbsolute } from '../lib/filenameLinks.ts';
+import { FilenameLinksProvider, useFilenameLinks } from '../lib/filenameLinksContext.tsx';
 import { formatClockTime, formatElapsed } from '../lib/format.ts';
 import { useLightbox } from '../lib/lightbox.tsx';
 import {
@@ -11,6 +13,7 @@ import {
   type ViewItem,
 } from '../lib/pipeline.ts';
 import { iconForTool, parseBashCommandHead, shortenPath, type ToolIcon } from '../lib/tools.ts';
+import { usePrefs } from '../lib/usePrefs.ts';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { Markdown } from './Markdown.tsx';
 import { ToolCapsule } from './ToolCapsule.tsx';
@@ -18,12 +21,20 @@ import { ToolCapsule } from './ToolCapsule.tsx';
 interface EventListProps {
   events: Event[];
   startedAt?: number;
+  /** Panel cwd — used to resolve relative paths into absolute editor deeplinks. */
+  cwd?: string | null;
   onBubbleClick?: (event: Event) => void;
 }
 
-export function EventList({ events, startedAt, onBubbleClick }: EventListProps) {
+export function EventList({ events, startedAt, cwd, onBubbleClick }: EventListProps) {
   const { items } = useMemo(() => preprocessEvents(events), [events]);
-  return <ViewItemList items={items} startedAt={startedAt} onBubbleClick={onBubbleClick} />;
+  const { prefs } = usePrefs();
+  const template = prefs.editor?.urlTemplate ?? DEFAULT_EDITOR_TEMPLATE;
+  return (
+    <FilenameLinksProvider cwd={cwd ?? null} template={template}>
+      <ViewItemList items={items} startedAt={startedAt} onBubbleClick={onBubbleClick} />
+    </FilenameLinksProvider>
+  );
 }
 
 /** Render an already-preprocessed list of view items. Used both by EventList
@@ -69,6 +80,14 @@ function Item({
   if (item.type === 'op-strip') return <OpStripRow item={item} startedAt={startedAt} />;
   if (item.type === 'thinking') return <ThinkingEvent event={item.event} startedAt={startedAt} />;
   if (item.type === 'system') return <SystemEvent event={item.event} startedAt={startedAt} />;
+  if (item.type === 'cleared')
+    return (
+      <li className="event event-cleared">
+        <div className="session-ended" aria-label="prior session cleared">
+          <span>prior session cleared</span>
+        </div>
+      </li>
+    );
   return <MetaEvent event={item.event} startedAt={startedAt} />;
 }
 
@@ -106,6 +125,7 @@ function Bubble({
  */
 function FileChangeRow({ item, startedAt }: { item: FileChangeItem; startedAt?: number }) {
   const lightbox = useLightbox();
+  const links = useFilenameLinks();
   const counts = item.ops.reduce<Record<string, number>>((acc, op) => {
     const n = op.use?.name ?? '?';
     acc[n] = (acc[n] ?? 0) + 1;
@@ -120,14 +140,18 @@ function FileChangeRow({ item, startedAt }: { item: FileChangeItem; startedAt?: 
   return (
     <li
       className="event event-file-change"
-      onClick={() => lightbox.open(<FileChangeLightbox item={item} />)}
+      onClick={() =>
+        lightbox.open(
+          <FilenameLinksProvider cwd={links.cwd} template={links.template}>
+            <FileChangeLightbox item={item} />
+          </FilenameLinksProvider>,
+        )
+      }
     >
       <span className="file-change-icon" aria-hidden="true">
         ✎
       </span>
-      <span className="file-change-path" title={item.path}>
-        {shortenPath(item.path)}
-      </span>
+      <FileChangePath path={item.path} />
       <span className="file-change-summary">{summary}</span>
       <EventTime ts={item.ts} startedAt={startedAt} />
     </li>
@@ -142,18 +166,21 @@ function FileChangeRow({ item, startedAt }: { item: FileChangeItem; startedAt?: 
  */
 function OpStripRow({ item, startedAt }: { item: OpStripItem; startedAt?: number }) {
   const lightbox = useLightbox();
+  const links = useFilenameLinks();
   const { icons, summary, total } = summarizeOpStrip(item.items);
   return (
     <li
       className="event event-op-strip"
       onClick={() =>
         lightbox.open(
-          <div className="op-strip-lightbox">
-            <h3 className="lightbox-title">
-              {total} operation{total === 1 ? '' : 's'}: {summary}
-            </h3>
-            <ViewItemList items={item.items} startedAt={startedAt} />
-          </div>,
+          <FilenameLinksProvider cwd={links.cwd} template={links.template}>
+            <div className="op-strip-lightbox">
+              <h3 className="lightbox-title">
+                {total} operation{total === 1 ? '' : 's'}: {summary}
+              </h3>
+              <ViewItemList items={item.items} startedAt={startedAt} />
+            </div>
+          </FilenameLinksProvider>,
         )
       }
     >
@@ -167,6 +194,33 @@ function OpStripRow({ item, startedAt }: { item: OpStripItem; startedAt?: number
       </span>
       <EventTime ts={item.ts} startedAt={startedAt} />
     </li>
+  );
+}
+
+/** Path span inside a file-change row. Always shows the shortened form; if
+ * the user has an editor template configured, clicking opens the file in
+ * their editor (stopPropagation so the row's lightbox click is suppressed). */
+function FileChangePath({ path }: { path: string }) {
+  const { cwd, template } = useFilenameLinks();
+  const abs = resolveAbsolute(path, cwd);
+  const href = buildEditorUrl(template, abs);
+  const short = shortenPath(path);
+  if (!href) {
+    return (
+      <span className="file-change-path" title={path}>
+        {short}
+      </span>
+    );
+  }
+  return (
+    <a
+      className="file-change-path filename-link"
+      href={href}
+      title={`open ${abs} in editor`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {short}
+    </a>
   );
 }
 

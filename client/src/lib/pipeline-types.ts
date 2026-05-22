@@ -59,7 +59,8 @@ export type ViewItem =
   | OpStripItem
   | { type: 'thinking'; event: Event; canceled?: boolean }
   | { type: 'system'; event: Event }
-  | { type: 'meta'; event: Event };
+  | { type: 'meta'; event: Event }
+  | { type: 'cleared'; event: Event };
 
 /** Tool names whose inputs touch a single file via `input.file_path`. These
  * are the ops eligible for `coalesceFileOps()`. */
