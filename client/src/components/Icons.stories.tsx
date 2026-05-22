@@ -6,7 +6,7 @@
  * adding a new tool name would get an icon for free.
  */
 
-import { CLI_ICONS, TOOL_ICONS, iconForTool } from '../lib/tools.ts';
+import { CLI_ICONS, iconForTool, TOOL_ICONS } from '../lib/tools.ts';
 
 /** Auto-derived from the registries so adding/removing a tool name or
  * CLI command in `lib/tools.ts` shows up here without touching this
@@ -35,7 +35,12 @@ function IconCell({ name, label }: { name: string; label: string }) {
     >
       <span
         className="tool-icon"
-        style={{ fontSize: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        style={{
+          fontSize: '1.4rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
       >
         {icon.kind === 'svg' ? (
           <span
@@ -78,7 +83,13 @@ function Section({
       >
         {title} <span style={{ opacity: 0.5 }}>({items.length})</span>
       </h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '0.5rem' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
+          gap: '0.5rem',
+        }}
+      >
         {items.map((name) => (
           <IconCell key={name} name={asCli ? 'Bash' : name} label={name} />
         ))}
@@ -91,9 +102,9 @@ export const AllIcons = () => (
   <div style={{ maxWidth: 900 }}>
     <h1 style={{ fontSize: '1.2rem', marginBottom: '0.3rem' }}>Icon contact sheet</h1>
     <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '1.2rem' }}>
-      Every tool name + CLI command brainhouse recognizes. Tool names render as glyphs;
-      CLI commands render as SVG logos via the Bash code-path. Adding a new entry to
-      `TOOL_ICONS` / `CLI_ICONS` in <code>client/src/lib/tools.ts</code> shows up here.
+      Every tool name + CLI command brainhouse recognizes. Tool names render as glyphs; CLI commands
+      render as SVG logos via the Bash code-path. Adding a new entry to `TOOL_ICONS` / `CLI_ICONS`
+      in <code>client/src/lib/tools.ts</code> shows up here.
     </p>
     <Section title="Tool names" items={TOOL_NAMES} />
     <Section title="CLI commands" items={CLI_NAMES} asCli />

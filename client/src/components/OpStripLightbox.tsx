@@ -102,8 +102,7 @@ function FileSection({ file }: { file: FileChangeItem }) {
         <LinkifyText text={file.path} />
       </h4>
       <p className="file-change-subtitle">
-        {file.ops.length} operation{file.ops.length === 1 ? '' : 's'} ·{' '}
-        {summarizeFileChange(file)}
+        {file.ops.length} operation{file.ops.length === 1 ? '' : 's'} · {summarizeFileChange(file)}
       </p>
       <div className="file-change-hunks">
         {file.ops.map((op, i) => (
@@ -235,12 +234,7 @@ function TreeView({
         ) : (
           <li key={`d:${child.name}`}>
             <div className="op-strip-tree-dir">{child.name}/</div>
-            <TreeView
-              node={child}
-              selected={selected}
-              onSelect={onSelect}
-              depth={depth + 1}
-            />
+            <TreeView node={child} selected={selected} onSelect={onSelect} depth={depth + 1} />
           </li>
         ),
       )}

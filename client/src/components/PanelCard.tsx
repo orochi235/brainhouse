@@ -534,7 +534,6 @@ function HeaderActions({
   onHide?: () => void;
   onRestore?: () => void;
 }) {
-  const isLive = panel.status === 'live';
   // When the panel lives in the tray (onRestore provided), we swap `×` for
   // a restore affordance. A tray panel doesn't need closing — it's already
   // out of the way — but it does need an unmini.

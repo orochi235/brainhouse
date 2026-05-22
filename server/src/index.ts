@@ -5,7 +5,7 @@ import fastifyStatic from '@fastify/static';
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import Fastify from 'fastify';
 import { TranscriptMonitor } from './monitor.js';
-import { ONBOARDING_WARNING_LINES, checkOnboarding } from './onboarding.js';
+import { checkOnboarding, ONBOARDING_WARNING_LINES } from './onboarding.js';
 import { PrefsStore } from './prefs.js';
 import { resolveRoots } from './roots.js';
 import { Store } from './store.js';

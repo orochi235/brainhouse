@@ -184,7 +184,10 @@ ${slice.recent}
 }
 
 function parseTitle(modelOutput) {
-  const lines = modelOutput.split('\n').map((l) => l.trim()).filter(Boolean);
+  const lines = modelOutput
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
   // Sometimes the CLI prefaces with status text; take the last non-empty line.
   const candidate = lines[lines.length - 1] ?? '';
   if (!candidate) return null;
@@ -283,7 +286,7 @@ async function debug(msg) {
 // Exports for tests. Top-level run only happens when invoked as the entry
 // point; importing the module pulls in the pure helpers without firing
 // `main()`.
-export { shouldFire, hasCustomTitleMeta, extractTurns, buildSlice, parseTitle, buildPrompt };
+export { buildPrompt, buildSlice, extractTurns, hasCustomTitleMeta, parseTitle, shouldFire };
 
 const isEntryPoint =
   typeof process !== 'undefined' &&

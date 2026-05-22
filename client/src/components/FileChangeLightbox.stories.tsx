@@ -9,9 +9,7 @@ function op(name: string, input: Record<string, unknown>, result?: string): Tool
     anchorUuid: `u${uid}`,
     use: { tool_use_id: `t${uid}`, name, input },
     result:
-      result !== undefined
-        ? { tool_use_id: `t${uid}`, content: result, is_error: false }
-        : null,
+      result !== undefined ? { tool_use_id: `t${uid}`, content: result, is_error: false } : null,
     ack: null,
     ts: '2026-05-20T00:00:00Z',
   };
@@ -28,9 +26,7 @@ function fc(path: string, ops: ToolItem[]): FileChangeItem {
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ width: 760, padding: '1rem', background: '#0f172a' }}>{children}</div>
-  );
+  return <div style={{ width: 760, padding: '1rem', background: '#0f172a' }}>{children}</div>;
 }
 
 export const ReadOnly = () => (
@@ -62,7 +58,11 @@ export const MultipleEdits = () => (
     <FileChangeLightbox
       item={fc('/Users/demo/src/api.ts', [
         op('Read', { file_path: '/Users/demo/src/api.ts' }, 'original contents'),
-        op('Edit', { file_path: '/Users/demo/src/api.ts', old_string: 'GET /api', new_string: 'POST /api' }),
+        op('Edit', {
+          file_path: '/Users/demo/src/api.ts',
+          old_string: 'GET /api',
+          new_string: 'POST /api',
+        }),
         op('Edit', { file_path: '/Users/demo/src/api.ts', old_string: '200', new_string: '201' }),
       ])}
     />
@@ -75,8 +75,7 @@ export const Write = () => (
       item={fc('/tmp/generated.ts', [
         op('Write', {
           file_path: '/tmp/generated.ts',
-          content:
-            "export const config = {\n  port: 8765,\n  host: '127.0.0.1',\n};\n",
+          content: "export const config = {\n  port: 8765,\n  host: '127.0.0.1',\n};\n",
         }),
       ])}
     />

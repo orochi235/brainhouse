@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  clearScrollPosition,
-  loadScrollPosition,
-  saveScrollPosition,
-} from './scrollMemory.ts';
+import { clearScrollPosition, loadScrollPosition, saveScrollPosition } from './scrollMemory.ts';
 
 beforeEach(() => {
   sessionStorage.clear();

@@ -417,7 +417,7 @@ body.loading-quiet .panel {
  * strings). 0.4s fade applied below makes status changes feel like a lens
  * cooling down rather than a discrete switch. */
 @property --status-color {
-  syntax: '<color>';
+  syntax: "<color>";
   inherits: true;
   initial-value: #888888;
 }
@@ -440,11 +440,7 @@ body.loading-quiet .panel {
    * bottom layer is the lit-or-unlit body. The body radial dims at the rim
    * before the box-shadow halo takes over outside the dot. */
   background:
-    radial-gradient(
-      circle at 30% 28%,
-      var(--status-glint) 0%,
-      transparent 38%
-    ),
+    radial-gradient(circle at 30% 28%, var(--status-glint) 0%, transparent 38%),
     radial-gradient(
       circle at center,
       var(--status-color) 25%,
@@ -453,8 +449,13 @@ body.loading-quiet .panel {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--status-color) 40%, #000),
     0 0 6px color-mix(in srgb, var(--status-color) 60%, transparent);
-  transition: width 0.2s ease, height 0.2s ease, background 0.2s ease,
-    box-shadow 0.45s ease, transform 0.2s ease, border-radius 0.2s ease,
+  transition:
+    width 0.2s ease,
+    height 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.45s ease,
+    transform 0.2s ease,
+    border-radius 0.2s ease,
     --status-color 0.45s ease;
 }
 .panel.status-live .panel-status-icon {
@@ -493,7 +494,8 @@ body.loading-quiet .panel {
   animation: status-icon-pulse 1.8s ease-in-out infinite;
 }
 @keyframes status-icon-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow:
       0 0 0 1px color-mix(in srgb, var(--status-color) 50%, transparent),
       0 0 6px color-mix(in srgb, var(--status-color) 50%, transparent);
@@ -666,7 +668,9 @@ body.hide-context .panel-context {
   align-items: center;
   justify-content: center;
   opacity: 0.75;
-  transition: opacity 0.12s ease, background 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease;
 }
 .tool-chip:hover {
   opacity: 1;
@@ -676,7 +680,7 @@ body.hide-context .panel-context {
   opacity: 1;
   color: var(--accent);
 }
-.tool-chip[aria-pressed='true'] {
+.tool-chip[aria-pressed="true"] {
   opacity: 1;
   background: color-mix(in srgb, var(--panel-bg) 28%, transparent);
 }
@@ -913,7 +917,11 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   padding: 0.02rem 0.3rem;
   flex-shrink: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--account-color, var(--accent)) 22%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--account-color, var(--accent)) 22%,
+    transparent
+  );
   color: color-mix(in srgb, var(--account-color, var(--accent)) 70%, var(--fg));
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -922,7 +930,11 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
  * only applies when --account-color is set (i.e., multi-account configured
  * with a color on this panel's account). */
 .panel[style*="--account-color"] {
-  border-color: color-mix(in srgb, var(--account-color) 35%, var(--panel-border));
+  border-color: color-mix(
+    in srgb,
+    var(--account-color) 35%,
+    var(--panel-border)
+  );
 }
 .panel-status.live {
   color: var(--live);
@@ -943,8 +955,16 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   font-variant-numeric: tabular-nums;
   padding: 0.1rem 0.45rem 0.1rem 0.35rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--panel-theme-bg, var(--accent)) 18%, transparent);
-  color: color-mix(in srgb, var(--panel-theme-bg, var(--accent)) 70%, var(--fg));
+  background: color-mix(
+    in srgb,
+    var(--panel-theme-bg, var(--accent)) 18%,
+    transparent
+  );
+  color: color-mix(
+    in srgb,
+    var(--panel-theme-bg, var(--accent)) 70%,
+    var(--fg)
+  );
 }
 /* Tokens capsule — sits next to the idle/waiting badge in the panel
  * header. Shows the running total (formatted as 1.5k / 1.5m); the
@@ -974,11 +994,11 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   white-space: nowrap;
 }
 .panel-session-time::before {
-  content: '⏱ ';
+  content: "⏱ ";
   opacity: 0.9;
 }
 .panel-tokens::before {
-  content: '⛁ ';
+  content: "⛁ ";
   opacity: 0.9;
 }
 /* Context-window-size capsule — sits next to .panel-tokens. Different hue
@@ -996,7 +1016,7 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   white-space: pre;
 }
 .panel-context::before {
-  content: '⊡ ';
+  content: "⊡ ";
   opacity: 0.9;
 }
 .panel-waiting-spinner {
@@ -1618,11 +1638,11 @@ body.imessage .panel.has-theme .event-user_text .bubble {
  * at normal weight. Errors keep their full prominence since those want
  * attention regardless of the op kind. */
 .tool-capsule:where(
-    [data-tool-name='Glob'],
-    [data-tool-name='Grep'],
-    [data-tool-name='WebFetch'],
-    [data-tool-name='WebSearch']
-  ):not(.error) {
+  [data-tool-name="Glob"],
+  [data-tool-name="Grep"],
+  [data-tool-name="WebFetch"],
+  [data-tool-name="WebSearch"]
+):not(.error) {
   font-size: 0.7rem;
   padding: 0.1rem 0.45rem;
   min-height: 1.25rem;
@@ -1631,11 +1651,11 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   background: color-mix(in srgb, var(--code-bg) 60%, transparent);
 }
 .tool-capsule:where(
-    [data-tool-name='Glob'],
-    [data-tool-name='Grep'],
-    [data-tool-name='WebFetch'],
-    [data-tool-name='WebSearch']
-  ):not(.error):hover {
+  [data-tool-name="Glob"],
+  [data-tool-name="Grep"],
+  [data-tool-name="WebFetch"],
+  [data-tool-name="WebSearch"]
+):not(.error):hover {
   opacity: 1;
 }
 
@@ -2146,7 +2166,7 @@ body.view-conversation
 .op-strip-tree-file:hover {
   background: color-mix(in srgb, var(--fg) 8%, transparent);
 }
-.op-strip-tree-file[aria-pressed='true'] {
+.op-strip-tree-file[aria-pressed="true"] {
   background: color-mix(in srgb, var(--accent, var(--fg)) 18%, transparent);
   color: var(--fg);
 }

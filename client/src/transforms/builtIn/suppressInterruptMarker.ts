@@ -9,8 +9,8 @@
  * with a sawtooth tear rather than starting a new bubble.
  */
 
-import type { Stage1Transform } from '../types.ts';
 import type { ViewItem } from '../../lib/pipeline-types.ts';
+import type { Stage1Transform } from '../types.ts';
 
 export const INTERRUPT_PATTERN = /^\[Request interrupted by user/i;
 

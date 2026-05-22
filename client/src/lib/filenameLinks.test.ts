@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildEditorUrl,
-  editorPresetIdForTemplate,
   EDITOR_PRESETS,
+  editorPresetIdForTemplate,
   findFilenameMatches,
   resolveAbsolute,
   segmentFilenameLinks,

@@ -77,9 +77,7 @@ export const InterruptedTurn = () => (
     <EventList
       events={[
         userText('walk me through quicksort'),
-        asstText(
-          'Sure — quicksort picks a pivot, partitions the array around it…',
-        ),
+        asstText('Sure — quicksort picks a pivot, partitions the array around it…'),
         userText('[Request interrupted by user]'),
         userText('nevermind, try mergesort'),
       ]}
@@ -160,15 +158,19 @@ export const Mixed = () => (
     <EventList
       events={[
         userText('add a test for the new feature'),
-        asstText("Let me look at the existing tests first."),
+        asstText('Let me look at the existing tests first.'),
         toolUse('t1', 'Glob', { pattern: '**/*.test.ts' }),
         toolResult('t1', 'src/lib/foo.test.ts'),
         toolUse('t2', 'Read', { file_path: 'src/lib/foo.test.ts' }),
         toolResult('t2', '// existing test contents'),
         asstText("Got it. I'll add the new case to the existing file."),
-        toolUse('t3', 'Edit', { file_path: 'src/lib/foo.test.ts', old_string: '// existing', new_string: '// existing\n// new test' }),
+        toolUse('t3', 'Edit', {
+          file_path: 'src/lib/foo.test.ts',
+          old_string: '// existing',
+          new_string: '// existing\n// new test',
+        }),
         toolResult('t3', 'edited'),
-        asstText("Added. Run `npm test` to verify."),
+        asstText('Added. Run `npm test` to verify.'),
       ]}
     />
   </Frame>

@@ -10,12 +10,7 @@
 import type { Event } from '@server/parser.ts';
 import type { PreprocessResult, ViewItem } from '../lib/pipeline-types.ts';
 import { VIEW_TRANSFORMS } from './registry.ts';
-import type {
-  Stage1Transform,
-  Stage2Transform,
-  ViewContext,
-  ViewTransform,
-} from './types.ts';
+import type { Stage1Transform, Stage2Transform, ViewContext, ViewTransform } from './types.ts';
 
 function isStage1(t: ViewTransform): t is Stage1Transform {
   return t.stage === 1;

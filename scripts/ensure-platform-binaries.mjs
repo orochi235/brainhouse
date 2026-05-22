@@ -69,10 +69,10 @@ console.log(`[ensure-platform-binaries] installing ${toInstall.join(' ')}`);
 // One command so npm doesn't prune the previous install when adding the next.
 // --force overrides cpu/os mismatch (we explicitly want the cross-arch binary).
 try {
-  execSync(
-    `npm install --no-save --no-package-lock --force --silent ${toInstall.join(' ')}`,
-    { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] },
-  );
+  execSync(`npm install --no-save --no-package-lock --force --silent ${toInstall.join(' ')}`, {
+    cwd: root,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 } catch (err) {
   console.warn(`[ensure-platform-binaries] install failed: ${err.message}`);
 }

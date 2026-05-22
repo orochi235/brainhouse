@@ -12,7 +12,7 @@
  * --panel-bg for muted variants).
  */
 
-import { sankey, sankeyLinkHorizontal, type SankeyGraph } from 'd3-sankey';
+import { type SankeyGraph, sankey, sankeyLinkHorizontal } from 'd3-sankey';
 import { useEffect, useMemo, useState } from 'react';
 import { trpc } from '../trpc.ts';
 
@@ -144,9 +144,7 @@ export function FlowsModal() {
     // contributing to the graph (each session emits one event at column 0).
     // d3 fills .value during layout; this read happens after laidOut runs.
     if (!laidOut) return 0;
-    return laidOut.nodes
-      .filter((n) => n.column === 0)
-      .reduce((acc, n) => acc + (n.value ?? 0), 0);
+    return laidOut.nodes.filter((n) => n.column === 0).reduce((acc, n) => acc + (n.value ?? 0), 0);
   }, [graph, laidOut]);
 
   return (
@@ -164,29 +162,25 @@ export function FlowsModal() {
           <option value={30}>30 days</option>
           <option value={90}>90 days</option>
         </select>
-        . Columns are ordinal position in a session (1st event, 2nd, …); link
-        weight is how often (col K, X) was directly followed by (col K+1, Y).
+        . Columns are ordinal position in a session (1st event, 2nd, …); link weight is how often
+        (col K, X) was directly followed by (col K+1, Y).
       </p>
       {error && <p className="stats-error">Failed to load: {error}</p>}
       {!graph && !error && <p className="transforms-intro">Loading…</p>}
       {graph && graph.nodes.length === 0 && (
         <p className="transforms-intro">
-          No events in the last {days} day{days === 1 ? '' : 's'}. Run a few sessions and try
-          again.
+          No events in the last {days} day{days === 1 ? '' : 's'}. Run a few sessions and try again.
         </p>
       )}
       {laidOut && (
         <>
           <p className="transforms-intro stats-total">
-            {laidOut.nodes.length} nodes · {laidOut.links.length} transitions ·{' '}
-            ~{totalSessions} sessions
+            {laidOut.nodes.length} nodes · {laidOut.links.length} transitions · ~{totalSessions}{' '}
+            sessions
           </p>
           <FlowsSvg laidOut={laidOut} onHover={setHover} />
           {hover && (
-            <div
-              className="flows-tooltip"
-              style={{ left: hover.x + 12, top: hover.y + 12 }}
-            >
+            <div className="flows-tooltip" style={{ left: hover.x + 12, top: hover.y + 12 }}>
               <strong>{labelOf(hover.link.source)}</strong>
               <span className="flows-tooltip-arrow"> → </span>
               <strong>{labelOf(hover.link.target)}</strong>

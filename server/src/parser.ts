@@ -127,15 +127,12 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
     // a `usage` block. Comes through as a sibling event with a `:usage`
     // uuid suffix so SessionStore can accumulate per-panel totals without
     // bloating the assistant_text event.
-    const usageEvent =
-      rtype === 'assistant' ? extractUsage(msg, base(':usage')) : null;
+    const usageEvent = rtype === 'assistant' ? extractUsage(msg, base(':usage')) : null;
 
     if (typeof content === 'string') {
       const kind = rtype === 'user' ? 'user_text' : 'assistant_text';
       const payload =
-        kind === 'user_text'
-          ? { text: content, ...userMetaExtras }
-          : { text: content };
+        kind === 'user_text' ? { text: content, ...userMetaExtras } : { text: content };
       const events: Event[] = [{ ...base(''), kind, payload } as Event];
       if (usageEvent) events.push(usageEvent);
       return events;
@@ -224,9 +221,7 @@ function asString(value: unknown): string | null {
 }
 
 function asNonNegInt(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-    ? Math.floor(value)
-    : 0;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 }
 
 /** Pull the `usage` block off an assistant message and emit it as its own

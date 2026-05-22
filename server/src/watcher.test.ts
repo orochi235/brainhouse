@@ -318,9 +318,9 @@ describe('TranscriptWatcher', () => {
       events.length = 0;
       const w2 = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 60, store });
       await w2.start({ watch: false });
-      expect(
-        events.some((e) => e.kind === 'assistant_text' && e.payload.text === 'old'),
-      ).toBe(true);
+      expect(events.some((e) => e.kind === 'assistant_text' && e.payload.text === 'old')).toBe(
+        true,
+      );
       store.close();
     });
   });

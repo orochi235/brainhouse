@@ -17,7 +17,6 @@ afterEach(() => {
   cleanup();
 });
 
-
 class MemoryStorage implements Storage {
   private store = new Map<string, string>();
   get length(): number {

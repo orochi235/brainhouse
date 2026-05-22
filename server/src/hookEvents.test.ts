@@ -65,9 +65,15 @@ describe('HookEventWatcher', () => {
     await watcher.start();
     await new Promise((r) => setTimeout(r, 50));
     const file = path.join(dir, 'sess2.jsonl');
-    await appendFile(file, `${JSON.stringify({ kind: 'notification', session_id: 'sess2', ts: 5 })}\n`);
+    await appendFile(
+      file,
+      `${JSON.stringify({ kind: 'notification', session_id: 'sess2', ts: 5 })}\n`,
+    );
     await new Promise((r) => setTimeout(r, 200));
-    await appendFile(file, `${JSON.stringify({ kind: 'subagent_stop', session_id: 'sess2', ts: 6 })}\n`);
+    await appendFile(
+      file,
+      `${JSON.stringify({ kind: 'subagent_stop', session_id: 'sess2', ts: 6 })}\n`,
+    );
     await new Promise((r) => setTimeout(r, 200));
     expect(received.map((e) => e.kind)).toEqual(['notification', 'subagent_stop']);
   });

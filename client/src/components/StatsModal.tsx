@@ -56,9 +56,9 @@ export function StatsModal() {
     <div className="transforms-modal stats-modal">
       <h3 className="lightbox-title">Event-type stats</h3>
       <p className="transforms-intro">
-        Counts every event the monitor has ingested, broken down by kind and (where
-        useful) a second axis — tool name, error flag, model, record_type. From the
-        persistent <code>event_stats</code> table; resets only if you drop the DB.
+        Counts every event the monitor has ingested, broken down by kind and (where useful) a second
+        axis — tool name, error flag, model, record_type. From the persistent{' '}
+        <code>event_stats</code> table; resets only if you drop the DB.
       </p>
       {error && <p className="stats-error">Failed to load: {error}</p>}
       {!sorted && !error && <p className="transforms-intro">Loading…</p>}

@@ -132,11 +132,7 @@ export const Themed = () => (
 
 export const WithAccountBadge = () => (
   <Frame>
-    <PanelCard
-      panel={panel({ account_label: 'work' })}
-      account="work"
-      accountColor="#22c55e"
-    />
+    <PanelCard panel={panel({ account_label: 'work' })} account="work" accountColor="#22c55e" />
   </Frame>
 );
 

@@ -28,17 +28,26 @@ function cwdSlug(cwd) {
 
 async function main() {
   let payload = {};
-  try { payload = JSON.parse(await readStdin() || '{}'); } catch {}
+  try {
+    payload = JSON.parse((await readStdin()) || '{}');
+  } catch {}
   const cwd = payload.cwd || process.cwd();
   const file = path.join(homedir(), '.claude-pw', 'handoff', `${cwdSlug(cwd)}.json`);
 
   let raw;
-  try { raw = await readFile(file, 'utf8'); }
-  catch { return; } // no handoff — silent
+  try {
+    raw = await readFile(file, 'utf8');
+  } catch {
+    return;
+  } // no handoff — silent
 
   let data;
-  try { data = JSON.parse(raw); }
-  catch { await unlink(file).catch(() => {}); return; }
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    await unlink(file).catch(() => {});
+    return;
+  }
 
   const out = { hookEventName: 'SessionStart' };
   if (typeof data.additionalContext === 'string' && data.additionalContext) {

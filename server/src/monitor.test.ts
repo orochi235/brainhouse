@@ -75,12 +75,8 @@ describe('TranscriptMonitor', () => {
   it('applyHookEvent subagent_stop demotes all live subagents of the parent', () => {
     const monitor = newMonitor();
     monitor.ingest(userTextEvent({}));
-    monitor.ingest(
-      userTextEvent({ agent_id: 'sub1', uuid: 'u2', text: 'sub-a' }),
-    );
-    monitor.ingest(
-      userTextEvent({ agent_id: 'sub2', uuid: 'u3', text: 'sub-b' }),
-    );
+    monitor.ingest(userTextEvent({ agent_id: 'sub1', uuid: 'u2', text: 'sub-a' }));
+    monitor.ingest(userTextEvent({ agent_id: 'sub2', uuid: 'u3', text: 'sub-b' }));
     monitor.applyHookEvent({ session_id: 'S', kind: 'subagent_stop' });
     expect(monitor.store.panel('sub1')?.status).toBe('done');
     expect(monitor.store.panel('sub2')?.status).toBe('done');
@@ -291,9 +287,7 @@ describe('TranscriptMonitor', () => {
         ts: recentTs,
       });
       expect(monitor.store.panel('sub1')?.ended).toBe(true);
-      expect(monitor.store.panel('sub1')?.ended_provenance).toBe(
-        'hook_session_start_supersede',
-      );
+      expect(monitor.store.panel('sub1')?.ended_provenance).toBe('hook_session_start_supersede');
     });
 
     it('picks the most recently active panel when multiple match', () => {

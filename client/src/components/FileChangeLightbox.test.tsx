@@ -11,9 +11,7 @@ function op(name: string, input: Record<string, unknown>, result?: string): Tool
     anchorUuid: `u${uid}`,
     use: { tool_use_id: `t${uid}`, name, input },
     result:
-      result !== undefined
-        ? { tool_use_id: `t${uid}`, content: result, is_error: false }
-        : null,
+      result !== undefined ? { tool_use_id: `t${uid}`, content: result, is_error: false } : null,
     ack: null,
     ts: '2026-05-19T00:00:00Z',
   };
@@ -31,9 +29,7 @@ function fileChange(path: string, ops: ToolItem[]): FileChangeItem {
 
 describe('<FileChangeLightbox>', () => {
   it('renders the file path as the title', () => {
-    render(
-      <FileChangeLightbox item={fileChange('/tmp/x.ts', [op('Read', {}, 'line1\nline2')])} />,
-    );
+    render(<FileChangeLightbox item={fileChange('/tmp/x.ts', [op('Read', {}, 'line1\nline2')])} />);
     expect(screen.getByText('/tmp/x.ts')).toBeInTheDocument();
   });
 
@@ -63,20 +59,14 @@ describe('<FileChangeLightbox>', () => {
 
   it('Write op renders as add-only diff against an empty before', () => {
     const { container } = render(
-      <FileChangeLightbox
-        item={fileChange('/x', [op('Write', { content: 'whole new file' })])}
-      />,
+      <FileChangeLightbox item={fileChange('/x', [op('Write', { content: 'whole new file' })])} />,
     );
     expect(container.querySelector('.diff-del')).toBeNull();
     expect(container.querySelector('.diff-add')).toHaveTextContent('whole new file');
   });
 
   it('Read op shows the line count when content is a string', () => {
-    render(
-      <FileChangeLightbox
-        item={fileChange('/x', [op('Read', {}, 'one\ntwo\nthree')])}
-      />,
-    );
+    render(<FileChangeLightbox item={fileChange('/x', [op('Read', {}, 'one\ntwo\nthree')])} />);
     expect(screen.getByText(/3 lines/)).toBeInTheDocument();
   });
 

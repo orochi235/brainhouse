@@ -77,7 +77,15 @@ const interrupt: Scenario = {
   expect:
     'The assistant bubble should be dimmed with strikethrough. The two user bubbles merge into one with a sawtooth tear between them.',
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'explain quicksort' }, cwd);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'explain quicksort' },
+      cwd,
+    );
     await sleep(300);
     emit(
       monitor,
@@ -116,8 +124,7 @@ const awaitingInput: Scenario = {
   key: 'awaiting-input',
   name: 'awaiting user input (Notification hook)',
   description: 'A session that triggered the Notification hook — waiting on permission or input.',
-  expect:
-    'Panel header should carry the "blocking on you" badge. Underlying status stays live.',
+  expect: 'Panel header should carry the "blocking on you" badge. Underlying status stays live.',
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     emit(
       monitor,
@@ -152,7 +159,15 @@ const endedSubagent: Scenario = {
   expect: 'Subagent panel dims (opacity per Display prefs slider). Parent panel unchanged.',
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     const agentId = `agent-${randomUUID().slice(0, 8)}`;
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'go research X for me' }, cwd);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'go research X for me' },
+      cwd,
+    );
     await sleep(150);
     emit(
       monitor,
@@ -173,7 +188,10 @@ const endedSubagent: Scenario = {
       agentId,
       `${sessionId}:${agentId}:meta`,
       'meta',
-      { record_type: 'subagent-meta', raw: { agentType: 'general-purpose', description: 'Research X' } },
+      {
+        record_type: 'subagent-meta',
+        raw: { agentType: 'general-purpose', description: 'Research X' },
+      },
       cwd,
     );
     for (let i = 0; i < 4; i++) {
@@ -226,7 +244,15 @@ const fanOut: Scenario = {
   expect:
     'Parent panel hosts a nested tray with 3 subagents. Two are dimmed; one is live and orange-pulsing.',
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'do three things at once' }, cwd);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'do three things at once' },
+      cwd,
+    );
     const agents = ['research', 'audit', 'plan'].map((t) => ({
       id: `agent-${randomUUID().slice(0, 8)}`,
       type: t,
@@ -251,7 +277,10 @@ const fanOut: Scenario = {
         a.id,
         `${sessionId}:${a.id}:meta`,
         'meta',
-        { record_type: 'subagent-meta', raw: { agentType: 'general-purpose', description: `${a.type} task` } },
+        {
+          record_type: 'subagent-meta',
+          raw: { agentType: 'general-purpose', description: `${a.type} task` },
+        },
         cwd,
       );
       emit(
@@ -284,7 +313,16 @@ const idleCascade: Scenario = {
     'Panel appears in the dock immediately (auto-routed because >30s stale). Status reads "done Xm ago" with a real elapsed time, not "0s ago".',
   async run(monitor, { sessionId = fresh('stale'), cwd = SYNTHETIC_CWD } = {}) {
     const oldTs = new Date(Date.now() - 90 * 60 * 1000).toISOString(); // 90 min ago
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'old prompt' }, cwd, oldTs);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'old prompt' },
+      cwd,
+      oldTs,
+    );
     emit(
       monitor,
       sessionId,
@@ -306,9 +344,18 @@ const longResult: Scenario = {
   name: 'flurry of tool calls between chats (op-strip)',
   description:
     'A run of Read/Edit/Write calls on the same file between two assistant bubbles. Pipeline should coalesce into a file-change row, then a wider op-strip if there are other unrelated tools too.',
-  expect: 'Single file-change row replaces ~5 individual tool capsules. Click opens the diff lightbox.',
+  expect:
+    'Single file-change row replaces ~5 individual tool capsules. Click opens the diff lightbox.',
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'fix the bug in foo.ts' }, cwd);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'fix the bug in foo.ts' },
+      cwd,
+    );
     const file = '/tmp/foo.ts';
     const ops: Array<[string, Record<string, unknown>, string]> = [
       ['Read', { file_path: file }, 'export function foo() {}\n'],
@@ -340,7 +387,15 @@ const longResult: Scenario = {
       );
       await sleep(40);
     }
-    emit(monitor, sessionId, null, `${sessionId}:a1`, 'assistant_text', { text: 'done — foo() now doubles its argument.' }, cwd);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:a1`,
+      'assistant_text',
+      { text: 'done — foo() now doubles its argument.' },
+      cwd,
+    );
     return { sessionId };
   },
 };
@@ -349,11 +404,18 @@ const askUserQuestion: Scenario = {
   key: 'ask-user-question',
   name: 'AskUserQuestion tool',
   description:
-    "An AskUserQuestion tool call. Pipeline should render this as if Claude is speaking — bolded question with bulleted options — and swallow the matching tool_result.",
-  expect:
-    'No tool capsule. Single assistant bubble showing the question + options as markdown.',
+    'An AskUserQuestion tool call. Pipeline should render this as if Claude is speaking — bolded question with bulleted options — and swallow the matching tool_result.',
+  expect: 'No tool capsule. Single assistant bubble showing the question + options as markdown.',
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'which backend should we use?' }, cwd);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'which backend should we use?' },
+      cwd,
+    );
     await sleep(150);
     const tid = `${sessionId}:t1`;
     emit(
@@ -404,7 +466,15 @@ const themedPanel: Scenario = {
   expect:
     'Panel border tinted. Assistant bubble dominated by the theme color. Halo pulses in the same hue when waiting.',
   async run(monitor, { sessionId = fresh('themed'), cwd = SYNTHETIC_CWD } = {}) {
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'paint me a picture' }, cwd);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'paint me a picture' },
+      cwd,
+    );
     await sleep(100);
     emit(
       monitor,
@@ -435,7 +505,15 @@ const checklistProgressive: Scenario = {
     'Pinned checklist appears above the panel body. Items tick off one by one as messages stream in.',
   async run(monitor, { sessionId = fresh('checklist'), cwd = SYNTHETIC_CWD } = {}) {
     const items = ['fetch data', 'parse json', 'validate schema', 'write output'];
-    emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'do those four things' }, cwd);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'do those four things' },
+      cwd,
+    );
     for (let n = 0; n <= items.length; n++) {
       const block = [
         'progress so far:',
@@ -444,15 +522,7 @@ const checklistProgressive: Scenario = {
         ...items.map((label, i) => `- [${i < n ? 'x' : ' '}] ${label}`),
         '```',
       ].join('\n');
-      emit(
-        monitor,
-        sessionId,
-        null,
-        `${sessionId}:cl${n}`,
-        'assistant_text',
-        { text: block },
-        cwd,
-      );
+      emit(monitor, sessionId, null, `${sessionId}:cl${n}`, 'assistant_text', { text: block }, cwd);
       await sleep(300);
     }
     return { sessionId };
@@ -477,5 +547,10 @@ export function getScenario(key: string): Scenario | undefined {
 }
 
 export function listScenarios(): ScenarioMeta[] {
-  return SCENARIOS.map(({ key, name, description, expect }) => ({ key, name, description, expect }));
+  return SCENARIOS.map(({ key, name, description, expect }) => ({
+    key,
+    name,
+    description,
+    expect,
+  }));
 }

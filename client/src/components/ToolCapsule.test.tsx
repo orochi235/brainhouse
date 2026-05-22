@@ -45,9 +45,7 @@ describe('<ToolCapsule>', () => {
   });
 
   it('adds the canceled class when item.canceled is set', () => {
-    const { container } = renderInLightbox(
-      <ToolCapsule item={toolItem({ canceled: true })} />,
-    );
+    const { container } = renderInLightbox(<ToolCapsule item={toolItem({ canceled: true })} />);
     expect(container.querySelector('.tool-capsule')).toHaveClass('canceled');
     expect(container.querySelector('.event-tool')).toHaveClass('canceled');
   });

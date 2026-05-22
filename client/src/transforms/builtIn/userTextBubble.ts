@@ -18,7 +18,7 @@ export const userTextBubble: Stage1Transform = {
   key: 'built-in.user-text-bubble',
   name: 'mergeInterruptedFollowup + user_text bubble',
   description:
-    "Emits a user bubble. If the previous user_text was an interrupt marker, attaches this text to the prior user bubble with a sawtooth tear instead of starting a new one.",
+    'Emits a user bubble. If the previous user_text was an interrupt marker, attaches this text to the prior user bubble with a sawtooth tear instead of starting a new one.',
   run(event, items, ctx) {
     if (event.kind !== 'user_text') return false;
     const text = event.payload.text ?? '';

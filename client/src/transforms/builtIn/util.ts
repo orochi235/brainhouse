@@ -20,10 +20,7 @@ export function findToolItem(items: ViewItem[], toolUseId: string): ToolItem | n
   return null;
 }
 
-export function findLastBubble(
-  items: ViewItem[],
-  role: 'user' | 'assistant',
-): BubbleItem | null {
+export function findLastBubble(items: ViewItem[], role: 'user' | 'assistant'): BubbleItem | null {
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i];
     if (item?.type === 'bubble' && item.role === role) return item;

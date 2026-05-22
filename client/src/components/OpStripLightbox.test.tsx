@@ -13,9 +13,7 @@ function op(name: string, input: Record<string, unknown>, result?: string): Tool
     anchorUuid: `u${uid}`,
     use: { tool_use_id: `t${uid}`, name, input },
     result:
-      result !== undefined
-        ? { tool_use_id: `t${uid}`, content: result, is_error: false }
-        : null,
+      result !== undefined ? { tool_use_id: `t${uid}`, content: result, is_error: false } : null,
     ack: null,
     ts: '2026-05-19T00:00:00Z',
   };
@@ -104,10 +102,7 @@ describe('<OpStripLightbox>', () => {
     expect(screen.getByRole('button', { name: 'a.ts' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'b.ts' })).toBeInTheDocument();
     // First file is auto-selected.
-    expect(screen.getByRole('button', { name: 'a.ts' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(screen.getByRole('button', { name: 'a.ts' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/Also:.*Bash/)).toBeInTheDocument();
     expect(screen.getByText(/Also:.*Grep/)).toBeInTheDocument();
   });
@@ -121,10 +116,7 @@ describe('<OpStripLightbox>', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /^file$/i }));
     fireEvent.click(screen.getByRole('button', { name: 'b.ts' }));
-    expect(screen.getByRole('button', { name: 'b.ts' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(screen.getByRole('button', { name: 'b.ts' })).toHaveAttribute('aria-pressed', 'true');
     // Right pane now reflects b.ts (Write op header).
     expect(screen.getByText(/Write · entire file/)).toBeInTheDocument();
   });

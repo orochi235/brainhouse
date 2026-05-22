@@ -17,10 +17,10 @@ import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
 import { aggregateFlows } from './flows.js';
-import { getScenario, listScenarios } from './scenarios.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
 import { resolveRoots } from './roots.js';
+import { getScenario, listScenarios } from './scenarios.js';
 import type { Delta, PanelDto } from './session.js';
 import type { IntentionsRow, Store } from './store.js';
 
@@ -108,9 +108,7 @@ export const appRouter = t.router({
       }
       // Hot-swap events_index retention; takes effect immediately + on the
       // next daily prune. No restart needed.
-      if (
-        before.storage.eventsIndexRetentionDays !== updated.storage.eventsIndexRetentionDays
-      ) {
+      if (before.storage.eventsIndexRetentionDays !== updated.storage.eventsIndexRetentionDays) {
         ctx.monitor.setEventsIndexRetentionDays(updated.storage.eventsIndexRetentionDays);
       }
       return updated;
@@ -144,12 +142,16 @@ export const appRouter = t.router({
           pinned: input.pinned ?? existing?.pinned ?? false,
           wide: input.wide ?? existing?.wide ?? false,
           manual_order:
-            input.manual_order !== undefined ? input.manual_order : (existing?.manual_order ?? null),
+            input.manual_order !== undefined
+              ? input.manual_order
+              : (existing?.manual_order ?? null),
           user_mini: input.user_mini ?? existing?.user_mini ?? false,
           hidden_at:
             input.hidden_at !== undefined ? input.hidden_at : (existing?.hidden_at ?? null),
           auto_mini_at:
-            input.auto_mini_at !== undefined ? input.auto_mini_at : (existing?.auto_mini_at ?? null),
+            input.auto_mini_at !== undefined
+              ? input.auto_mini_at
+              : (existing?.auto_mini_at ?? null),
           broken_out: input.broken_out ?? existing?.broken_out ?? false,
           updated_at: Date.now() / 1000,
         });
@@ -196,14 +198,12 @@ export const appRouter = t.router({
       }),
     scenarios: t.router({
       list: t.procedure.query(() => listScenarios()),
-      spawn: t.procedure
-        .input(z.object({ key: z.string() }))
-        .mutation(async ({ ctx, input }) => {
-          const scenario = getScenario(input.key);
-          if (!scenario) throw new Error(`Unknown scenario: ${input.key}`);
-          const { sessionId } = await scenario.run(ctx.monitor, {});
-          return { sessionId };
-        }),
+      spawn: t.procedure.input(z.object({ key: z.string() })).mutation(async ({ ctx, input }) => {
+        const scenario = getScenario(input.key);
+        if (!scenario) throw new Error(`Unknown scenario: ${input.key}`);
+        const { sessionId } = await scenario.run(ctx.monitor, {});
+        return { sessionId };
+      }),
     }),
     spawnSubagentIn: t.procedure
       .input(

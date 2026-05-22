@@ -562,10 +562,7 @@ function ExperimentalSection({ draft, setDraft }: SectionProps) {
   const set = (patch: Partial<PrefsDraft['experimental']>) =>
     setDraft({ ...draft, experimental: { ...draft.experimental, ...patch } });
   return (
-    <Section
-      title="Experimental"
-      hint="Features in flight. Behavior may change or disappear."
-    >
+    <Section title="Experimental" hint="Features in flight. Behavior may change or disappear.">
       <CheckboxField
         label="Keep my session names accurate (beta)"
         hint="After each assistant turn, run `claude -p` on your own account to propose a panel title. Only fires when the panel is still using its short-id placeholder, or periodically to check for drift. The model self-vetoes with KEEP when the current title still fits, so most calls are a no-op."

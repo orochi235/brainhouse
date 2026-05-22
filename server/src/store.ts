@@ -298,9 +298,9 @@ export class Store {
   // ---- intentions ----
 
   getIntentions(panelId: string): IntentionsRow | null {
-    const row = this.db
-      .prepare('SELECT * FROM intentions WHERE panel_id = ?')
-      .get(panelId) as RawIntentions | undefined;
+    const row = this.db.prepare('SELECT * FROM intentions WHERE panel_id = ?').get(panelId) as
+      | RawIntentions
+      | undefined;
     return row ? deserializeIntentions(row) : null;
   }
 
@@ -421,7 +421,15 @@ export class Store {
          VALUES
            (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(row.panel_id, row.event_uuid, row.ts, row.kind, row.tool_name, row.file_path, row.summary);
+      .run(
+        row.panel_id,
+        row.event_uuid,
+        row.ts,
+        row.kind,
+        row.tool_name,
+        row.file_path,
+        row.summary,
+      );
   }
 
   /** Drop rows older than the cutoff; returns the number of rows removed. */
@@ -457,7 +465,9 @@ export class Store {
   /** All (kind, subkey, count, last_seen) rows, count-desc then kind asc. */
   getEventStats(): EventStatsRow[] {
     return this.db
-      .prepare('SELECT kind, subkey, count, last_seen FROM event_stats ORDER BY count DESC, kind ASC')
+      .prepare(
+        'SELECT kind, subkey, count, last_seen FROM event_stats ORDER BY count DESC, kind ASC',
+      )
       .all() as EventStatsRow[];
   }
 
@@ -466,17 +476,13 @@ export class Store {
    * each session's chronological event sequence. */
   eventsSince(sinceTs: number): EventIndexRow[] {
     return this.db
-      .prepare(
-        'SELECT * FROM events_index WHERE ts >= ? ORDER BY panel_id ASC, ts ASC',
-      )
+      .prepare('SELECT * FROM events_index WHERE ts >= ? ORDER BY panel_id ASC, ts ASC')
       .all(sinceTs) as EventIndexRow[];
   }
 
   eventsTouchingFile(filePath: string, limit = 200): EventIndexRow[] {
     return this.db
-      .prepare(
-        'SELECT * FROM events_index WHERE file_path = ? ORDER BY ts DESC LIMIT ?',
-      )
+      .prepare('SELECT * FROM events_index WHERE file_path = ? ORDER BY ts DESC LIMIT ?')
       .all(filePath, limit) as EventIndexRow[];
   }
 
@@ -548,9 +554,7 @@ export class Store {
 
   sessionsForProject(cwd: string, limit = 100): SessionSummaryRow[] {
     return this.db
-      .prepare(
-        'SELECT * FROM session_summary WHERE cwd = ? ORDER BY started_at DESC LIMIT ?',
-      )
+      .prepare('SELECT * FROM session_summary WHERE cwd = ? ORDER BY started_at DESC LIMIT ?')
       .all(cwd, limit) as SessionSummaryRow[];
   }
 

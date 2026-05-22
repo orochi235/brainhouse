@@ -14,9 +14,7 @@ describe('<Markdown>', () => {
   });
 
   it('renders GFM tables', () => {
-    const { container } = render(
-      <Markdown text={'| a | b |\n| - | - |\n| 1 | 2 |'} />,
-    );
+    const { container } = render(<Markdown text={'| a | b |\n| - | - |\n| 1 | 2 |'} />);
     expect(container.querySelector('table')).toBeInTheDocument();
   });
 

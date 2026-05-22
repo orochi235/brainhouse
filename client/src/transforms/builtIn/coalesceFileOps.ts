@@ -12,11 +12,7 @@
  * Singletons pass through as plain tool items.
  */
 
-import {
-  FILE_TOOLS,
-  type ToolItem,
-  type ViewItem,
-} from '../../lib/pipeline-types.ts';
+import { FILE_TOOLS, type ToolItem, type ViewItem } from '../../lib/pipeline-types.ts';
 import type { Stage2Transform } from '../types.ts';
 
 export const coalesceFileOps: Stage2Transform = {

@@ -63,10 +63,12 @@ function stripBrainhouse(settings) {
 }
 
 function addBrainhouse(settings, dispatcher, autoTitle) {
-  const hooks = settings.hooks ?? (settings.hooks = {});
+  if (!settings.hooks) settings.hooks = {};
+  const hooks = settings.hooks;
   const cmd = `node ${JSON.stringify(dispatcher).slice(1, -1)}`;
   for (const [event, kind] of HOOK_EVENTS) {
-    const entries = hooks[event] ?? (hooks[event] = []);
+    if (!hooks[event]) hooks[event] = [];
+    const entries = hooks[event];
     // Drop any previous brainhouse entry for this event first.
     for (let i = entries.length - 1; i >= 0; i--) {
       if (entries[i]?.[MARKER] === true) entries.splice(i, 1);
@@ -81,7 +83,8 @@ function addBrainhouse(settings, dispatcher, autoTitle) {
   // the user's account when `experimental.autoTitle` is on in prefs.json.
   // The script gates itself; install is unconditional so toggling the
   // pref takes effect without re-running init.
-  const stop = hooks.Stop ?? (hooks.Stop = []);
+  if (!hooks.Stop) hooks.Stop = [];
+  const stop = hooks.Stop;
   stop.push({
     [MARKER]: true,
     matcher: '.*',

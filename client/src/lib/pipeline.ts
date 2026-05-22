@@ -11,8 +11,8 @@
  */
 
 import type { Event } from '@server/parser.ts';
-import { runViewPipeline } from '../transforms/runner.ts';
 import { extractLastChecklist } from '../transforms/builtIn/scanChecklist.ts';
+import { runViewPipeline } from '../transforms/runner.ts';
 import type { PreprocessResult } from './pipeline-types.ts';
 
 export type {

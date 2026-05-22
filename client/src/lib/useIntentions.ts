@@ -17,8 +17,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DismissalIntentions } from './hiddenPanels.ts';
 import { trpc } from '../trpc.ts';
+import type { DismissalIntentions } from './hiddenPanels.ts';
 
 interface IntentionsRow {
   panel_id: string;

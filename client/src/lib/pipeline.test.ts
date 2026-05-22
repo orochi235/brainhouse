@@ -412,9 +412,7 @@ describe('preprocessEvents', () => {
     });
 
     it('falls back to a normal tool capsule on a malformed payload', () => {
-      const { items } = preprocessEvents([
-        toolUse('q1', 'AskUserQuestion', { weird: true }),
-      ]);
+      const { items } = preprocessEvents([toolUse('q1', 'AskUserQuestion', { weird: true })]);
       expect(items.length).toBe(1);
       expect(items[0]?.type).toBe('tool');
     });

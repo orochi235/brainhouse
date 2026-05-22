@@ -24,11 +24,7 @@ describe('aggregateRows', () => {
     ];
     const g = aggregateRows(rows);
     const ids = g.nodes.map((n) => n.id).sort();
-    expect(ids).toEqual([
-      '0::user_text',
-      '1::assistant_text',
-      '2::tool_use:Read',
-    ]);
+    expect(ids).toEqual(['0::user_text', '1::assistant_text', '2::tool_use:Read']);
     expect(g.links).toHaveLength(2);
     expect(g.links).toContainEqual({
       source: '0::user_text',
@@ -48,9 +44,7 @@ describe('aggregateRows', () => {
       row({ panel_id: id, event_uuid: `${id}-b`, ts: 1, kind: 'assistant_text' }),
     ];
     const g = aggregateRows([...sess('s1'), ...sess('s2'), ...sess('s3')]);
-    const lk = g.links.find(
-      (l) => l.source === '0::user_text' && l.target === '1::assistant_text',
-    );
+    const lk = g.links.find((l) => l.source === '0::user_text' && l.target === '1::assistant_text');
     expect(lk?.value).toBe(3);
   });
 
@@ -70,9 +64,7 @@ describe('aggregateRows', () => {
     expect(tail?.label).toBe('assistant_text');
     // The tail node would self-loop (event 20 → event 21, both same id);
     // aggregateRows skips self-loops so no link lands on tail → tail.
-    const tailSelfLoop = g.links.find(
-      (l) => l.source === tail?.id && l.target === tail?.id,
-    );
+    const tailSelfLoop = g.links.find((l) => l.source === tail?.id && l.target === tail?.id);
     expect(tailSelfLoop).toBeUndefined();
   });
 

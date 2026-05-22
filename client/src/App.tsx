@@ -10,7 +10,6 @@ import { TransformsModal } from './components/TransformsModal.tsx';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { LightboxProvider, useLightbox } from './lib/lightbox.tsx';
-import { clearScrollPosition } from './lib/scrollMemory.ts';
 import {
   sortByOrder,
   useBrokenOutPanels,
@@ -19,6 +18,7 @@ import {
   useWidePanels,
 } from './lib/panelOrder.ts';
 import { useTheme } from './lib/preferences.ts';
+import { clearScrollPosition } from './lib/scrollMemory.ts';
 import { useIntentions } from './lib/useIntentions.ts';
 import { usePrefs } from './lib/usePrefs.ts';
 import { trpc } from './trpc.ts';
@@ -61,7 +61,9 @@ export function App() {
   // the badge + border pick up the per-account hue. Falls back to the global
   // accent when no color is configured.
   const accountColorByLabel = new Map<string, string>(
-    prefs.roots.filter((r) => r.label && r.color).map((r) => [r.label as string, r.color as string]),
+    prefs.roots
+      .filter((r) => r.label && r.color)
+      .map((r) => [r.label as string, r.color as string]),
   );
   const accountColorFor = (p: PanelState): string | undefined => {
     if (!showAccountBadges) return undefined;
@@ -106,10 +108,7 @@ export function App() {
     document.body.classList.toggle('hide-tools', !m.tools);
     document.body.classList.toggle('hide-file-changes', !m.fileChanges);
     document.body.classList.toggle('hide-op-strips', !m.opStrips);
-    document.documentElement.style.setProperty(
-      '--idle-opacity',
-      String(prefs.display.idleOpacity),
-    );
+    document.documentElement.style.setProperty('--idle-opacity', String(prefs.display.idleOpacity));
     document.documentElement.style.setProperty(
       '--hued-header-strength',
       String(prefs.display.huedHeaderStrength),
@@ -221,8 +220,7 @@ export function App() {
     for (const p of liveTray) {
       clearScrollPosition(p.id);
       const isClient =
-        clientMiniPanels.some((m) => m.id === p.id) ||
-        clientMiniSubs.some((m) => m.id === p.id);
+        clientMiniPanels.some((m) => m.id === p.id) || clientMiniSubs.some((m) => m.id === p.id);
       if (isClient) restoreLocal(p.id);
       else trpc.restore.mutate({ panelId: p.id });
     }
@@ -699,7 +697,10 @@ function FlowsButton() {
 function PrefsButton({
   prefs,
   onSaved,
-}: { prefs: import('./lib/usePrefs.ts').ClientPrefs; onSaved?: () => void }) {
+}: {
+  prefs: import('./lib/usePrefs.ts').ClientPrefs;
+  onSaved?: () => void;
+}) {
   const lightbox = useLightbox();
   return (
     <button
@@ -750,11 +751,7 @@ function layoutPanels(panels: Map<string, PanelState>, brokenOut: Set<string>): 
     if (p.kind === 'parent') {
       if (p.status === 'mini') trayPanels.push(p);
       else gridPanels.push(p);
-    } else if (
-      p.parent_panel_id == null ||
-      !panels.has(p.parent_panel_id) ||
-      brokenOut.has(p.id)
-    ) {
+    } else if (p.parent_panel_id == null || !panels.has(p.parent_panel_id) || brokenOut.has(p.id)) {
       // Orphan subagent OR one the user has explicitly broken out: place
       // by its own status, top-level.
       if (p.status === 'mini') trayPanels.push(p);

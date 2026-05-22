@@ -53,9 +53,7 @@ export const BashPending = () => (
 
 export const BashOk = () => (
   <Frame>
-    <ToolCapsule
-      item={tool('Bash', { command: 'echo hello' }, { content: 'hello\n' })}
-    />
+    <ToolCapsule item={tool('Bash', { command: 'echo hello' }, { content: 'hello\n' })} />
   </Frame>
 );
 
@@ -116,20 +114,14 @@ export const ReadOnly_Grep = () => (
 
 export const ReadOnly_Glob = () => (
   <Frame>
-    <ToolCapsule
-      item={tool('Glob', { pattern: '**/*.test.ts' }, { content: '7 files' })}
-    />
+    <ToolCapsule item={tool('Glob', { pattern: '**/*.test.ts' }, { content: '7 files' })} />
   </Frame>
 );
 
 export const ReadOnly_WebFetch = () => (
   <Frame>
     <ToolCapsule
-      item={tool(
-        'WebFetch',
-        { url: 'https://example.com/api' },
-        { content: 'fetched 12 KB' },
-      )}
+      item={tool('WebFetch', { url: 'https://example.com/api' }, { content: 'fetched 12 KB' })}
     />
   </Frame>
 );

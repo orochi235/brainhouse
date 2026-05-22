@@ -561,17 +561,13 @@ describe('SessionStore', () => {
       expect(store.panel('S')?.ended).toBe(true);
       expect(store.panel('S')?.status).toBe('done');
 
-      const deltas = store.apply(
-        ev('assistant_text', { uuid: 'u2', payload: { text: 'late' } }),
-      );
+      const deltas = store.apply(ev('assistant_text', { uuid: 'u2', payload: { text: 'late' } }));
 
       expect(store.panel('S')?.ended).toBe(true);
       expect(store.panel('S')?.status).toBe('done');
       // Event is appended (audit) but no status flip emitted.
       expect(deltas.some((d) => d.op === 'event_append')).toBe(true);
-      expect(
-        deltas.some((d) => d.op === 'panel_status' && d.status === 'live'),
-      ).toBe(false);
+      expect(deltas.some((d) => d.op === 'panel_status' && d.status === 'live')).toBe(false);
     });
 
     it('does nothing for an unknown panel', () => {
@@ -588,9 +584,7 @@ describe('SessionStore', () => {
       const clock = new FakeClock();
       const store = new SessionStore({ clock: clock.now });
       // Seed the subagent panel.
-      store.apply(
-        ev('user_text', { agent_id: 'agent-x', uuid: 'u1', payload: { text: 'go' } }),
-      );
+      store.apply(ev('user_text', { agent_id: 'agent-x', uuid: 'u1', payload: { text: 'go' } }));
       // Ingest an assistant_text with a fully-checked checklist.
       store.apply(
         ev('assistant_text', {
@@ -607,9 +601,7 @@ describe('SessionStore', () => {
     it('does NOT fire on partial completion', () => {
       const clock = new FakeClock();
       const store = new SessionStore({ clock: clock.now });
-      store.apply(
-        ev('user_text', { agent_id: 'agent-x', uuid: 'u1', payload: { text: 'go' } }),
-      );
+      store.apply(ev('user_text', { agent_id: 'agent-x', uuid: 'u1', payload: { text: 'go' } }));
       store.apply(
         ev('assistant_text', {
           agent_id: 'agent-x',
@@ -723,11 +715,7 @@ describe('SessionStore', () => {
       expect(before?.title).toBe('first prompt');
 
       const deltas = store.applyAutoTitle('S', 'A much better title');
-      expect(deltas.map((d) => d.op)).toEqual([
-        'panel_upsert',
-        'event_append',
-        'auto_titled',
-      ]);
+      expect(deltas.map((d) => d.op)).toEqual(['panel_upsert', 'event_append', 'auto_titled']);
       const upsert = deltas.find((d) => d.op === 'panel_upsert');
       if (upsert?.op === 'panel_upsert') {
         expect(upsert.panel.title).toBe('A much better title');
@@ -755,7 +743,13 @@ describe('SessionStore', () => {
       // Synthetic event is in the panel's event list, so a reload would still
       // show the breadcrumb.
       const after = store.snapshot()[0];
-      expect(after?.events.some((e) => e.kind === 'meta' && (e.payload as { record_type?: string }).record_type === 'auto-title')).toBe(true);
+      expect(
+        after?.events.some(
+          (e) =>
+            e.kind === 'meta' &&
+            (e.payload as { record_type?: string }).record_type === 'auto-title',
+        ),
+      ).toBe(true);
     });
 
     it('is a no-op when the proposed title matches the current title', () => {

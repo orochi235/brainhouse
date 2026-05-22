@@ -34,8 +34,8 @@ import { scanChecklist } from './builtIn/scanChecklist.ts';
 import { suppressInterruptMarker } from './builtIn/suppressInterruptMarker.ts';
 import { toolUseToCapsule } from './builtIn/toolUseToCapsule.ts';
 import { trackPending } from './builtIn/trackPending.ts';
-import type { ViewTransform } from './types.ts';
 import { userTextBubble } from './builtIn/userTextBubble.ts';
+import type { ViewTransform } from './types.ts';
 
 export const VIEW_TRANSFORMS: ViewTransform[] = [
   trackPending,
