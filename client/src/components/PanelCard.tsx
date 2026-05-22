@@ -587,7 +587,7 @@ function HeaderActions({
  *   - cursor on the panel: faint affordance (opacity ~0.3)
  *   - cursor near the corner (inside the palette's expanded hit region):
  *     full reveal
- * Hidden entirely once the cursor leaves the panel. Mini/done panels don't
+ * Hidden entirely once the cursor leaves the panel. Mini panels don't
  * get this — they keep the simple header buttons.
  */
 function PanelToolPalette({

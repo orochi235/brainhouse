@@ -3,7 +3,13 @@
   "vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": false },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/tsconfig.*", "!**/dist/**/*", "!client/**/*.gen.ts"]
+    "includes": [
+      "**",
+      "!**/tsconfig.*",
+      "!**/dist/**/*",
+      "!client/build/**/*",
+      "!client/**/*.gen.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
