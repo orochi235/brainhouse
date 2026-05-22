@@ -16,6 +16,7 @@ import { iconForTool, parseBashCommandHead, shortenPath, type ToolIcon } from '.
 import { usePrefs } from '../lib/usePrefs.ts';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { Markdown } from './Markdown.tsx';
+import { OpStripLightbox } from './OpStripLightbox.tsx';
 import { ToolCapsule } from './ToolCapsule.tsx';
 
 interface EventListProps {
@@ -174,12 +175,11 @@ function OpStripRow({ item, startedAt }: { item: OpStripItem; startedAt?: number
       onClick={() =>
         lightbox.open(
           <FilenameLinksProvider cwd={links.cwd} template={links.template}>
-            <div className="op-strip-lightbox">
-              <h3 className="lightbox-title">
-                {total} operation{total === 1 ? '' : 's'}: {summary}
-              </h3>
-              <ViewItemList items={item.items} startedAt={startedAt} />
-            </div>
+            <OpStripLightbox
+              item={item}
+              startedAt={startedAt}
+              title={`${total} operation${total === 1 ? '' : 's'}: ${summary}`}
+            />
           </FilenameLinksProvider>,
         )
       }
@@ -408,6 +408,17 @@ function MetaEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
   const lightbox = useLightbox();
   if (event.kind !== 'meta') return null;
   const label = event.payload.record_type ?? event.payload.block_type ?? 'meta';
+  if (label === 'auto-title') {
+    const raw = event.payload.raw as { previous?: string; current?: string } | undefined;
+    return (
+      <li className="event event-meta event-meta-auto-title">
+        <span className="event-kind">
+          auto-titled · <em>{raw?.previous ?? '—'}</em> → <strong>{raw?.current ?? ''}</strong>
+        </span>
+        <EventTime ts={event.ts} startedAt={startedAt} />
+      </li>
+    );
+  }
   return (
     <li
       className="event event-meta"

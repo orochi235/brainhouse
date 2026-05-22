@@ -714,6 +714,72 @@ describe('SessionStore', () => {
     });
   });
 
+  describe('applyAutoTitle', () => {
+    it('renames the panel, appends a synthetic meta event, and emits an auto_titled delta', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'first prompt' } }));
+      const before = store.snapshot()[0];
+      expect(before?.title).toBe('first prompt');
+
+      const deltas = store.applyAutoTitle('S', 'A much better title');
+      expect(deltas.map((d) => d.op)).toEqual([
+        'panel_upsert',
+        'event_append',
+        'auto_titled',
+      ]);
+      const upsert = deltas.find((d) => d.op === 'panel_upsert');
+      if (upsert?.op === 'panel_upsert') {
+        expect(upsert.panel.title).toBe('A much better title');
+      }
+      const append = deltas.find((d) => d.op === 'event_append');
+      if (append?.op === 'event_append') {
+        expect(append.event.kind).toBe('meta');
+        if (append.event.kind === 'meta') {
+          expect(append.event.payload.record_type).toBe('auto-title');
+          expect(append.event.payload.raw).toEqual({
+            previous: 'first prompt',
+            current: 'A much better title',
+          });
+        }
+      }
+      const cue = deltas.find((d) => d.op === 'auto_titled');
+      if (cue?.op === 'auto_titled') {
+        expect(cue).toEqual({
+          op: 'auto_titled',
+          panel_id: 'S',
+          prev_title: 'first prompt',
+          new_title: 'A much better title',
+        });
+      }
+      // Synthetic event is in the panel's event list, so a reload would still
+      // show the breadcrumb.
+      const after = store.snapshot()[0];
+      expect(after?.events.some((e) => e.kind === 'meta' && (e.payload as { record_type?: string }).record_type === 'auto-title')).toBe(true);
+    });
+
+    it('is a no-op when the proposed title matches the current title', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      expect(store.applyAutoTitle('S', 'hi')).toEqual([]);
+      expect(store.applyAutoTitle('S', '  hi  ')).toEqual([]); // trims before compare
+    });
+
+    it('is a no-op for unknown panel ids', () => {
+      const store = new SessionStore({ clock: () => 0 });
+      expect(store.applyAutoTitle('nonexistent', 'whatever')).toEqual([]);
+    });
+
+    it('is a no-op when the proposed title is empty / whitespace', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { payload: { text: 'hi' } }));
+      expect(store.applyAutoTitle('S', '')).toEqual([]);
+      expect(store.applyAutoTitle('S', '   ')).toEqual([]);
+    });
+  });
+
   it('snapshot serializes panels with events', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });

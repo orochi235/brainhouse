@@ -32,6 +32,11 @@ function dispatcherPath() {
   return path.resolve(here, '..', 'hooks', 'dispatcher.mjs');
 }
 
+function autoTitlePath() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(here, '..', 'hooks', 'auto-title.mjs');
+}
+
 function targetSettingsPaths() {
   const claudeDir = path.join(os.homedir(), '.claude');
   return existsSync(claudeDir) ? [path.join(claudeDir, 'settings.json')] : [];
@@ -57,7 +62,7 @@ function stripBrainhouse(settings) {
   return settings;
 }
 
-function addBrainhouse(settings, dispatcher) {
+function addBrainhouse(settings, dispatcher, autoTitle) {
   const hooks = settings.hooks ?? (settings.hooks = {});
   const cmd = `node ${JSON.stringify(dispatcher).slice(1, -1)}`;
   for (const [event, kind] of HOOK_EVENTS) {
@@ -72,6 +77,16 @@ function addBrainhouse(settings, dispatcher) {
       hooks: [{ type: 'command', command: `${cmd} ${kind}` }],
     });
   }
+  // Auto-title side-channel: separate Stop entry that runs `claude -p` on
+  // the user's account when `experimental.autoTitle` is on in prefs.json.
+  // The script gates itself; install is unconditional so toggling the
+  // pref takes effect without re-running init.
+  const stop = hooks.Stop ?? (hooks.Stop = []);
+  stop.push({
+    [MARKER]: true,
+    matcher: '.*',
+    hooks: [{ type: 'command', command: `node ${JSON.stringify(autoTitle).slice(1, -1)}` }],
+  });
   return settings;
 }
 
@@ -92,6 +107,11 @@ export async function runInit(argv) {
     console.error('Did you run `npm run build` and `npm link`?');
     process.exit(1);
   }
+  const autoTitle = autoTitlePath();
+  if (!existsSync(autoTitle)) {
+    console.error(`brainhouse: auto-title hook missing at ${autoTitle}`);
+    process.exit(1);
+  }
 
   const targets = targetSettingsPaths();
   if (targets.length === 0) {
@@ -104,7 +124,7 @@ export async function runInit(argv) {
     const beforeStr = JSON.stringify(before, null, 2);
     const next = uninstall
       ? stripBrainhouse(structuredClone(before))
-      : addBrainhouse(stripBrainhouse(structuredClone(before)), dispatcher);
+      : addBrainhouse(stripBrainhouse(structuredClone(before)), dispatcher, autoTitle);
     const nextStr = JSON.stringify(next, null, 2);
     if (beforeStr === nextStr) {
       console.log(`= ${file} (no change)`);

@@ -51,6 +51,12 @@ export interface ClientPrefs {
   editor: {
     urlTemplate: string;
   };
+  experimental: {
+    autoTitle: boolean;
+  };
+  debug: {
+    enabled: boolean;
+  };
 }
 
 const DEFAULT_PREFS: ClientPrefs = {
@@ -78,6 +84,8 @@ const DEFAULT_PREFS: ClientPrefs = {
   roots: [],
   storage: { persistEnabled: false, eventsIndexRetentionDays: 30 },
   editor: { urlTemplate: 'cursor://file/{path}:{line}' },
+  experimental: { autoTitle: false },
+  debug: { enabled: false },
 };
 
 export function usePrefs() {

@@ -88,6 +88,30 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.panel('S')?.status).toBe('live');
   });
 
+  it('applyHookEvent auto_title renames the panel and broadcasts the cue delta', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({}));
+    const seen: string[] = [];
+    monitor.emitter.on('delta', (d: { op: string }) => seen.push(d.op));
+    monitor.applyHookEvent({
+      session_id: 'S',
+      kind: 'auto_title',
+      title: 'Wire auto-titling hook',
+      ts: 0,
+    });
+    expect(monitor.store.panel('S')?.title).toBe('Wire auto-titling hook');
+    // Three deltas: panel_upsert (title), event_append (breadcrumb), auto_titled (cue).
+    expect(seen).toEqual(expect.arrayContaining(['panel_upsert', 'event_append', 'auto_titled']));
+  });
+
+  it('applyHookEvent auto_title with empty title is a no-op', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({}));
+    const before = monitor.store.panel('S')?.title;
+    monitor.applyHookEvent({ session_id: 'S', kind: 'auto_title', title: '   ', ts: 0 });
+    expect(monitor.store.panel('S')?.title).toBe(before);
+  });
+
   it('subagent_stop also marks each subagent as ended', () => {
     const monitor = newMonitor();
     monitor.ingest(userTextEvent({}));

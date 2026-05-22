@@ -26,6 +26,8 @@ type SectionKey =
   | 'workspace'
   | 'editor'
   | 'storage'
+  | 'experimental'
+  | 'debug'
   | 'trash';
 
 interface PrefsDraft {
@@ -68,6 +70,12 @@ interface PrefsDraft {
   editor: {
     urlTemplate: string;
   };
+  experimental: {
+    autoTitle: boolean;
+  };
+  debug: {
+    enabled: boolean;
+  };
 }
 
 const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
@@ -78,6 +86,8 @@ const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
   { key: 'workspace', icon: '▦', label: 'Workspace' },
   { key: 'editor', icon: '↗', label: 'Editor' },
   { key: 'storage', icon: '◫', label: 'Storage' },
+  { key: 'experimental', icon: '⚗', label: 'Experimental' },
+  { key: 'debug', icon: '⌬', label: 'Debug' },
   { key: 'trash', icon: '🗑', label: 'Trash' },
 ];
 
@@ -130,6 +140,8 @@ export function PrefsModal({ initial, onClose }: { initial: PrefsDraft; onClose:
           {active === 'workspace' && <WorkspaceSection draft={draft} setDraft={setDraft} />}
           {active === 'editor' && <EditorSection draft={draft} setDraft={setDraft} />}
           {active === 'storage' && <StorageSection draft={draft} setDraft={setDraft} />}
+          {active === 'experimental' && <ExperimentalSection draft={draft} setDraft={setDraft} />}
+          {active === 'debug' && <DebugSection draft={draft} setDraft={setDraft} />}
           {active === 'trash' && <TrashSection />}
         </div>
       </div>
@@ -524,6 +536,41 @@ function StorageSection({ draft, setDraft }: SectionProps) {
         value={draft.storage.eventsIndexRetentionDays}
         min={1}
         onChange={(v) => set({ eventsIndexRetentionDays: v })}
+      />
+    </Section>
+  );
+}
+
+function DebugSection({ draft, setDraft }: SectionProps) {
+  const set = (patch: Partial<PrefsDraft['debug']>) =>
+    setDraft({ ...draft, debug: { ...draft.debug, ...patch } });
+  return (
+    <Section
+      title="Debug"
+      hint="Reveal dev affordances in the UI — extra toolbar buttons (spawn mock subagents, preview animations), scenario picker, etc. Leave off in normal use."
+    >
+      <CheckboxField
+        label="Debug mode"
+        checked={draft.debug.enabled}
+        onChange={(v) => set({ enabled: v })}
+      />
+    </Section>
+  );
+}
+
+function ExperimentalSection({ draft, setDraft }: SectionProps) {
+  const set = (patch: Partial<PrefsDraft['experimental']>) =>
+    setDraft({ ...draft, experimental: { ...draft.experimental, ...patch } });
+  return (
+    <Section
+      title="Experimental"
+      hint="Features in flight. Behavior may change or disappear."
+    >
+      <CheckboxField
+        label="Keep my session names accurate (beta)"
+        hint="After each assistant turn, run `claude -p` on your own account to propose a panel title. Only fires when the panel is still using its short-id placeholder, or periodically to check for drift. The model self-vetoes with KEEP when the current title still fits, so most calls are a no-op."
+        checked={draft.experimental.autoTitle}
+        onChange={(v) => set({ autoTitle: v })}
       />
     </Section>
   );

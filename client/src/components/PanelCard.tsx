@@ -1,22 +1,17 @@
 import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
-import {
-  type CSSProperties,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
 import { projectLabel } from '../lib/project.ts';
 import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
+import { usePrefs } from '../lib/usePrefs.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import { EventList } from './EventList.tsx';
+import { ToolChip, ToolChips } from './ToolChips.tsx';
 
 /** How long after the user's last click in a panel we treat them as actively
  * reading it. Inside this window auto-scroll respects manual scroll
@@ -232,10 +227,10 @@ export function PanelCard({
   return (
     <div className="panel-wrap" style={style}>
       {/* Halo sibling — sits behind the panel so its box-shadow pulse can
-        * escape the panel's overflow:hidden. Animates `opacity` only
-        * (composited / GPU) instead of `box-shadow` keyframes (paint /
-        * CPU). Visibility + color are driven by the panel's classes
-        * via :has() selectors in app.css. */}
+       * escape the panel's overflow:hidden. Animates `opacity` only
+       * (composited / GPU) instead of `box-shadow` keyframes (paint /
+       * CPU). Visibility + color are driven by the panel's classes
+       * via :has() selectors in app.css. */}
       <div className="panel-halo" aria-hidden="true" />
       <article
         ref={articleRef}
@@ -257,66 +252,67 @@ export function PanelCard({
           lastClickAtRef.current = Date.now();
         }}
       >
-      <PanelHeader
-        panel={panel}
-        now={now}
-        onHide={onHide}
-        onRestore={onRestore}
-        pinned={pinned}
-        onTogglePin={onTogglePin}
-        account={account}
-        waiting={waiting}
-        waitingSince={waiting ? lastUserActivity(items, now) : null}
-      />
-      {panel.status !== 'mini' && (
-        <PanelToolPalette
+        <PanelHeader
           panel={panel}
+          now={now}
           onHide={onHide}
-          brokenOut={!!brokenOut}
-          onToggleBrokenOut={onToggleBrokenOut}
+          onRestore={onRestore}
+          pinned={pinned}
+          onTogglePin={onTogglePin}
+          account={account}
+          waiting={waiting}
+          waitingSince={waiting ? lastUserActivity(items, now) : null}
         />
-      )}
-      {checklist && <ChecklistPin items={checklist} />}
-      <div
-        className="panel-body"
-        ref={bodyRef}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          // 32px slack so a near-bottom scroll still counts as "at bottom".
-          stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
-          // Persist position for refresh-recovery (sessionStorage, 60s TTL).
-          // Debounced via the same requestAnimationFrame the browser is
-          // already firing for scroll, so we don't write storage on every
-          // wheel tick.
-          if (scrollSaveRafRef.current === null) {
-            scrollSaveRafRef.current = requestAnimationFrame(() => {
-              scrollSaveRafRef.current = null;
-              if (bodyRef.current) saveScrollPosition(panel.id, bodyRef.current.scrollTop);
-            });
-          }
-        }}
-      >
-        <div className="panel-body-content" ref={contentRef}>
-          <EventList
-            events={panel.events}
-            startedAt={panel.started_at}
-            cwd={panel.cwd}
-            onBubbleClick={onBubbleClick}
+        {panel.status !== 'mini' && (
+          <PanelToolPalette
+            panel={panel}
+            onHide={onHide}
+            brokenOut={!!brokenOut}
+            onToggleBrokenOut={onToggleBrokenOut}
           />
-          {waiting && <ThinkingIndicator started={lastUserActivity(items, now)} now={now} />}
-          {panel.status !== 'live' &&
-            (() => {
-              const cleared = panel.ended_provenance === 'hook_session_start_supersede';
-              const label = cleared ? 'session cleared' : 'session ended';
-              return (
-                <div className="session-ended" aria-label={label}>
-                  <span>{label}</span>
-                </div>
-              );
-            })()}
+        )}
+        {checklist && <ChecklistPin items={checklist} />}
+        <div
+          className="panel-body"
+          ref={bodyRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            // 32px slack so a near-bottom scroll still counts as "at bottom".
+            stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+            // Persist position for refresh-recovery (sessionStorage, 60s TTL).
+            // Debounced via the same requestAnimationFrame the browser is
+            // already firing for scroll, so we don't write storage on every
+            // wheel tick.
+            if (scrollSaveRafRef.current === null) {
+              scrollSaveRafRef.current = requestAnimationFrame(() => {
+                scrollSaveRafRef.current = null;
+                if (bodyRef.current) saveScrollPosition(panel.id, bodyRef.current.scrollTop);
+              });
+            }
+          }}
+        >
+          <div className="panel-body-content" ref={contentRef}>
+            <EventList
+              events={panel.events}
+              startedAt={panel.started_at}
+              cwd={panel.cwd}
+              onBubbleClick={onBubbleClick}
+            />
+            {waiting && <ThinkingIndicator started={lastUserActivity(items, now)} now={now} />}
+            {panel.status !== 'live' &&
+              (() => {
+                const cleared = panel.ended_provenance === 'hook_session_start_supersede';
+                const label = cleared ? 'session cleared' : 'session ended';
+                return (
+                  <div className="session-ended" aria-label={label}>
+                    <span>{label}</span>
+                  </div>
+                );
+              })()}
+          </div>
         </div>
-      </div>
       </article>
+      <AutoTitleToast panel={panel} />
     </div>
   );
 }
@@ -400,10 +396,7 @@ function PanelHeader({
     return () => clearTimeout(t);
   }, [pinned]);
   const totalTokens =
-    panel.tokens.input +
-    panel.tokens.output +
-    panel.tokens.cache_create +
-    panel.tokens.cache_read;
+    panel.tokens.input + panel.tokens.output + panel.tokens.cache_create + panel.tokens.cache_read;
 
   return (
     <header
@@ -419,7 +412,11 @@ function PanelHeader({
       {onRestore || onTogglePin ? (
         <button
           type="button"
-          className={classNames('panel-status-slot', 'panel-status-slot-button', pinned && 'pinned')}
+          className={classNames(
+            'panel-status-slot',
+            'panel-status-slot-button',
+            pinned && 'pinned',
+          )}
           title={
             onRestore
               ? `Restore to the grid · ${statusIconTitle(panel.status, !!waiting, !!pinned)}`
@@ -456,7 +453,9 @@ function PanelHeader({
         </span>
       )}
       <span className="panel-titles">
-        <span className="panel-title">{renderInlineCode(panel.title)}</span>
+        <span className={classNames('panel-title', useTitleFlash(panel.autoTitledAt) && 'flash')}>
+          {renderInlineCode(panel.title)}
+        </span>
         <span className="panel-subtitle-row">
           {panel.kind === 'subagent' && panel.agent_type ? (
             <span className="panel-subtitle">{panel.agent_type}</span>
@@ -494,10 +493,7 @@ function PanelHeader({
               aria-label="subagent total runtime"
             >
               {formatIdleCoarse(
-                Math.max(
-                  0,
-                  (isLive ? now : panel.last_event_at) - panel.started_at,
-                ),
+                Math.max(0, (isLive ? now : panel.last_event_at) - panel.started_at),
               )}
             </span>
           )}
@@ -611,14 +607,14 @@ function PanelToolPalette({
   onToggleBrokenOut?: () => void;
 }) {
   const lightbox = useLightbox();
+  const { prefs } = usePrefs();
+  const debug = prefs.debug?.enabled === true;
   const isParent = panel.kind === 'parent';
   const isSubWithParent = panel.kind === 'subagent' && !!panel.parent_panel_id;
   return (
     <div className="panel-tool-palette" aria-label="panel actions">
-      <div className="panel-tool-palette-chips">
-        <button
-          type="button"
-          className="panel-tool-btn"
+      <ToolChips>
+        <ToolChip
           title="Open in lightbox"
           onClick={(e) => {
             e.stopPropagation();
@@ -626,16 +622,10 @@ function PanelToolPalette({
           }}
         >
           ⛶
-        </button>
+        </ToolChip>
         {isSubWithParent && onToggleBrokenOut && (
-          <button
-            type="button"
-            className="panel-tool-btn"
-            title={
-              brokenOut
-                ? 'Dock back into the parent session'
-                : 'Break out into its own panel'
-            }
+          <ToolChip
+            title={brokenOut ? 'Dock back into the parent session' : 'Break out into its own panel'}
             aria-pressed={!!brokenOut}
             onClick={(e) => {
               e.stopPropagation();
@@ -643,13 +633,12 @@ function PanelToolPalette({
             }}
           >
             {brokenOut ? '⇱' : '⇲'}
-          </button>
+          </ToolChip>
         )}
-        {isParent && (
+        {isParent && debug && (
           <>
-            <button
-              type="button"
-              className="panel-tool-btn panel-tool-debug"
+            <ToolChip
+              className="panel-tool-debug"
               title="Debug: spawn a mock subagent in this session"
               onClick={(e) => {
                 e.stopPropagation();
@@ -657,10 +646,9 @@ function PanelToolPalette({
               }}
             >
               +sub
-            </button>
-            <button
-              type="button"
-              className="panel-tool-btn panel-tool-debug"
+            </ToolChip>
+            <ToolChip
+              className="panel-tool-debug"
               title="Debug: spawn a counting subagent (runs to 10)"
               onClick={(e) => {
                 e.stopPropagation();
@@ -668,13 +656,35 @@ function PanelToolPalette({
               }}
             >
               +count
-            </button>
+            </ToolChip>
           </>
         )}
+        {debug && (
+          <ToolChip
+            className="panel-tool-debug"
+            title="Debug: trigger title flash + toast + inline breadcrumb at once"
+            onClick={(e) => {
+              e.stopPropagation();
+              trpc.debug.previewAutoTitle.mutate({ panelId: panel.id });
+            }}
+          >
+            !title
+          </ToolChip>
+        )}
+        {debug && (
+          <ToolChip
+            className="panel-tool-debug"
+            title={`Debug: copy session id (${panel.id}) to clipboard`}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard?.writeText(panel.id);
+            }}
+          >
+            id
+          </ToolChip>
+        )}
         {onHide && (
-          <button
-            type="button"
-            className="panel-tool-btn"
+          <ToolChip
             title="Send this panel to the dock. The session keeps running; this panel reappears on new activity."
             onClick={(e) => {
               e.stopPropagation();
@@ -682,13 +692,12 @@ function PanelToolPalette({
             }}
           >
             ⤓
-          </button>
+          </ToolChip>
         )}
-      </div>
+      </ToolChips>
     </div>
   );
 }
-
 
 function ChecklistPin({ items }: { items: ChecklistItem[] }) {
   const done = items.filter((i) => i.done).length;
@@ -758,7 +767,11 @@ function CheckGlyph() {
   );
 }
 
-function statusIconTitle(status: 'live' | 'done' | 'mini', waiting: boolean, pinned: boolean): string {
+function statusIconTitle(
+  status: 'live' | 'done' | 'mini',
+  waiting: boolean,
+  pinned: boolean,
+): string {
   const shape = pinned ? 'pinned' : 'session';
   if (status === 'live') return `${shape} — live${waiting ? ', awaiting model' : ''}`;
   if (status === 'done') return `${shape} — done`;
@@ -804,4 +817,42 @@ function parseTs(ts: string, fallback: number): number {
   if (!ts) return fallback;
   const t = new Date(ts).getTime() / 1000;
   return Number.isNaN(t) ? fallback : t;
+}
+
+/** Returns true while a panel's title-flash window is still active. The
+ * window is keyed to `autoTitledAt` (wall-clock ms) so a fresh delta
+ * re-triggers even if the previous flash hadn't faded yet. */
+function useTitleFlash(at?: number): boolean {
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    if (!at) return;
+    setActive(true);
+    const t = setTimeout(() => setActive(false), 1600);
+    return () => clearTimeout(t);
+  }, [at]);
+  return active;
+}
+
+function AutoTitleToast({ panel }: { panel: PanelState }) {
+  const [visible, setVisible] = useState(false);
+  const lastSeenRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!panel.autoTitledAt || panel.autoTitledAt === lastSeenRef.current) return;
+    lastSeenRef.current = panel.autoTitledAt;
+    setVisible(true);
+    const t = setTimeout(() => setVisible(false), 5000);
+    return () => clearTimeout(t);
+  }, [panel.autoTitledAt]);
+  if (!visible) return null;
+  const prev = panel.autoTitledPrev ?? '—';
+  return (
+    <div className="auto-title-toast" role="status" aria-live="polite">
+      <span className="auto-title-toast-label">auto-titled</span>
+      <span className="auto-title-toast-prev">{prev}</span>
+      <span className="auto-title-toast-arrow" aria-hidden="true">
+        →
+      </span>
+      <span className="auto-title-toast-new">{panel.title}</span>
+    </div>
+  );
 }

@@ -122,7 +122,11 @@ export type Delta =
   | { op: 'panel_upsert'; panel: PanelDto }
   | { op: 'panel_status'; panel_id: string; status: PanelStatus }
   | { op: 'panel_remove'; panel_id: string }
-  | { op: 'event_append'; panel_id: string; event: Event };
+  | { op: 'event_append'; panel_id: string; event: Event }
+  /** Transient: drives the title flash + toast on the client when the
+   * auto-title hook proposes a new name. Not persisted, not part of
+   * panel state — it's a one-shot UX cue. */
+  | { op: 'auto_titled'; panel_id: string; prev_title: string; new_title: string };
 
 export interface SessionStoreOptions {
   idleSeconds?: number;
@@ -543,6 +547,41 @@ export class SessionStore {
     const panel = this.panels.get(panelId);
     if (!panel) return;
     this.materializeSummary(panel, provenance);
+  }
+
+  /** Apply an auto-title proposal from the Stop-hook side-channel. Dedupes
+   * against the current title; no-op when the proposal matches. On accept,
+   * mutates panel.title, emits panel_upsert (so reloads get the fresh
+   * title), an event_append with a synthetic meta event for inline
+   * visibility, and an `auto_titled` delta the UI uses to drive the
+   * title-flash + toast. */
+  applyAutoTitle(panelId: string, proposed: string): Delta[] {
+    const panel = this.panels.get(panelId);
+    if (!panel) return [];
+    const next = proposed.trim();
+    if (!next || next === panel.title) return [];
+    const prev = panel.title;
+    panel.title = next;
+    this.persistPanel(panel);
+    const syntheticEvent: Event = {
+      uuid: `${panelId}:auto-title:${Math.round(this.clock())}`,
+      session_id: panelId,
+      agent_id: null,
+      parent_uuid: null,
+      kind: 'meta',
+      ts: new Date(this.clock() * 1000).toISOString(),
+      cwd: panel.cwd,
+      payload: {
+        record_type: 'auto-title',
+        raw: { previous: prev, current: next },
+      },
+    };
+    panel.events.push(syntheticEvent);
+    return [
+      { op: 'panel_upsert', panel: this.toDto(panel) },
+      { op: 'event_append', panel_id: panelId, event: syntheticEvent },
+      { op: 'auto_titled', panel_id: panelId, prev_title: prev, new_title: next },
+    ];
   }
 
   /** Mark a panel as explicitly ended. Idempotent; only emits a delta when

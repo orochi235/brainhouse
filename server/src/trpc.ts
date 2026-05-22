@@ -216,6 +216,29 @@ export const appRouter = t.router({
         const agentId = await spawnSubagentIn(ctx.monitor, input.sessionId, input.stopAt);
         return { sessionId: input.sessionId, agentId };
       }),
+    /** Fires the same three auto-title visibility effects (title flash,
+     * toast, inline meta breadcrumb) without involving `claude -p`. The
+     * `title` input is the demo string the panel will flash to; omit it
+     * to use a timestamped default. */
+    previewAutoTitle: t.procedure
+      .input(
+        z.object({
+          panelId: z.string(),
+          title: z.string().optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) => {
+        const proposed = input.title?.trim() || `Demo title ${new Date().toLocaleTimeString()}`;
+        // Route through the auto_title hook event path so observers (incl.
+        // the broadcaster's theme-load side effect) see the same shape.
+        ctx.monitor.applyHookEvent({
+          kind: 'auto_title',
+          session_id: input.panelId,
+          title: proposed,
+          ts: Date.now() / 1000,
+        });
+        return { title: proposed };
+      }),
   }),
 
   deltas: t.procedure.subscription(async function* ({ ctx, signal }) {

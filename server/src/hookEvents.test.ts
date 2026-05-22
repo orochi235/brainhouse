@@ -20,6 +20,18 @@ describe('HookEventSchema', () => {
     const result = HookEventSchema.safeParse({ kind: 'stop', session_id: '', ts: 0 });
     expect(result.success).toBe(false);
   });
+
+  test('accepts auto_title with a title payload', () => {
+    const raw = {
+      kind: 'auto_title',
+      session_id: 'S',
+      title: 'A better title',
+      ts: 1700000000,
+    };
+    const result = HookEventSchema.safeParse(raw);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.title).toBe('A better title');
+  });
 });
 
 describe('HookEventWatcher', () => {

@@ -161,6 +161,24 @@ export const StorageSchema = z.object({
 });
 export type Storage = z.infer<typeof StorageSchema>;
 
+/** Developer tooling. When `enabled`, the UI surfaces debug affordances
+ * (toolbar buttons, scenarios picker, preview triggers). Off by default;
+ * intended for first-party use while building / dogfooding features. */
+export const DebugSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+export type Debug = z.infer<typeof DebugSchema>;
+
+/** Opt-in features that aren't fully baked yet. */
+export const ExperimentalSchema = z.object({
+  /** When true, a Stop hook runs `claude -p` after each assistant turn to
+   * propose a panel title, using the user's own Claude CLI auth. The
+   * hook decides whether to fire based on turn count + current title;
+   * the server applies the new title only if it differs. */
+  autoTitle: z.boolean().default(false),
+});
+export type Experimental = z.infer<typeof ExperimentalSchema>;
+
 export const PrefsSchema = z.object({
   /** Transcript roots to monitor. Empty array → fall back to platform defaults. */
   roots: z.array(RootSchema).default([]),
@@ -171,6 +189,8 @@ export const PrefsSchema = z.object({
   workspace: WorkspaceSchema.default(WorkspaceSchema.parse({})),
   storage: StorageSchema.default(StorageSchema.parse({})),
   editor: EditorSchema.default(EditorSchema.parse({})),
+  experimental: ExperimentalSchema.default(ExperimentalSchema.parse({})),
+  debug: DebugSchema.default(DebugSchema.parse({})),
 });
 export type Prefs = z.infer<typeof PrefsSchema>;
 

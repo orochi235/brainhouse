@@ -225,6 +225,12 @@ export class TranscriptMonitor {
       this.applySessionStartSupersede(event);
       return;
     }
+    if (event.kind === 'auto_title') {
+      const title = (event.title ?? '').trim();
+      if (!title) return;
+      for (const d of this.store.applyAutoTitle(sid, title)) this.broadcast(d);
+      return;
+    }
     if (event.kind === 'session_end') {
       // Authoritative terminate signal — Claude Code is shutting down this
       // session for real. Mark the parent panel ended and demote any live

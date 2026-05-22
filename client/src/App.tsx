@@ -10,6 +10,7 @@ import { TransformsModal } from './components/TransformsModal.tsx';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { LightboxProvider, useLightbox } from './lib/lightbox.tsx';
+import { clearScrollPosition } from './lib/scrollMemory.ts';
 import {
   sortByOrder,
   useBrokenOutPanels,
@@ -204,6 +205,29 @@ export function App() {
     .map((id) => gridPanels.find((p) => p.id === id))
     .filter((p): p is PanelState => p !== undefined);
 
+  // First-load auto-restore: if the snapshot lands with an empty grid but
+  // there are live sessions sitting in the dock (e.g. all active panels
+  // were previously dismissed and then the user reloaded), pull them back
+  // out. Fires at most once per page load.
+  const didAutoRestoreRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally one-shot; we don't want to refire on later state changes.
+  useEffect(() => {
+    if (didAutoRestoreRef.current) return;
+    if (panels.size === 0) return;
+    didAutoRestoreRef.current = true;
+    if (orderedGridPanels.length > 0) return;
+    const liveTray = trayPanels.filter((p) => p.status === 'live');
+    if (liveTray.length === 0) return;
+    for (const p of liveTray) {
+      clearScrollPosition(p.id);
+      const isClient =
+        clientMiniPanels.some((m) => m.id === p.id) ||
+        clientMiniSubs.some((m) => m.id === p.id);
+      if (isClient) restoreLocal(p.id);
+      else trpc.restore.mutate({ panelId: p.id });
+    }
+  }, [panels]);
+
   // Wide panels consume two cells; everything else consumes one. We pass the
   // total slot count to the layout hook so a 4-panel grid with one wide panel
   // becomes a 5-slot tile (still picks a nice integer cols/rows).
@@ -242,27 +266,31 @@ export function App() {
       <header className="topbar">
         <h1>Brainhouse</h1>
         <span className="topbar-controls">
-          <button
-            type="button"
-            className="debug-spawn"
-            onClick={() => trpc.debug.spawnMock.mutate()}
-          >
-            + mock session
-          </button>
-          <button
-            type="button"
-            className="debug-spawn"
-            onClick={() => trpc.debug.spawnCounter.mutate({ stopAt: 10 })}
-          >
-            + counter subagent
-          </button>
+          {prefs.debug?.enabled && (
+            <>
+              <button
+                type="button"
+                className="debug-spawn"
+                onClick={() => trpc.debug.spawnMock.mutate()}
+              >
+                + mock session
+              </button>
+              <button
+                type="button"
+                className="debug-spawn"
+                onClick={() => trpc.debug.spawnCounter.mutate({ stopAt: 10 })}
+              >
+                + counter subagent
+              </button>
+            </>
+          )}
           <button type="button" className="debug-spawn" onClick={dismissAll}>
             clear all
           </button>
-          <ScenariosButton />
-          <TransformsButton />
+          {prefs.debug?.enabled && <ScenariosButton />}
+          {prefs.debug?.enabled && <TransformsButton />}
           <StatsButton />
-          <FlowsButton />
+          {prefs.debug?.enabled && <FlowsButton />}
           <span className={`conn conn-${status}`}>{status}</span>
           <span className="topbar-icon-buttons">
             <button
@@ -336,6 +364,12 @@ export function App() {
                   panel={p}
                   onHide={() => dismiss(p)}
                   onRestore={() => {
+                    // Restoring from the dock should always reveal a panel
+                    // scrolled to the bottom — the user is bringing it back
+                    // to catch up on what's happened. Wipe any stale
+                    // sessionStorage scroll offset before the panel
+                    // remounts so its useLayoutEffect snaps cleanly.
+                    clearScrollPosition(p.id);
                     // Client-mini panels restore locally; server-mini ones need trpc.
                     if (clientMiniPanels.some((m) => m.id === p.id)) restoreLocal(p.id);
                     else if (clientMiniSubs.some((m) => m.id === p.id)) restoreLocal(p.id);

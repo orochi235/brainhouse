@@ -19,7 +19,14 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 
 export const HookEventSchema = z.object({
-  kind: z.enum(['stop', 'subagent_stop', 'notification', 'session_end', 'session_start']),
+  kind: z.enum([
+    'stop',
+    'subagent_stop',
+    'notification',
+    'session_end',
+    'session_start',
+    'auto_title',
+  ]),
   session_id: z.string().min(1),
   /** Absolute path of the transcript that triggered the hook, if Claude
    * Code provided one. Used by session_start to locate the prior panel
@@ -32,6 +39,9 @@ export const HookEventSchema = z.object({
    * only acts on clear/compact — startup/resume don't supersede a prior
    * panel. Other values pass through but are ignored. */
   source: z.string().optional(),
+  /** auto_title only. The proposed new panel title. Server validates and
+   * applies if it differs from the current title. */
+  title: z.string().optional(),
   /** Unix seconds, set by the dispatcher. */
   ts: z.number(),
 });

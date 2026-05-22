@@ -632,7 +632,7 @@ body.hide-tokens .panel-tokens {
 body.hide-context .panel-context {
   display: none;
 }
-.panel-tool-palette-chips {
+.tool-chips {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
@@ -646,7 +646,7 @@ body.hide-context .panel-context {
   border-radius: 999px;
   box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.35);
 }
-.panel-tool-btn {
+.tool-chip {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -661,13 +661,17 @@ body.hide-context .panel-context {
   opacity: 0.75;
   transition: opacity 0.12s ease, background 0.12s ease;
 }
-.panel-tool-btn:hover {
+.tool-chip:hover {
   opacity: 1;
   background: color-mix(in srgb, var(--panel-bg) 18%, transparent);
 }
-.panel-tool-btn.pinned {
+.tool-chip.pinned {
   opacity: 1;
   color: var(--accent);
+}
+.tool-chip[aria-pressed='true'] {
+  opacity: 1;
+  background: color-mix(in srgb, var(--panel-bg) 28%, transparent);
 }
 .panel-tool-debug {
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -1423,7 +1427,7 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   font-size: 0.72rem;
   color: var(--muted);
   border: 1px dashed var(--panel-border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
   cursor: pointer;
 }
@@ -2061,6 +2065,115 @@ body.view-conversation
   font-size: 1rem;
   letter-spacing: 0.03em;
 }
+/* Header row that pairs the title with a view-mode toggle (e.g. op-strip
+ * lightbox conversation/file switcher). Title takes available space; chips
+ * sit right. */
+.lightbox-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 0.6rem;
+}
+.lightbox-title-row .lightbox-title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Op-strip lightbox file-view: each file gets its own section of hunks,
+ * with a small summary strip at the top for non-file ops. */
+.op-strip-file-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  flex: 1;
+}
+.op-strip-nonfile-summary {
+  margin: 0;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px dashed var(--panel-border);
+  border-radius: 6px;
+}
+/* File view layout: directory tree (left) + selected file's hunks (right).
+ * The right pane scrolls independently so picking a file doesn't shove the
+ * tree out of view. */
+.op-strip-file-split {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) 1fr;
+  gap: 0.75rem;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.op-strip-file-tree {
+  overflow: auto;
+  min-height: 0;
+  border-right: 1px solid var(--panel-border);
+  padding-right: 0.5rem;
+}
+.op-strip-file-pane {
+  overflow: auto;
+  min-height: 0;
+}
+.op-strip-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.78rem;
+  font-family: ui-monospace, monospace;
+}
+.op-strip-tree li {
+  margin: 0;
+}
+.op-strip-tree-dir {
+  color: var(--muted);
+  padding: 0.15rem 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.op-strip-tree-file {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  padding: 0.18rem 0.35rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.op-strip-tree-file:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.op-strip-tree-file[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent, var(--fg)) 18%, transparent);
+  color: var(--fg);
+}
+
+.op-strip-file-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.op-strip-file-path {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+.op-strip-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
+}
 
 /* ---- prefs modal (macOS System Preferences-style) ---- */
 .prefs-modal {
@@ -2286,4 +2399,96 @@ body.view-conversation
   margin: 0;
   font-family: ui-monospace, monospace;
   white-space: pre-wrap;
+}
+
+/* ---- auto-title flash + toast ---- */
+
+/* Brief highlight on the panel title when the auto-title hook lands a new
+ * name. Keyframe scales the text up slightly and pulses the color toward
+ * the accent so it's hard to miss even on minimised panels. */
+@keyframes auto-title-flash {
+  0% {
+    color: inherit;
+    transform: translateZ(0) scale(1);
+  }
+  18% {
+    color: var(--accent);
+    transform: translateZ(0) scale(1.04);
+    text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  100% {
+    color: inherit;
+    transform: translateZ(0) scale(1);
+    text-shadow: none;
+  }
+}
+.panel-title.flash {
+  animation: auto-title-flash 1.6s cubic-bezier(0.22, 0.85, 0.25, 1);
+}
+
+/* Toast pinned to the top-right of the panel-wrap. Self-contained so
+ * multiple panels can show their own toast independently. */
+.auto-title-toast {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--header-bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  font-size: 0.7rem;
+  color: var(--fg);
+  pointer-events: none;
+  animation:
+    auto-title-toast-in 0.28s cubic-bezier(0.22, 0.85, 0.25, 1),
+    auto-title-toast-out 0.35s ease-in 4.65s forwards;
+}
+@keyframes auto-title-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes auto-title-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.auto-title-toast-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-size: 0.62rem;
+}
+.auto-title-toast-prev {
+  opacity: 0.7;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--fg) 40%, transparent);
+}
+.auto-title-toast-arrow {
+  opacity: 0.6;
+}
+.auto-title-toast-new {
+  font-weight: 600;
+}
+
+/* Inline meta line for auto-title — sits in the event list as a recordkeeping
+ * breadcrumb after each accepted retitle. Subtler than the toast so it
+ * doesn't compete with surrounding content on a re-read. */
+.event-meta.event-meta-auto-title {
+  opacity: 0.85;
+}
+.event-meta.event-meta-auto-title .event-kind {
+  color: var(--accent);
 }

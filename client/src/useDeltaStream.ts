@@ -17,6 +17,14 @@ export interface PanelState extends PanelDto {
   /** Server has told us this panel is gone; we keep it mounted briefly so
    * the UI can play a fade-out animation before it actually disappears. */
   removing?: boolean;
+  /** Wall-clock ms of the most recent auto_titled delta. Drives a brief
+   * title flash + toast on the client. The toast component clears its
+   * own state after the visibility window; this just timestamps the
+   * trigger so the title-flash effect can re-fire on each accept. */
+  autoTitledAt?: number;
+  /** Previous title carried alongside autoTitledAt so the toast can
+   * render "X → Y". */
+  autoTitledPrev?: string;
 }
 
 /** How long the fade-out animation runs before we drop the panel for real.
@@ -76,6 +84,15 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
             ...existing,
             status: d.status,
             status_changed_at: Date.now() / 1000,
+          });
+        }
+      } else if (d.op === 'auto_titled') {
+        const existing = panels.get(d.panel_id);
+        if (existing) {
+          panels.set(d.panel_id, {
+            ...existing,
+            autoTitledAt: Date.now(),
+            autoTitledPrev: d.prev_title,
           });
         }
       } else if (d.op === 'panel_remove') {

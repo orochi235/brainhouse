@@ -8,10 +8,10 @@ UI/server is meant to uphold. New entries go at the bottom.
 
 - When opening or restoring a session window, always scroll to the bottom
   — *unless* sessionStorage has a recent (<60s) saved scroll position for
-  that panel, in which case restore the saved position. That last
-  exception only matters for the "page refresh" case; a panel reopened
-  from the dock minutes later still snaps to the bottom because the
-  saved position has aged out.
+  that panel, in which case restore the saved position. That exception
+  exists only for the "page refresh" case; restoring a panel from the
+  dock explicitly clears its saved position first, so dock-restores
+  always snap to the bottom regardless of how recently it was hidden.
 - When a session window receives an update, always scroll it to the bottom
   — unless the user has actively clicked inside that panel within the last
   30 seconds *and* the browser window currently has focus, or its state has
@@ -22,6 +22,10 @@ UI/server is meant to uphold. New entries go at the bottom.
   that were part of the canceled work are dimmed.
 - On reload, panels whose `last_event_at` is more than 30 seconds old are
   routed straight to the dock instead of the main grid.
+- On reload, if the grid lands empty but the dock holds at least one
+  panel whose status is `live`, those live dock panels are auto-restored
+  to the grid. Fires at most once per page load — later state changes
+  that leave the grid empty don't retrigger the restore.
 - "Minimized for idleness" and "user-dismissed" are distinct intents. A
   panel that landed in the dock because it went idle or was stale on
   reload pops back to the grid automatically when new activity arrives.
@@ -46,6 +50,25 @@ UI/server is meant to uphold. New entries go at the bottom.
   `<command-message>`, `<command-args>`). The panel keeps its short-id
   placeholder until the user's first real prompt arrives, which then
   becomes the title.
+- Auto-titling (beta, gated on `experimental.autoTitle`): a Stop hook
+  shells out to `claude -p` on the user's own CLI auth after each
+  assistant turn. Fires when the panel has no `custom-title` meta yet
+  AND the user has spoken ≥2 turns, OR periodically every 20 turns to
+  catch drift. The model receives the first user prompt + last two
+  turns and replies with either `KEEP` or a new title (≤14 words). On
+  accept, the server emits a `panel_upsert` (title), an `event_append`
+  with a synthetic meta event (`record_type: 'auto-title'`), and a
+  transient `auto_titled` delta that drives a title-flash animation +
+  a 5-second panel-anchored toast. The synthetic meta event renders
+  inline as a permanent breadcrumb so the rename is auditable on reload.
+- Debug mode (`debug.enabled`, off by default) gates dev affordances in
+  the UI:
+  - Topbar: `+ mock session`, `+ counter subagent`, Scenarios picker,
+    Transforms picker, Flows viewer. `clear all`, Stats, connection
+    status, theme toggle, and Prefs remain visible regardless.
+  - Panel toolbar: `+sub` / `+count` (on parents) + `!title` (preview
+    auto-title animations).
+  The pref lives under a dedicated Debug section in the prefs modal.
 - Panels are not dimmed merely for going idle. A panel only dims after we
   have an explicit "this session is over" signal — currently, the
   SubagentStop hook on a subagent panel. The dim level is user-controlled
@@ -75,6 +98,14 @@ UI/server is meant to uphold. New entries go at the bottom.
   paths resolve against the panel's `cwd`. The editor URL template is a
   user pref (`editor.urlTemplate`) with `{path}`, `{line}`, `{col}`
   placeholders; an empty template disables the feature.
+
+- The op-strip lightbox (compact one-liner between bubbles) supports two
+  view modes via a header toggle: **conversation** (default — sub-items
+  in original order) and **file** (file-changes regrouped by path, each
+  rendered as stacked hunks; non-file ops collapse into a single "Also:
+  N Bash · M Grep …" summary strip). Mode is session-local — resets when
+  the lightbox closes. Single-file lightboxes (`FileChangeLightbox`)
+  don't get the toggle since there's nothing to regroup.
 
 ## State
 
