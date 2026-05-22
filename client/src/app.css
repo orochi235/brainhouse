@@ -1837,6 +1837,37 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   font-size: 0.68rem;
 }
 
+/* ---- Header badge tooltips (session-time, context-size) ----
+ * Plain narrative explanation popovers. Smaller than the token table
+ * popover; share the same outer .hover-popover chrome. */
+.header-tooltip {
+  font-family: var(--ui-font, ui-sans-serif, system-ui);
+  max-width: 280px;
+}
+.header-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+.header-tooltip-body {
+  margin: 0;
+  color: color-mix(in srgb, var(--fg) 85%, var(--muted));
+}
+.header-tooltip-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  padding: 0 0.15em;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: 3px;
+}
+.header-tooltip-meta {
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- TokenTooltip ---- */
 .token-tooltip {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

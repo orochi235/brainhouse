@@ -381,3 +381,22 @@ Lightbox already exists (op-strip dual-view), so `full` view reuses it.
 First concrete instance: skill-load tool results (entire SKILL.md dumped
 inline today — should be a one-line chip with skill name + base dir,
 expandable to full).
+
+## Time-series stat keeping for sparkline charts
+Today we only carry running totals per panel (lifetime `tokens`,
+single-turn `context_size`). To draw mini-charts inside tooltips —
+session token usage over time, context window growth, turn duration
+trend — we need a per-panel time series.
+
+Sketch:
+- Server-side: append a sample on each `resource_usage` event
+  (timestamp + buckets + context_size). Capped ring buffer (e.g. last
+  200 samples) so memory stays bounded.
+- Delta protocol: new `panel_sample` op, or fold into `panel_update`.
+- Client: inline sparklines in the existing popovers (TokenTooltip
+  gets a cumulative-spend trend; ContextSizeTooltip gets a window-size
+  trend over the turn history; a SessionTimeTooltip extension could
+  show per-turn duration).
+- Open question: persistence. In-memory is fine for live sessions;
+  serializing alongside panel state to disk would let us draw charts
+  for retired sessions too.

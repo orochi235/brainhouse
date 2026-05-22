@@ -5,6 +5,7 @@ import trashIcon from '../assets/icons/trash.svg?raw';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
 import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
 import { HoverPopover } from './HoverPopover.tsx';
+import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
 import { TokenTooltip } from './TokenTooltip.tsx';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
@@ -496,15 +497,18 @@ function PanelHeader({
         </span>
         {panel.status !== 'mini' && !onRestore && (
           <span className="panel-meta-row panel-meta-row-bottom">
-            <span
+            <HoverPopover
               className="panel-session-time"
-              title="total elapsed time since this session started"
-              aria-label="total session time"
+              content={
+                <SessionTimeTooltip startedAt={panel.started_at} isLive={isLive} />
+              }
             >
-              {formatIdleCoarse(
-                Math.max(0, (isLive ? now : panel.last_event_at) - panel.started_at),
-              )}
-            </span>
+              <span aria-label="total session time">
+                {formatIdleCoarse(
+                  Math.max(0, (isLive ? now : panel.last_event_at) - panel.started_at),
+                )}
+              </span>
+            </HoverPopover>
             {totalTokens > 0 && (
               <HoverPopover
                 className={classNames('panel-tokens', `cache-${cacheHealth(panel.tokens)}`)}
@@ -514,13 +518,12 @@ function PanelHeader({
               </HoverPopover>
             )}
             {panel.context_size > 0 && (
-              <span
+              <HoverPopover
                 className="panel-context"
-                title={`current context window size — ${panel.context_size.toLocaleString()} tokens (most recent turn's input + cache_create + cache_read)`}
-                aria-label="context window size"
+                content={<ContextSizeTooltip contextSize={panel.context_size} />}
               >
-                {formatTokens(panel.context_size)}
-              </span>
+                <span aria-label="context window size">{formatTokens(panel.context_size)}</span>
+              </HoverPopover>
             )}
           </span>
         )}
