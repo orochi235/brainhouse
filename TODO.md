@@ -177,27 +177,13 @@ User clarification: "more in line with something like a flowchart that
 shows what comes in, what transforms it, and what goes out, and ideally
 in a format where we could compose diagrams out of many of those."
 
-## Token capsule: weight by cost, don't sum naively
-The token capsule in the panel header currently displays an unweighted
-sum of `input + output + cache_create + cache_read`. That number is
-misleading-by-overstatement: cache reads dominate the sum in typical
-Claude Code sessions and are billed at ~0.1× the input rate, while
-output is ~5× input. So a session showing "1.7M tokens" might actually
-cost the same as a session showing "200k" depending on the mix.
-
-Anthropic's posted rates (subject to drift; need a maintained source):
-- input            1.00×
-- cache_creation   1.25×
-- cache_read       0.10×
-- output           ~5×    (varies by model)
-
-Proper fix lands with cost estimation: headline becomes "~$X" via a
-pricing table keyed on `tokens.model`, and the tooltip keeps the
-per-bucket breakdown we already have. Interim option if cost estimation
-is far off: display two numbers in the headline ("5k+200k cache") so
-the cache portion is visibly distinct from the input-equivalent part,
-or label the existing number as a raw sum so users don't read it as a
-cost proxy.
+## Token capsule: pricing-table maintenance
+The headline number is now input-equivalent (sum × billing coefficient)
+and the tooltip carries a $ estimate via a per-model pricing table at
+`client/src/lib/tokenCost.ts`. The remaining work is keeping that
+table in sync with Anthropic's published rates and extending the
+prefix list as new model families ship. Consider a build-time pull
+from a versioned source rather than a hand-maintained constant.
 
 ## Onboarding flow: install hooks + edit user prompts
 We already have `brainhouse init` (in `bin/init.js`) that wires the

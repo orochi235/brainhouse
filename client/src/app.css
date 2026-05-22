@@ -1001,6 +1001,15 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   content: "⛁ ";
   opacity: 0.9;
 }
+/* Cache-health shading on the token chip. `healthy` and `unknown` keep
+ * the default gold; `mixed` warms to amber; `poor` shifts to red.
+ * Threshold logic lives in lib/tokenCost.ts cacheHealth(). */
+.panel-tokens.cache-mixed {
+  --token-gold: #e6884a;
+}
+.panel-tokens.cache-poor {
+  --token-gold: #d85a4a;
+}
 /* Context-window-size capsule — sits next to .panel-tokens. Different hue
  * (cool teal) so it doesn't read as "more tokens" but as a distinct metric:
  * how full the current context window is right now. */

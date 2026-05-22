@@ -3,6 +3,14 @@ import classNames from 'classnames';
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import trashIcon from '../assets/icons/trash.svg?raw';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
+import {
+  TOKEN_COEFFICIENTS,
+  cacheHealth,
+  cacheHitRate,
+  estimateCostUsd,
+  formatUsd,
+  inputEquivalentTokens,
+} from '../lib/tokenCost.ts';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
@@ -396,8 +404,10 @@ function PanelHeader({
     const t = setTimeout(() => setSpinDir(null), 550);
     return () => clearTimeout(t);
   }, [pinned]);
-  const totalTokens =
-    panel.tokens.input + panel.tokens.output + panel.tokens.cache_create + panel.tokens.cache_read;
+  // Headline is input-equivalent (each bucket × its billing coefficient)
+  // rather than a naive sum — cache_read dominates the raw total at 0.1×
+  // actual cost, so an unweighted sum overstates effective usage by ~5×.
+  const totalTokens = inputEquivalentTokens(panel.tokens);
 
   return (
     <header
@@ -502,7 +512,7 @@ function PanelHeader({
             </span>
             {totalTokens > 0 && (
               <span
-                className="panel-tokens"
+                className={classNames('panel-tokens', `cache-${cacheHealth(panel.tokens)}`)}
                 title={tokensTooltip(panel.tokens)}
                 aria-label="token usage"
               >
@@ -787,14 +797,24 @@ function statusIconTitle(
 }
 
 function tokensTooltip(t: PanelState['tokens']): string {
-  const total = t.input + t.output + t.cache_create + t.cache_read;
+  const weighted = inputEquivalentTokens(t);
+  const rawTotal = t.input + t.output + t.cache_create + t.cache_read;
   const lines = [
-    `tokens — ${formatTokens(total)} total`,
-    `  input: ${t.input.toLocaleString()}`,
-    `  output: ${t.output.toLocaleString()}`,
+    `tokens — ${formatTokens(weighted)} input-equivalent`,
+    `  input:        ${t.input.toLocaleString().padStart(11)}  ×${TOKEN_COEFFICIENTS.input}`,
+    `  cache_create: ${t.cache_create.toLocaleString().padStart(11)}  ×${TOKEN_COEFFICIENTS.cache_create}`,
+    `  cache_read:   ${t.cache_read.toLocaleString().padStart(11)}  ×${TOKEN_COEFFICIENTS.cache_read}`,
+    `  output:       ${t.output.toLocaleString().padStart(11)}  ×${TOKEN_COEFFICIENTS.output}`,
+    `  raw sum:      ${rawTotal.toLocaleString().padStart(11)}`,
   ];
-  if (t.cache_create > 0) lines.push(`  cache_create: ${t.cache_create.toLocaleString()}`);
-  if (t.cache_read > 0) lines.push(`  cache_read: ${t.cache_read.toLocaleString()}`);
+  const usd = estimateCostUsd(t);
+  if (usd != null) lines.push(`  est. cost:    ${formatUsd(usd).padStart(11)}`);
+  const hit = cacheHitRate(t);
+  if (hit != null) {
+    const health = cacheHealth(t);
+    const flag = health === 'unknown' ? '' : `  (${health})`;
+    lines.push(`  cache hit:    ${`${(hit * 100).toFixed(1)}%`.padStart(11)}${flag}`);
+  }
   if (t.model) lines.push(`  model: ${t.model}`);
   return lines.join('\n');
 }

@@ -107,6 +107,17 @@ UI/server is meant to uphold. New entries go at the bottom.
   the lightbox closes. Single-file lightboxes (`FileChangeLightbox`)
   don't get the toggle since there's nothing to regroup.
 
+- The panel-header token capsule headlines an **input-equivalent total**
+  — each bucket weighted by its billing coefficient (input ×1,
+  cache_create ×1.25, cache_read ×0.1, output ×5) — not a naive sum.
+  The chip stays in token units; a $ estimate (via the per-model
+  pricing table in `client/src/lib/tokenCost.ts`) appears only in the
+  hover tooltip alongside per-bucket counts and the raw sum. The chip
+  background color shifts to amber (`mixed`) or red (`poor`) when the
+  cache hit rate `cache_read / (cache_read + cache_create + input)`
+  drops below 70% / 40% respectively, gated on ≥50k cacheable tokens
+  so fresh sessions don't read as broken.
+
 ## State
 
 - Only preferences persist in `localStorage`. Per-session UI state (panel
