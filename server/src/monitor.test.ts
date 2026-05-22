@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TranscriptMonitor } from './monitor.js';
 import type { Event } from './parser.js';
 
@@ -288,6 +288,80 @@ describe('TranscriptMonitor', () => {
       });
       expect(monitor.store.panel('sub1')?.ended).toBe(true);
       expect(monitor.store.panel('sub1')?.ended_provenance).toBe('hook_session_start_supersede');
+    });
+
+    describe('5s mini transition after supersede', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('forces the superseded parent to mini 5 seconds later', async () => {
+        vi.useFakeTimers();
+        const monitor = newMonitor();
+        seedOld(monitor);
+        monitor.applyHookEvent({
+          session_id: 'NEW',
+          kind: 'session_start',
+          source: 'clear',
+          transcript_path: newTranscript,
+          ts: recentTs,
+        });
+        expect(monitor.store.panel('OLD')?.status).toBe('done');
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(monitor.store.panel('OLD')?.status).toBe('mini');
+      });
+
+      it('also forces demoted subagents to mini', async () => {
+        vi.useFakeTimers();
+        const monitor = newMonitor();
+        seedOld(monitor);
+        monitor.ingest({
+          ...userTextEvent({ session_id: 'OLD', agent_id: 'sub1', uuid: 'u2', cwd: CWD }),
+          ts: recentIso,
+        } as Event);
+        monitor.applyHookEvent({
+          session_id: 'NEW',
+          kind: 'session_start',
+          source: 'clear',
+          transcript_path: newTranscript,
+          ts: recentTs,
+        });
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(monitor.store.panel('sub1')?.status).toBe('mini');
+      });
+
+      it('skips the mini transition when the panel is pinned', async () => {
+        vi.useFakeTimers();
+        const { Store } = await import('./store.js');
+        const store = Store.open(':memory:');
+        const monitor = new TranscriptMonitor({ roots: [], hookEventsDir: null, store });
+        seedOld(monitor);
+        store.upsertIntentions({
+          panel_id: 'OLD',
+          pinned: true,
+          wide: false,
+          manual_order: null,
+          user_mini: false,
+          hidden_at: null,
+          auto_mini_at: null,
+          broken_out: false,
+          updated_at: recentTs,
+        });
+        monitor.applyHookEvent({
+          session_id: 'NEW',
+          kind: 'session_start',
+          source: 'clear',
+          transcript_path: newTranscript,
+          ts: recentTs,
+        });
+        // Pinned panels still dim (markEnded runs immediately) but never
+        // auto-minimize on supersede.
+        expect(monitor.store.panel('OLD')?.ended).toBe(true);
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(monitor.store.panel('OLD')?.status).toBe('done');
+        store.close();
+      });
+
     });
 
     it('picks the most recently active panel when multiple match', () => {

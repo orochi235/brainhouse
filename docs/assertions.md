@@ -96,7 +96,10 @@ UI/server is meant to uphold. New entries go at the bottom.
   minutes. The most recently active match is ended with provenance
   `hook_session_start_supersede`; its live subagents are demoted and
   marked ended with the same provenance. `source ∈ {startup, resume}`
-  never supersedes.
+  never supersedes. After the dim, the panel (and any demoted subagents)
+  are forced to `mini` 5 seconds later — bypassing the usual
+  `done → mini` wait — *unless* the panel is pinned at fire time, in
+  which case it stays dimmed in the grid.
 
 - A subagent panel (`kind === 'subagent'` with a `parent_panel_id`) has a
   `↗` pop-out affordance in its tool palette. Clicking it opens

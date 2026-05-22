@@ -45,6 +45,10 @@ const DAILY_PRUNE_MS = 24 * 60 * 60 * 1000;
  * non-ended panel in the same project dir has been idle longer than this
  * we assume it's a different terminal and leave it alone. */
 const SUPERSEDE_WITHIN_SECONDS = 5 * 60;
+/** Delay between dim (on /clear or /compact supersede) and forced
+ * minimize. The dim happens immediately via markEnded; the minimize
+ * fires after this delay unless the panel is pinned at fire time. */
+const SUPERSEDE_MINI_DELAY_MS = 5_000;
 
 export class TranscriptMonitor {
   readonly store: SessionStore;
@@ -187,12 +191,31 @@ export class TranscriptMonitor {
     for (const d of this.store.markEnded(target.id, 'hook_session_start_supersede')) {
       this.broadcast(d);
     }
+    this.scheduleSupersedeMini(target.id);
     for (const sub of this.store.liveSubagentsOf(target.id)) {
       for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
       for (const d of this.store.markEnded(sub.id, 'hook_session_start_supersede')) {
         this.broadcast(d);
       }
+      this.scheduleSupersedeMini(sub.id);
     }
+  }
+
+  /** Force `panelId` to `mini` SUPERSEDE_MINI_DELAY_MS after a /clear or
+   * /compact supersede. The dim already fired via markEnded; this just
+   * accelerates the done→mini transition (normally `miniSeconds`, default
+   * 5 min) so a cleared session disappears from the grid quickly. Skipped
+   * at fire time if the panel is pinned, has been re-promoted to live, or
+   * is already mini/gone. */
+  private scheduleSupersedeMini(panelId: string): void {
+    const handle = setTimeout(() => {
+      const panel = this.store.panel(panelId);
+      if (!panel) return;
+      if (panel.status !== 'done') return;
+      if (this.persistStore?.getIntentions(panelId)?.pinned) return;
+      for (const d of this.store.forceStatus(panelId, 'mini')) this.broadcast(d);
+    }, SUPERSEDE_MINI_DELAY_MS);
+    handle.unref?.();
   }
 
   /** Translate a sidecar hook event into lifecycle deltas. Each event kind
