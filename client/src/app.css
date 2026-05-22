@@ -1240,6 +1240,28 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   color: color-mix(in srgb, var(--panel-theme-bg) 80%, var(--accent));
 }
 
+/* "user interrupted" divider — sits between a canceled assistant turn and
+ * a fresh follow-up user_text when the gap is large enough to consider the
+ * follow-up a new prompt rather than a queued continuation. Same visual
+ * grammar as `.session-ended` (rule + centered label) but muted, since
+ * an interrupt is mid-session and shouldn't be as loud as session-end. */
+.event-interrupt-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.5rem 0 0.2rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.interrupt-divider-rule {
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+}
+
 /* ---- bubbles ---- */
 .event-user_text,
 .event-assistant_text {

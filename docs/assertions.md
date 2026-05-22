@@ -20,6 +20,16 @@ UI/server is meant to uphold. New entries go at the bottom.
 - When the user cancels a query mid-turn (ctrl-c), the in-flight assistant
   bubble is grayed out and its contents are struck through; tool capsules
   that were part of the canceled work are dimmed.
+- The next user_text after a `[Request interrupted by user]` marker is
+  classified by its timestamp delta from the marker:
+  - `< 3s` → **queued interrupt**: the user typed while the agent was
+    working and ctrl-c'd to flush it. Treated as a continuation of the
+    prior prompt — grafted onto the prior user bubble with a sawtooth
+    tear.
+  - `>= 3s` → **full interrupt**: the user composed a fresh follow-up
+    later. An `interrupt-divider` view item is emitted ("user
+    interrupted" centered between two rules), and the follow-up renders
+    as its own user bubble.
 - On reload, panels whose `last_event_at` is more than 30 seconds old are
   routed straight to the dock instead of the main grid.
 - On reload, if the grid lands empty but the dock holds at least one
@@ -88,16 +98,27 @@ UI/server is meant to uphold. New entries go at the bottom.
   marked ended with the same provenance. `source ∈ {startup, resume}`
   never supersedes.
 
+- A subagent panel (`kind === 'subagent'` with a `parent_panel_id`) has a
+  `↗` pop-out affordance in its tool palette. Clicking it opens
+  `?panel=<id>` in a new browser window named `brainhouse-panel-<id>`, so
+  re-clicking the same panel focuses the existing window rather than
+  spawning another. The popped-out window subscribes to the same delta
+  stream and renders the panel via the focused-panel route.
+
 - Path-shaped tokens in assistant/user bubbles, tool capsule labels, tool
   lightbox content, file-change rows, and the file-change lightbox title
   render as `filename-link` anchors that open in the user's configured
   editor. A path must contain `/` AND either include an extension on its
   last segment OR carry a `:line` suffix — bare-folder relative paths like
   `to/the` don't linkify. URL paths (`https://...`) are excluded. Inside
-  fenced code and inline `<code>` spans the text stays verbatim. Relative
-  paths resolve against the panel's `cwd`. The editor URL template is a
-  user pref (`editor.urlTemplate`) with `{path}`, `{line}`, `{col}`
-  placeholders; an empty template disables the feature.
+  fenced code blocks (`<pre>`) the text stays verbatim; inline `<code>`
+  spans DO linkify (agents commonly write `` `src/foo.ts:42` ``). Relative
+  paths resolve against the panel's `cwd`. `~/` is expanded against an
+  explicit `home` if available, otherwise inferred from cwd
+  (`/Users/<n>/...` or `/home/<n>/...`) — editor URL handlers don't expand
+  `~` themselves. The editor URL template is a user pref
+  (`editor.urlTemplate`) with `{path}`, `{line}`, `{col}` placeholders;
+  an empty template disables the feature.
 
 - The op-strip lightbox (compact one-liner between bubbles) supports two
   view modes via a header toggle: **conversation** (default — sub-items

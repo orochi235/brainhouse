@@ -62,6 +62,7 @@ function itemKey(item: ViewItem): string {
   if (item.type === 'tool') return `tool:${item.anchorUuid}`;
   if (item.type === 'file-change') return `file:${item.anchorUuid}`;
   if (item.type === 'op-strip') return `strip:${item.anchorUuid}`;
+  if (item.type === 'interrupt-divider') return `int:${item.anchorUuid}`;
   return `${item.type}:${item.event.uuid}`;
 }
 
@@ -87,6 +88,14 @@ function Item({
         <div className="session-ended" aria-label="prior session cleared">
           <span>prior session cleared</span>
         </div>
+      </li>
+    );
+  if (item.type === 'interrupt-divider')
+    return (
+      <li className="event event-interrupt-divider" aria-label="user interrupted">
+        <span className="interrupt-divider-rule" aria-hidden="true" />
+        <span className="interrupt-divider-label">user interrupted</span>
+        <span className="interrupt-divider-rule" aria-hidden="true" />
       </li>
     );
   return <MetaEvent event={item.event} startedAt={startedAt} />;

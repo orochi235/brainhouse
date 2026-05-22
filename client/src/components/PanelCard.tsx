@@ -636,6 +636,22 @@ function PanelToolPalette({
             {brokenOut ? '⇱' : '⇲'}
           </ToolChip>
         )}
+        {isSubWithParent && (
+          <ToolChip
+            title="Pop out into an independent browser window"
+            onClick={(e) => {
+              e.stopPropagation();
+              const url = `${location.pathname}?panel=${encodeURIComponent(panel.id)}`;
+              window.open(
+                url,
+                `brainhouse-panel-${panel.id}`,
+                'noopener=no,width=900,height=900',
+              );
+            }}
+          >
+            ↗
+          </ToolChip>
+        )}
         {isParent && debug && (
           <>
             <ToolChip

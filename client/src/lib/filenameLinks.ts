@@ -88,10 +88,11 @@ export function editorPresetIdForTemplate(template: string): string {
 }
 
 /**
- * Resolve a path against a cwd. Absolute paths and `~`-rooted paths are
- * returned as-is (with `~` expanded if a `home` is provided — typically
- * not, since brainhouse is the viewer and doesn't know the agent's home;
- * editors generally accept `~` in deeplinks anyway). Relative paths are
+ * Resolve a path against a cwd. Absolute paths pass through. `~/` is
+ * expanded against `home` if given, otherwise inferred from the cwd
+ * (`/Users/<n>/...` → `/Users/<n>`, `/home/<n>/...` → `/home/<n>`) —
+ * editor deeplink handlers like `cursor://file/~/foo` do *not* expand
+ * `~` themselves, so we must do it client-side. Relative paths are
  * joined onto cwd if cwd is set, otherwise returned unchanged.
  */
 export function resolveAbsolute(
@@ -101,11 +102,20 @@ export function resolveAbsolute(
 ): string {
   if (raw.startsWith('/')) return raw;
   if (raw.startsWith('~/')) {
-    return home ? `${home.replace(/\/$/, '')}/${raw.slice(2)}` : raw;
+    const h = home ?? inferHomeFromCwd(cwd);
+    return h ? `${h.replace(/\/$/, '')}/${raw.slice(2)}` : raw;
   }
   if (!cwd) return raw;
   const trimmed = raw.replace(/^\.\//, '');
   return `${cwd.replace(/\/$/, '')}/${trimmed}`;
+}
+
+/** Best-effort home dir from a cwd. Matches `/Users/<n>` (macOS) and
+ * `/home/<n>` (Linux). Returns null otherwise. */
+export function inferHomeFromCwd(cwd: string | null | undefined): string | null {
+  if (!cwd) return null;
+  const m = cwd.match(/^(\/(?:Users|home)\/[^/]+)(?:\/|$)/);
+  return m ? m[1] : null;
 }
 
 /** Build an editor deeplink. Returns null if the template is empty. */

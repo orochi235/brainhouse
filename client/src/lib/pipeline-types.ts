@@ -64,7 +64,12 @@ export type ViewItem =
   | { type: 'thinking'; event: Event; canceled?: boolean }
   | { type: 'system'; event: Event }
   | { type: 'meta'; event: Event }
-  | { type: 'cleared'; event: Event };
+  | { type: 'cleared'; event: Event }
+  /** Horizontal "----- user interrupted -----" rule. Emitted between a
+   * canceled assistant turn and a fresh follow-up user_text that arrived
+   * long enough after the ctrl-c to be considered a new prompt (full
+   * interrupt) rather than a queued continuation. */
+  | { type: 'interrupt-divider'; ts: string; anchorUuid: string };
 
 /** Tool names whose inputs touch a single file via `input.file_path`. These
  * are the ops eligible for `coalesceFileOps()`. */

@@ -100,8 +100,23 @@ describe('resolveAbsolute', () => {
     expect(resolveAbsolute('~/bin/x', null, '/Users/me')).toBe('/Users/me/bin/x');
   });
 
-  it('leaves ~ alone when no home', () => {
+  it('leaves ~ alone when no home and cwd unhelpful', () => {
     expect(resolveAbsolute('~/bin/x', null)).toBe('~/bin/x');
+    expect(resolveAbsolute('~/bin/x', '/tmp/scratch')).toBe('~/bin/x');
+  });
+
+  it('infers home from a /Users/<n>/... cwd', () => {
+    expect(resolveAbsolute('~/foo.ts', '/Users/me/src/proj')).toBe('/Users/me/foo.ts');
+  });
+
+  it('infers home from a /home/<n>/... cwd', () => {
+    expect(resolveAbsolute('~/foo.ts', '/home/me/src/proj')).toBe('/home/me/foo.ts');
+  });
+
+  it('explicit home wins over inferred', () => {
+    expect(resolveAbsolute('~/foo.ts', '/Users/me/src', '/Users/other')).toBe(
+      '/Users/other/foo.ts',
+    );
   });
 });
 

@@ -6,6 +6,7 @@ let uid = 0;
 function ev<K extends Event['kind']>(
   kind: K,
   payload: Extract<Event, { kind: K }>['payload'],
+  ts = '2026-05-19T00:00:00Z',
 ): Event {
   uid += 1;
   return {
@@ -15,12 +16,12 @@ function ev<K extends Event['kind']>(
     parent_uuid: null,
     session_id: 's1',
     agent_id: null,
-    ts: '2026-05-19T00:00:00Z',
+    ts,
     cwd: null,
   } as Event;
 }
 
-const userText = (text: string) => ev('user_text', { text });
+const userText = (text: string, ts?: string) => ev('user_text', { text }, ts);
 const asstText = (text: string) => ev('assistant_text', { text });
 const toolUse = (id: string, name = 'Bash', input: unknown = {}) =>
   ev('tool_use', { tool_use_id: id, name, input });
@@ -84,11 +85,11 @@ describe('preprocessEvents', () => {
     expect(items[1]).toMatchObject({ type: 'bubble', role: 'assistant' });
   });
 
-  it('suppresses the interrupt marker and folds the follow-up into the prior user bubble', () => {
+  it('queued interrupt (<3s gap) grafts the follow-up onto the prior user bubble', () => {
     const { items } = preprocessEvents([
-      userText('write a poem'),
-      userText('[Request interrupted by user]'),
-      userText('actually, a haiku'),
+      userText('write a poem', '2026-05-19T00:00:00Z'),
+      userText('[Request interrupted by user]', '2026-05-19T00:00:05Z'),
+      userText('actually, a haiku', '2026-05-19T00:00:05.500Z'),
     ]);
     expect(items).toHaveLength(1);
     const bubble = items[0];
@@ -98,6 +99,22 @@ describe('preprocessEvents', () => {
       { kind: 'sawtooth' },
       { kind: 'text', text: 'actually, a haiku' },
     ]);
+  });
+
+  it('full interrupt (>=3s gap) emits a divider then a fresh user bubble', () => {
+    const { items } = preprocessEvents([
+      userText('write a poem', '2026-05-19T00:00:00Z'),
+      userText('[Request interrupted by user]', '2026-05-19T00:00:05Z'),
+      userText('actually, a haiku', '2026-05-19T00:00:30Z'),
+    ]);
+    expect(items.map((i) => i.type)).toEqual(['bubble', 'interrupt-divider', 'bubble']);
+    const first = items[0];
+    const second = items[2];
+    if (first?.type !== 'bubble' || second?.type !== 'bubble') {
+      throw new Error('expected bubbles');
+    }
+    expect(first.parts).toEqual([{ kind: 'text', text: 'write a poem' }]);
+    expect(second.parts).toEqual([{ kind: 'text', text: 'actually, a haiku' }]);
   });
 
   it('pending=true after user_text awaiting assistant', () => {

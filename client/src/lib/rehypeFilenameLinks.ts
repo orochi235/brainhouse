@@ -3,9 +3,10 @@
  * text nodes with `<a class="filename-link">` elements that deeplink into
  * the user's configured editor.
  *
- * Skipped under `<code>` and `<pre>` so inline-code and fenced blocks stay
- * verbatim. Inline code stays plain so the user can still copy-paste
- * verbatim path strings without an embedded anchor.
+ * Skipped under `<pre>` so fenced code blocks stay verbatim. Inline `<code>`
+ * is *not* in the skip set — agents constantly write `` `src/foo.ts:42` ``
+ * in prose, and we want those clickable. Inline-code rendering preserves
+ * the monospace style; the anchor sits inside it.
  *
  * The plugin doesn't import `unist-util-visit` (transitive but not declared)
  * — a small manual recursive walker handles the tree.
@@ -19,7 +20,7 @@ export interface RehypeFilenameLinksOptions {
   template: string;
 }
 
-const SKIP_TAGS = new Set(['code', 'pre', 'a', 'script', 'style']);
+const SKIP_TAGS = new Set(['pre', 'a', 'script', 'style']);
 
 export function rehypeFilenameLinks(options: RehypeFilenameLinksOptions) {
   const { cwd, template } = options;

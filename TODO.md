@@ -1,14 +1,5 @@
 # brainhouse — project todos
 
-## [HIGH] Filename links
-Render file paths that appear in transcripts (tool inputs/outputs, assistant
-text, capsule labels) as clickable links that open the file. Recognize both
-absolute paths and `path:line[:col]` patterns. Resolve relative to the panel's
-`cwd`. Action on click: open via the user's configured editor (e.g.
-`cursor://`, `vscode://`, or a shell command) — pref-driven, default to the
-`$EDITOR`-equivalent URL scheme. Should work in tool capsule summaries,
-file-change rows, and assistant-text bubbles.
-
 ## Coalesce file ops — richer diff rendering
 Basic coalescing already lands (`coalesceFileOps()` in `pipeline.ts`
 groups Read/Edit/Write/MultiEdit runs on the same path into a
