@@ -142,8 +142,47 @@ UI/server is meant to uphold. New entries go at the bottom.
   drops below 70% / 40% respectively, gated on ≥50k cacheable tokens
   so fresh sessions don't read as broken.
 
+- A parent panel held in mini past `removeAfterSeconds` is NOT reaped while
+  any of its subagents (docked or broken-out) is still non-ended. The gate
+  guards against orphaning the placeholder breadcrumb in the tray and
+  against silently removing docked children whose work outlives the
+  parent's own activity. Once every subagent is gone, the parent reaps on
+  the next tick. Server-side, this lives in `session.ts:tick`'s mini→remove
+  branch via `hasLiveSubagents()`.
+
+- A subagent can be **broken out** of its parent's nested tray into the
+  top-level grid (or dock, via a drag onto the mini strip). When broken
+  out, the parent's tray renders a thin status-mirrored placeholder row in
+  place of the panel; clicking the placeholder re-docks. The detached
+  panel itself carries a `↩ <parent title>` breadcrumb chip in its
+  subtitle row — clicking re-docks too. The drop-target for re-dock by
+  drag is the entire parent's grid slot (the slot lights up
+  `.redock-target`-green while a valid re-dock drag hovers it). The
+  placeholder lives until the subagent re-docks OR the subagent panel is
+  permanently removed. Click the `⇲`/`⇱` toolchip on a subagent for the
+  click-equivalent of drag-to-grid / drag-to-parent.
+
+- Meta-kind events (`subagent-meta`, `custom-title`, `last-prompt`,
+  `ai-title`, `permission-mode`, `agent-color`, `pr-link`,
+  `file-history-snapshot`, `attachment`, …) do NOT bump a done/mini panel
+  back to `live`. They're sidecar metadata, not activity. Terminal close
+  flushes a batch of these long after the session went idle; treating
+  them as activity would resurrect retired panels. Only
+  `user_text` / `assistant_text` / `tool_use` / `tool_result` /
+  `thinking` / `resource_usage` / `system` events revive a non-ended panel.
+
 ## State
 
-- Only preferences persist in `localStorage`. Per-session UI state (panel
-  order, wide/pinned flags, hidden/client-mini routing) is transient and
-  lives in memory only.
+- User **preferences** persist globally in `localStorage` (theme, debug
+  toggle, workspace prefs, etc.).
+- **Panel-scoped layout state** — panel order, wide / pinned / broken-out
+  flags, client-mini / hidden routing — persists in the server-side
+  `intentions` table, keyed by panel id, lifespan tied to the panel
+  (rows disappear when the panel is reaped). Survives reload but not
+  panel removal. Hooks: `usePanelDisposition` (panelOrder.ts) wraps the
+  pinned / wide / broken-out sets; `usePanelDismissal` (hiddenPanels.ts)
+  wraps the hidden / client-mini routing; `useIntentions` round-trips
+  both to the server.
+- **Ephemeral UI state** — drag-hover ghosts, lightbox open/closed,
+  scroll positions — lives in component state or `sessionStorage` and
+  doesn't outlive the tab.

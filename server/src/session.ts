@@ -224,7 +224,12 @@ export class SessionStore {
       panel.awaiting_input = false;
       deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
     }
-    if (!panel.ended && panel.status !== 'live') {
+    // Meta records are sidecar updates (title, last-prompt, permission-mode,
+    // subagent-meta, …), not session activity. Terminal-close flushes a
+    // batch of these long after the session went idle; treating them as
+    // activity resurrects done/mini panels. Real activity comes through as
+    // user_text/assistant_text/tool_use/etc.
+    if (!panel.ended && panel.status !== 'live' && event.kind !== 'meta') {
       panel.status = 'live';
       panel.status_changed_at = panel.last_event_at;
       deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'live' });
@@ -281,6 +286,11 @@ export class SessionStore {
         panel.status === 'mini' &&
         t - panel.status_changed_at >= this.removeAfterSeconds
       ) {
+        // Don't reap a parent that still has non-ended subagents (docked or
+        // detached). Subagents can outlive their parent's own activity, and
+        // removing the container would orphan the placeholder in the tray
+        // or kill docked children silently. Wait until all children end.
+        if (panel.kind === 'parent' && this.hasLiveSubagents(panel.id)) continue;
         toRemove.push(panel);
       }
     }
@@ -356,6 +366,16 @@ export class SessionStore {
     panel.awaiting_input = awaiting;
     this.persistPanel(panel);
     return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
+  }
+
+  /** Used by tick()'s reap gate: a parent with any non-ended subagent
+   * stays alive past `removeAfterSeconds`, since the subagent could outlive
+   * the parent's own activity (e.g. a detached subagent still working). */
+  private hasLiveSubagents(parentId: string): boolean {
+    for (const p of this.panels.values()) {
+      if (p.kind === 'subagent' && p.parent_panel_id === parentId && !p.ended) return true;
+    }
+    return false;
   }
 
   /** Subagent panels (live or done) parented to a given session. Used by

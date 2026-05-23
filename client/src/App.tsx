@@ -88,6 +88,10 @@ export function App() {
     initial: seeded.brokenOut,
     persist: (id, value) => persistIntention(id, { broken_out: value }),
   });
+  /** Putative drop position while a panel is being dragged over the grid.
+   * `null` means "append at end"; otherwise the id of the panel the ghost
+   * inserts before. Cleared on dragend/drop. */
+  const [insertGhost, setInsertGhost] = useState<string | null | undefined>(undefined);
   const {
     dismiss,
     dismissAll,
@@ -170,6 +174,7 @@ export function App() {
     gridPanels: allGridPanels,
     trayPanels: allTrayPanels,
     subsByParent: allSubsByParent,
+    placeholdersByParent,
   } = layoutPanels(panels, brokenOut);
   // Pinned panels always stay in the grid, never dim, never demote — they
   // override hidden / clientMini / server-mini routing.
@@ -239,33 +244,6 @@ export function App() {
     gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
   };
 
-  const focusedId = new URLSearchParams(location.search).get('panel');
-  if (focusedId) {
-    const focused = panels.get(focusedId);
-    return (
-      <LightboxProvider>
-        <header className="topbar">
-          <h1>Brainhouse · {focused?.title ?? focusedId}</h1>
-          <HoverPopover
-            className={`conn conn-${status}`}
-            content={<ConnTooltip status={status} />}
-          >
-            <span>{status}</span>
-          </HoverPopover>
-        </header>
-        <main className="session-grid focused">
-          {focused && (
-            <PanelCard
-              panel={focused}
-              account={accountFor(focused)}
-              accountColor={accountColorFor(focused)}
-            />
-          )}
-        </main>
-      </LightboxProvider>
-    );
-  }
-
   return (
     <LightboxProvider>
       <header className="topbar">
@@ -320,11 +298,62 @@ export function App() {
           className="session-grid"
           ref={gridRef}
           style={gridStyle}
-          onDragOver={onGridDragOver}
+          onDragOver={(e) => {
+            onGridDragOver(e);
+            if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
+            // Find the grid slot whose center is nearest the cursor, then
+            // decide before-or-after based on which half the cursor falls in.
+            const grid = e.currentTarget;
+            let nearest: HTMLElement | null = null;
+            let bestDist = Infinity;
+            for (const slot of grid.querySelectorAll<HTMLElement>('.grid-slot')) {
+              const r = slot.getBoundingClientRect();
+              const cx = r.left + r.width / 2;
+              const cy = r.top + r.height / 2;
+              const dx = e.clientX - cx;
+              const dy = e.clientY - cy;
+              const d2 = dx * dx + dy * dy;
+              if (d2 < bestDist) {
+                bestDist = d2;
+                nearest = slot;
+              }
+            }
+            if (!nearest) {
+              setInsertGhost(null);
+              return;
+            }
+            const r = nearest.getBoundingClientRect();
+            // First half → insert before; second half → insert after (i.e.
+            // before the next sibling, or append if none).
+            const beforeThis = e.clientX < r.left + r.width / 2;
+            if (beforeThis) {
+              setInsertGhost(nearest.dataset.panelId ?? null);
+            } else {
+              const next = nearest.nextElementSibling as HTMLElement | null;
+              setInsertGhost(next?.dataset?.panelId ?? null);
+            }
+          }}
+          onDragLeave={(e) => {
+            // Only clear when leaving the grid itself, not crossing into a
+            // child slot.
+            if (e.currentTarget === e.target) setInsertGhost(undefined);
+          }}
           onDrop={(e) => {
+            setInsertGhost(undefined);
             const id = e.dataTransfer.getData('text/brainhouse-panel');
             if (!id) return;
+            const from = e.dataTransfer.getData('text/brainhouse-panel-source');
             e.preventDefault();
+            // Drag-out from a parent's nested tray: break the subagent out
+            // onto the grid. If it was previously hidden/client-mini on the
+            // grid, also restore it so the drop is visible.
+            if (from === 'nested') {
+              const srcPanel = panels.get(id);
+              if (!srcPanel) return;
+              if (!brokenOut.has(id)) toggleBrokenOut(id);
+              if (isClientMini(srcPanel)) restoreLocal(id);
+              return;
+            }
             // Client-mini panels live entirely in client state; restoring them
             // is a local op. Server-mini panels need an explicit trpc.restore.
             if (clientMiniPanels.some((p) => p.id === id)) restoreLocal(id);
@@ -336,7 +365,10 @@ export function App() {
               <GridSlot
                 key={p.id}
                 panel={p}
+                insertBefore={insertGhost === p.id}
                 subagents={subsByParent.get(p.id) ?? []}
+                placeholders={placeholdersByParent.get(p.id) ?? []}
+                panels={panels}
                 wide={wide.has(p.id)}
                 pinned={pinned.has(p.id)}
                 account={accountFor(p)}
@@ -361,12 +393,39 @@ export function App() {
               />
             ))}
           </AnimatePresence>
+          {insertGhost === null && orderedGridPanels.length > 0 && (
+            <div className="grid-slot insert-ghost-append" aria-hidden="true" />
+          )}
           {orderedGridPanels.length === 0 && trayPanels.length === 0 && status === 'live' && (
             <p className="empty">no sessions yet — try `+ mock session`</p>
           )}
         </main>
         {trayPanels.length > 0 && (
-          <aside className="session-dock">
+          <aside
+            className="session-dock"
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              (e.currentTarget as HTMLElement).classList.add('drop-target');
+            }}
+            onDragLeave={(e) =>
+              (e.currentTarget as HTMLElement).classList.remove('drop-target')
+            }
+            onDrop={(e) => {
+              (e.currentTarget as HTMLElement).classList.remove('drop-target');
+              const from = e.dataTransfer.getData('text/brainhouse-panel-source');
+              if (from !== 'nested') return; // grid→dock and dock→dock fall through to .session-grid restore
+              const id = e.dataTransfer.getData('text/brainhouse-panel');
+              const srcPanel = panels.get(id);
+              if (!srcPanel) return;
+              e.preventDefault();
+              e.stopPropagation();
+              // Break out of the parent's tray AND client-mini onto the dock.
+              if (!brokenOut.has(id)) toggleBrokenOut(id);
+              if (!isClientMini(srcPanel)) dismiss(srcPanel);
+            }}
+          >
             <AnimatePresence initial={false}>
               {trayPanels.map((p) => (
                 <MiniPanel
@@ -410,7 +469,9 @@ export function App() {
  */
 function GridSlot({
   panel,
+  insertBefore,
   subagents,
+  placeholders,
   wide,
   pinned,
   account,
@@ -426,9 +487,12 @@ function GridSlot({
   onReorder,
   brokenOutSubs,
   onToggleBrokenOutSub,
+  panels,
 }: {
   panel: PanelState;
+  insertBefore?: boolean;
   subagents: PanelState[];
+  placeholders: PanelState[];
   wide: boolean;
   pinned: boolean;
   account: string | null | undefined;
@@ -444,6 +508,7 @@ function GridSlot({
   onReorder: (sourceId: string) => void;
   brokenOutSubs: Set<string>;
   onToggleBrokenOutSub: (sub: PanelState) => void;
+  panels: Map<string, PanelState>;
 }) {
   const [armed, setArmed] = useState(false);
   return (
@@ -456,7 +521,8 @@ function GridSlot({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.92 }}
       transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.6 }}
-      className={classNames('grid-slot', wide && 'wide')}
+      className={classNames('grid-slot', wide && 'wide', insertBefore && 'insert-before')}
+      data-panel-id={panel.id}
       draggable={armed}
       onMouseDown={(e) => {
         const t = e.target as HTMLElement;
@@ -473,28 +539,76 @@ function GridSlot({
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/brainhouse-panel', panel.id);
         e.dataTransfer.setData('text/brainhouse-panel-source', 'grid');
+        activeDrag = {
+          id: panel.id,
+          from: 'grid',
+          parentId: panel.kind === 'subagent' ? panel.parent_panel_id : null,
+          isBrokenOut: panel.kind === 'subagent',
+        };
         (e.currentTarget as HTMLElement).classList.add('dragging');
       }}
       onDragEnd={(rawE) => {
         const e = rawE as unknown as React.DragEvent<HTMLDivElement>;
         (e.currentTarget as HTMLElement).classList.remove('dragging');
+        activeDrag = null;
         setArmed(false);
       }}
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
+        // Validate that THIS slot is a meaningful drop target for the
+        // active drag. If not, let the event bubble to .session-grid which
+        // handles the "anywhere on the grid" cases (break-out, restore).
+        const el = e.currentTarget as HTMLElement;
+        if (!activeDrag) return;
+        if (activeDrag.from === 'nested') {
+          // Nested-tray drag: drops land on the grid background, never on
+          // an existing slot. Let bubble.
+          return;
+        }
+        if (activeDrag.from === 'grid' && activeDrag.isBrokenOut) {
+          // Broken-out subagent: the only valid grid-slot drop is its own
+          // parent (re-dock). Drops on other slots fall through.
+          if (panel.id !== activeDrag.parentId) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          el.classList.add('drop-target', 'redock-target');
+          return;
+        }
+        // Regular grid panel: reorder against any other slot.
+        if (activeDrag.id === panel.id) return; // can't drop on self
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        (e.currentTarget as HTMLElement).classList.add('drop-target');
+        el.classList.add('drop-target');
       }}
-      onDragLeave={(e) => (e.currentTarget as HTMLElement).classList.remove('drop-target')}
+      onDragLeave={(e) => {
+        const el = e.currentTarget as HTMLElement;
+        el.classList.remove('drop-target');
+        el.classList.remove('redock-target');
+      }}
       onDrop={(e) => {
-        (e.currentTarget as HTMLElement).classList.remove('drop-target');
+        const el = e.currentTarget as HTMLElement;
+        el.classList.remove('drop-target');
+        el.classList.remove('redock-target');
+        // Only consume the drop when we actually handle it; otherwise let
+        // it bubble to .session-grid.
+        if (!activeDrag) return;
         const src = e.dataTransfer.getData('text/brainhouse-panel');
-        const from = e.dataTransfer.getData('text/brainhouse-panel-source');
-        if (!src || from !== 'grid') return;
-        e.preventDefault();
-        e.stopPropagation();
-        onReorder(src);
+        if (!src) return;
+        if (activeDrag.from === 'grid' && activeDrag.isBrokenOut) {
+          if (panel.id !== activeDrag.parentId) return;
+          const srcPanel = panels.get(src);
+          if (!srcPanel) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onToggleBrokenOutSub(srcPanel);
+          return;
+        }
+        if (activeDrag.from === 'grid' && !activeDrag.isBrokenOut) {
+          if (src === panel.id) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onReorder(src);
+        }
       }}
       onDoubleClick={(e) => {
         const t = e.target as HTMLElement;
@@ -506,6 +620,7 @@ function GridSlot({
       <PanelWithSubagents
         panel={panel}
         subagents={subagents}
+        placeholders={placeholders}
         pinned={pinned}
         account={account}
         accountColor={accountColor}
@@ -518,6 +633,7 @@ function GridSlot({
         onHideSub={onHideSub}
         brokenOutSubs={brokenOutSubs}
         onToggleBrokenOutSub={onToggleBrokenOutSub}
+        panels={panels}
       />
     </motion.div>
   );
@@ -526,6 +642,7 @@ function GridSlot({
 function PanelWithSubagents({
   panel,
   subagents,
+  placeholders,
   pinned,
   account,
   accountColor,
@@ -538,9 +655,11 @@ function PanelWithSubagents({
   onHideSub,
   brokenOutSubs,
   onToggleBrokenOutSub,
+  panels,
 }: {
   panel: PanelState;
   subagents: PanelState[];
+  placeholders: PanelState[];
   pinned: boolean;
   account: string | null | undefined;
   accountColor: string | undefined;
@@ -553,9 +672,16 @@ function PanelWithSubagents({
   onHideSub: (sub: PanelState) => void;
   brokenOutSubs: Set<string>;
   onToggleBrokenOutSub: (sub: PanelState) => void;
+  panels: Map<string, PanelState>;
 }) {
   const live = subagents.filter((s) => s.status === 'live');
   const rest = subagents.filter((s) => s.status === 'done');
+  // Breadcrumb only when this panel is a broken-out subagent — its parent
+  // is somewhere else in the layout and the user might want to re-dock.
+  const parentTitle =
+    panel.kind === 'subagent' && brokenOutSubs.has(panel.id) && panel.parent_panel_id
+      ? (panels.get(panel.parent_panel_id)?.title ?? null)
+      : null;
   return (
     <div className="panel-group">
       <PanelCard
@@ -567,28 +693,112 @@ function PanelWithSubagents({
         onToggleBrokenOut={
           panel.kind === 'subagent' ? () => onToggleBrokenOutSub(panel) : undefined
         }
+        parentTitle={parentTitle}
         account={account}
         accountColor={accountColor}
       />
-      {(live.length > 0 || rest.length > 0) && (
+      {(live.length > 0 || rest.length > 0 || placeholders.length > 0) && (
         <div className="panel-subagents">
           {[...live, ...rest].map((s) => (
-            <PanelCard
+            <NestedSubagentSlot key={s.id} panel={s}>
+              <PanelCard
+                panel={s}
+                nested
+                onHide={() => onHideSub(s)}
+                pinned={isPinnedSub(s)}
+                onTogglePin={() => onTogglePinSub(s)}
+                brokenOut={brokenOutSubs.has(s.id)}
+                onToggleBrokenOut={() => onToggleBrokenOutSub(s)}
+                account={accountFor(s)}
+                accountColor={accountColorFor(s)}
+              />
+            </NestedSubagentSlot>
+          ))}
+          {placeholders.map((s) => (
+            <SubagentPlaceholder
               key={s.id}
               panel={s}
-              nested
-              onHide={() => onHideSub(s)}
-              pinned={isPinnedSub(s)}
-              onTogglePin={() => onTogglePinSub(s)}
-              brokenOut={brokenOutSubs.has(s.id)}
-              onToggleBrokenOut={() => onToggleBrokenOutSub(s)}
-              account={accountFor(s)}
-              accountColor={accountColorFor(s)}
+              onRedock={() => onToggleBrokenOutSub(s)}
             />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+/** Thin wrapper around a nested subagent's PanelCard that arms native
+ * HTML5 drag from the panel header. Drop targets (.session-grid, .session-dock,
+ * and other grid panels) consume the `text/brainhouse-panel` + source='nested'
+ * payload to break the subagent out of its parent's tray. */
+function NestedSubagentSlot({
+  panel,
+  children,
+}: {
+  panel: PanelState;
+  children: React.ReactNode;
+}) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <div
+      className="nested-subagent-slot"
+      draggable={armed}
+      onMouseDown={(e) => {
+        const t = e.target as HTMLElement;
+        const inHeader = !!t.closest('.panel-header');
+        const onButton = !!t.closest('button');
+        setArmed(inHeader && !onButton);
+      }}
+      onMouseUp={() => setArmed(false)}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/brainhouse-panel', panel.id);
+        e.dataTransfer.setData('text/brainhouse-panel-source', 'nested');
+        activeDrag = {
+          id: panel.id,
+          from: 'nested',
+          parentId: panel.parent_panel_id,
+          isBrokenOut: false,
+        };
+        (e.currentTarget as HTMLElement).classList.add('dragging');
+      }}
+      onDragEnd={(e) => {
+        (e.currentTarget as HTMLElement).classList.remove('dragging');
+        activeDrag = null;
+        setArmed(false);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Thin tray row representing a subagent that's been pulled out into the
+ * grid/dock. Mirrors the live panel's status so the user sees its state
+ * without leaving the parent. Click to re-dock (alternative to dragging
+ * the detached panel back onto the parent). */
+function SubagentPlaceholder({
+  panel,
+  onRedock,
+}: {
+  panel: PanelState;
+  onRedock: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={classNames(
+        'subagent-placeholder',
+        `status-${panel.status}`,
+        panel.ended && 'ended',
+      )}
+      onClick={onRedock}
+      title="Re-dock into this session"
+    >
+      <span className="subagent-placeholder-status" aria-hidden="true" />
+      <span className="subagent-placeholder-title">{panel.title || panel.id}</span>
+      <span className="subagent-placeholder-redock" aria-hidden="true">↩</span>
+    </button>
   );
 }
 
@@ -649,6 +859,19 @@ function onGridDragOver(e: React.DragEvent) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
 }
+
+/** Module-level snapshot of the currently-active drag. Set on dragstart,
+ * cleared on dragend. Used by dragover handlers, which can read the
+ * dataTransfer's `types` list but NOT its values — the HTML5 drag spec
+ * intentionally hides values until drop to thwart cross-origin sniffing.
+ * Knowing the source panel's identity during dragover lets us validate
+ * drop targets (e.g., only the source's parent is a valid re-dock target). */
+let activeDrag: {
+  id: string;
+  from: 'grid' | 'nested';
+  parentId: string | null;
+  isBrokenOut: boolean;
+} | null = null;
 
 function ScenariosButton() {
   const lightbox = useLightbox();
@@ -740,22 +963,23 @@ interface Layout {
   gridPanels: PanelState[];
   trayPanels: PanelState[];
   subsByParent: Map<string, PanelState[]>;
+  /** Broken-out subagents grouped by parent. The parent's tray renders a
+   * thin placeholder row for each so the user can see what's been pulled
+   * out and re-dock it. The full panel still lives in gridPanels/trayPanels
+   * by its own status — the placeholder is purely a tray-side breadcrumb. */
+  placeholdersByParent: Map<string, PanelState[]>;
 }
 
 function layoutPanels(panels: Map<string, PanelState>, brokenOut: Set<string>): Layout {
   const all = Array.from(panels.values());
   const subsByParent = new Map<string, PanelState[]>();
+  const placeholdersByParent = new Map<string, PanelState[]>();
   for (const p of all) {
-    if (
-      p.kind === 'subagent' &&
-      p.parent_panel_id &&
-      panels.has(p.parent_panel_id) &&
-      !brokenOut.has(p.id)
-    ) {
-      const arr = subsByParent.get(p.parent_panel_id) ?? [];
-      arr.push(p);
-      subsByParent.set(p.parent_panel_id, arr);
-    }
+    if (p.kind !== 'subagent' || !p.parent_panel_id || !panels.has(p.parent_panel_id)) continue;
+    const target = brokenOut.has(p.id) ? placeholdersByParent : subsByParent;
+    const arr = target.get(p.parent_panel_id) ?? [];
+    arr.push(p);
+    target.set(p.parent_panel_id, arr);
   }
   const gridPanels: PanelState[] = [];
   const trayPanels: PanelState[] = [];
@@ -771,5 +995,5 @@ function layoutPanels(panels: Map<string, PanelState>, brokenOut: Set<string>): 
     }
     // Otherwise the subagent renders inside its parent's nested tray via subsByParent.
   }
-  return { gridPanels, trayPanels, subsByParent };
+  return { gridPanels, trayPanels, subsByParent, placeholdersByParent };
 }

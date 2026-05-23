@@ -232,6 +232,45 @@ describe('SessionStore', () => {
     expect(store.panel('S')).toBeUndefined();
   });
 
+  it('parent reap waits for non-ended subagents', () => {
+    // A parent with a non-ended subagent must NOT age out, even after its
+    // own mini→remove threshold passes — the subagent could still be doing
+    // work (e.g. a detached/broken-out subagent). Once the subagent is
+    // gone, the parent reaps on the next tick.
+    const clock = new FakeClock();
+    const store = new SessionStore({
+      idleSeconds: 10,
+      miniSeconds: 100,
+      removeAfterSeconds: 1000,
+      clock: clock.now,
+    });
+    store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'parent' } }));
+    // Keep the subagent ticking with an event 100s later so it lags the
+    // parent's lifecycle — otherwise both reap on the same tick and the
+    // gate is never exercised.
+    clock.advance(100);
+    store.apply(
+      ev('user_text', { agent_id: 'sub-a', uuid: 'u2', payload: { text: 'child' } }),
+    );
+    // Advance far past every threshold. Each tick only progresses one
+    // transition step (live→done, done→mini, mini→remove), so step through
+    // them. The parent is held at the mini→remove step by the subagent
+    // gate; sub-a progresses normally.
+    clock.advance(5000);
+    store.tick(); // sub-a live→done; parent already mini, held by gate
+    expect(store.panel('S')).toBeDefined();
+    store.tick(); // sub-a done→mini; parent still held
+    expect(store.panel('S')).toBeDefined();
+    store.tick(); // sub-a reaped; parent still in this iteration sees sub-a
+    expect(store.panel('sub-a')).toBeUndefined();
+    expect(store.panel('S')).toBeDefined();
+    const finalDeltas = store.tick(); // gate now passes; parent reaps
+    expect(
+      finalDeltas.some((d) => d.op === 'panel_remove' && d.panel_id === 'S'),
+    ).toBe(true);
+    expect(store.panel('S')).toBeUndefined();
+  });
+
   it('new event revives a done panel', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ idleSeconds: 10, miniSeconds: 100, clock: clock.now });
@@ -243,6 +282,25 @@ describe('SessionStore', () => {
     const deltas = store.apply(ev('user_text', { uuid: 'u2', payload: { text: 'b' } }));
     const statusChanges = deltas.filter((d) => d.op === 'panel_status');
     expect(statusChanges).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'live' }]);
+  });
+
+  it('meta record does NOT revive a done panel', () => {
+    // Terminal close flushes trailing meta records (last-prompt, ai-title,
+    // permission-mode) long after the session went idle. Those are sidecar
+    // metadata, not activity — they must not bump the panel back to live.
+    const clock = new FakeClock();
+    const store = new SessionStore({ idleSeconds: 10, miniSeconds: 100, clock: clock.now });
+    store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'a' } }));
+    clock.advance(11);
+    store.tick();
+    expect(store.panel('S')?.status).toBe('done');
+    clock.advance(1);
+    const deltas = store.apply(
+      ev('meta', { uuid: 'm1', payload: { record_type: 'last-prompt', raw: {} } }),
+    );
+    const statusChanges = deltas.filter((d) => d.op === 'panel_status');
+    expect(statusChanges).toEqual([]);
+    expect(store.panel('S')?.status).toBe('done');
   });
 
   it('forceStatus emits delta and changes state', () => {

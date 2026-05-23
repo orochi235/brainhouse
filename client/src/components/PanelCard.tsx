@@ -42,6 +42,10 @@ interface Props {
   /** Toggle whether a subagent renders nested under its parent or as a
    * standalone top-level panel. Only meaningful for subagent panels. */
   onToggleBrokenOut?: () => void;
+  /** When this panel is a broken-out subagent, the parent's display title.
+   * Renders as a small breadcrumb chip near the subtitle; clicking the
+   * pop-back button (`onToggleBrokenOut`) re-docks. */
+  parentTitle?: string | null;
   /** Account label to badge in the header. Parent typically passes
    * `panel.account_label` when more than one account is configured;
    * undefined/null suppresses the badge. */
@@ -66,6 +70,7 @@ export function PanelCard({
   onTogglePin,
   brokenOut,
   onToggleBrokenOut,
+  parentTitle,
   account,
   accountColor,
 }: Props) {
@@ -267,6 +272,9 @@ export function PanelCard({
           account={account}
           waiting={waiting}
           waitingSince={waiting ? lastUserActivity(items, now) : null}
+          brokenOut={brokenOut}
+          onToggleBrokenOut={onToggleBrokenOut}
+          parentTitle={parentTitle}
         />
         {panel.status !== 'mini' && (
           <PanelToolPalette
@@ -361,6 +369,9 @@ function PanelHeader({
   account,
   waiting,
   waitingSince,
+  brokenOut,
+  onToggleBrokenOut,
+  parentTitle,
 }: {
   panel: PanelState;
   now: number;
@@ -371,6 +382,9 @@ function PanelHeader({
   account?: string | null;
   waiting?: boolean;
   waitingSince?: number | null;
+  brokenOut?: boolean;
+  onToggleBrokenOut?: () => void;
+  parentTitle?: string | null;
 }) {
   const lightbox = useLightbox();
   const isLive = panel.status === 'live';
@@ -469,6 +483,19 @@ function PanelHeader({
           ) : panel.cwd ? (
             <span className="panel-subtitle panel-subtitle-cwd">{projectLabel(panel.cwd)}</span>
           ) : null}
+          {brokenOut && parentTitle && (
+            <button
+              type="button"
+              className="panel-parent-breadcrumb"
+              title={`Re-dock into "${parentTitle}"`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleBrokenOut?.();
+              }}
+            >
+              <span aria-hidden="true">↩</span> {parentTitle}
+            </button>
+          )}
           {account && (
             <span className="panel-account" title={`account: ${account}`}>
               {account}
@@ -626,7 +653,7 @@ function PanelToolPalette({
         </ToolChip>
         {isSubWithParent && onToggleBrokenOut && (
           <ToolChip
-            title={brokenOut ? 'Dock back into the parent session' : 'Break out into its own panel'}
+            title={brokenOut ? 'Re-dock into the parent session' : 'Promote to a grid panel'}
             aria-pressed={!!brokenOut}
             onClick={(e) => {
               e.stopPropagation();
@@ -634,22 +661,6 @@ function PanelToolPalette({
             }}
           >
             {brokenOut ? '⇱' : '⇲'}
-          </ToolChip>
-        )}
-        {isSubWithParent && (
-          <ToolChip
-            title="Pop out into an independent browser window"
-            onClick={(e) => {
-              e.stopPropagation();
-              const url = `${location.pathname}?panel=${encodeURIComponent(panel.id)}`;
-              window.open(
-                url,
-                `brainhouse-panel-${panel.id}`,
-                'noopener=no,width=900,height=900',
-              );
-            }}
-          >
-            ↗
           </ToolChip>
         )}
         {isParent && debug && (

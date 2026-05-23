@@ -49,17 +49,18 @@ export function usePanelOrder(opts: OrderOpts = {}) {
   return { order, moveBefore };
 }
 
-interface FlagOpts {
+interface DispositionOpts {
   initial?: Set<string>;
   persist?: (id: string, value: boolean) => void;
 }
 
-/** Shared shape for the boolean-flag hooks below (pinned / wide / brokenOut).
- * Holds a `Set<string>` of ids the flag is true for, with toggle + write-
- * through-to-server. Late-arriving `initial` from `useIntentions` re-seeds
- * the state on first hydration, gated by a `touched` ref so we don't
- * clobber an in-flight click. */
-function useFlagSet(opts: FlagOpts) {
+/** Shared shape for the panel-disposition hooks below (pinned / wide /
+ * brokenOut) — user-expressed levers that control how a panel is presented.
+ * Holds a `Set<string>` of ids the disposition is true for, with toggle +
+ * write-through-to-server. Late-arriving `initial` from `useIntentions`
+ * re-seeds the state on first hydration, gated by a `touched` ref so we
+ * don't clobber an in-flight click. */
+function usePanelDisposition(opts: DispositionOpts) {
   const { initial, persist } = opts;
   const [set, setSet] = useState<Set<string>>(() => new Set(initial ?? []));
   const touched = useRef(false);
@@ -83,21 +84,21 @@ function useFlagSet(opts: FlagOpts) {
   return [set, toggle] as const;
 }
 
-export function useWidePanels(opts: FlagOpts = {}) {
-  const [wide, toggleWide] = useFlagSet(opts);
+export function useWidePanels(opts: DispositionOpts = {}) {
+  const [wide, toggleWide] = usePanelDisposition(opts);
   return { wide, toggleWide };
 }
 
-export function usePinnedPanels(opts: FlagOpts = {}) {
-  const [pinned, togglePin] = useFlagSet(opts);
+export function usePinnedPanels(opts: DispositionOpts = {}) {
+  const [pinned, togglePin] = usePanelDisposition(opts);
   return { pinned, togglePin };
 }
 
 /** Track which subagent panels have been pulled out of their parent's
  * nested tray into the top-level grid. Mirrors usePinnedPanels — Set of
  * panel ids, toggle persists to intentions. */
-export function useBrokenOutPanels(opts: FlagOpts = {}) {
-  const [brokenOut, toggleBrokenOut] = useFlagSet(opts);
+export function useBrokenOutPanels(opts: DispositionOpts = {}) {
+  const [brokenOut, toggleBrokenOut] = usePanelDisposition(opts);
 
   return { brokenOut, toggleBrokenOut };
 }

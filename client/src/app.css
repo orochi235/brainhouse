@@ -178,12 +178,6 @@ body {
   /* `grid-column: span N` changes get a smooth ride too. */
   transition: grid-column 0.35s cubic-bezier(0.22, 0.85, 0.25, 1);
 }
-/* Focused mode (single-panel ?panel= URL) doesn't go through useGridLayout,
- * so no inline style fights with these declarations. */
-.session-grid.focused {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-}
 .session-dock {
   width: 300px;
   border-left: 1px solid var(--panel-border);
@@ -234,6 +228,49 @@ body {
   outline: 2px dashed var(--accent);
   outline-offset: 2px;
   border-radius: 6px;
+}
+/* Re-dock target: a grid slot that is the parent of the subagent being
+ * dragged. Highlight more strongly so it reads as "drop here to put it
+ * back" rather than "drop here to reorder." */
+.grid-slot.redock-target {
+  outline-color: var(--live);
+  outline-width: 3px;
+  background: color-mix(in srgb, var(--live) 10%, transparent);
+}
+.nested-subagent-slot.dragging {
+  opacity: 0.45;
+}
+.session-dock.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Insertion-point hint while dragging over the grid: a thin vertical bar
+ * to the left of the slot the dragged panel will land before. Pseudo-only
+ * so it doesn't reflow the grid. */
+.grid-slot.insert-before::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+.grid-slot {
+  position: relative;
+}
+/* End-of-list ghost when the cursor is past the last slot. Visually a
+ * dashed empty slot of typical panel size — communicates "appends here." */
+.grid-slot.insert-ghost-append {
+  border: 2px dashed var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  min-height: 8rem;
+  opacity: 0.7;
 }
 .panel-header {
   cursor: grab;
@@ -315,6 +352,82 @@ body.loading-quiet .panel {
 .panel-subagents {
   max-height: 8rem;
   overflow-y: auto;
+}
+/* Thin tray row for a subagent that's been pulled out into the grid/dock.
+ * Click → re-dock. Status-color mirror via .status-live / .status-done /
+ * .status-mini classes set by the renderer. */
+.subagent-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.2rem 0.5rem;
+  background: color-mix(in srgb, var(--panel-bg) 80%, transparent);
+  border: 1px dashed var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.subagent-placeholder:hover {
+  background: color-mix(in srgb, var(--panel-bg) 60%, transparent);
+  border-color: color-mix(in srgb, var(--text) 30%, var(--panel-border));
+  color: var(--text);
+}
+.subagent-placeholder-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.subagent-placeholder.status-live .subagent-placeholder-status {
+  background: var(--live);
+}
+.subagent-placeholder.status-done .subagent-placeholder-status,
+.subagent-placeholder.status-mini .subagent-placeholder-status {
+  background: color-mix(in srgb, var(--text) 30%, transparent);
+}
+.subagent-placeholder.ended .subagent-placeholder-status {
+  background: var(--panel-border);
+}
+.subagent-placeholder-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subagent-placeholder-redock {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.subagent-placeholder:hover .subagent-placeholder-redock {
+  opacity: 1;
+}
+/* Breadcrumb on a broken-out subagent's header: "↩ <parent title>".
+ * Click → re-dock. Lives in the subtitle row next to agent_type / cwd. */
+.panel-parent-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.4rem;
+  background: color-mix(in srgb, var(--panel-bg) 70%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  cursor: pointer;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.panel-parent-breadcrumb:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--text) 30%, var(--panel-border));
 }
 .panel-subagent.nested {
   max-width: none;
@@ -786,8 +899,7 @@ body.hide-context .panel-context {
   }
 }
 
-/* Full-screened panel overlay. Scoped under body.has-fullscreen-panel so the
- * compound selector outweighs `.session-grid.focused .panel` without needing !important. */
+/* Full-screened panel overlay. */
 body.has-fullscreen-panel .panel.fullscreen {
   position: fixed;
   top: 0;
