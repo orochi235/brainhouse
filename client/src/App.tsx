@@ -833,14 +833,17 @@ function MiniPanel({
         const e = rawE as unknown as React.DragEvent<HTMLDivElement>;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/brainhouse-panel', panel.id);
-        // Pin the drag image to the dragged element itself — otherwise the
-        // browser snapshots a region that ends up including sibling mini
-        // panels (and a sliver of the dock's scrollbar) because the dock
-        // is `overflow-x: auto` and framer-motion's live transform on the
-        // sibling motion.divs confuses the default drag-image heuristic.
-        const target = e.currentTarget as HTMLElement;
-        const rect = target.getBoundingClientRect();
-        e.dataTransfer.setDragImage(target, e.clientX - rect.left, e.clientY - rect.top);
+        // Use the inner .panel article (not the motion.div wrapper) for the
+        // drag image. framer-motion's `layout` prop applies live CSS
+        // transforms to the wrapper during enter/exit/reorder, and those
+        // transforms confuse the browser's snapshot — it ends up grabbing
+        // sibling mini-panel content within the wrapper's transformed
+        // bounding box. The inner article has no transforms applied.
+        const wrapper = e.currentTarget as HTMLElement;
+        const inner = wrapper.querySelector<HTMLElement>('.panel');
+        const dragImg = inner ?? wrapper;
+        const r = dragImg.getBoundingClientRect();
+        e.dataTransfer.setDragImage(dragImg, e.clientX - r.left, e.clientY - r.top);
       }}
     >
       <PanelCard
