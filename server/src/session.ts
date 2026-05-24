@@ -88,6 +88,13 @@ export interface Panel {
    * accumulates lifetime usage), this is overwritten on every turn and reflects
    * what's actively in context right now. Zero until first usage record. */
   context_size: number;
+  /** Cumulative estimated tokens of context injected by brainhouse hooks
+   * (UserPromptSubmit `additionalContext`, SessionStart `additionalContext`
+   * / `initialUserMessage`). Reported by each hook via a `hook_overhead`
+   * side-channel record using a ~4-chars-per-token proxy. Lets the UI
+   * show "instrumentation overhead" against the live context_size. Not
+   * persisted across server restarts — re-accumulates from the JSONL. */
+  hook_overhead_tokens: number;
 }
 
 export interface PanelDto {
@@ -116,6 +123,7 @@ export interface PanelDto {
     model: string | null;
   };
   context_size: number;
+  hook_overhead_tokens: number;
 }
 
 export type Delta =
@@ -234,9 +242,19 @@ export class SessionStore {
       panel.status_changed_at = panel.last_event_at;
       deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'live' });
     }
+    const titleBefore = panel.title;
     this.maybeUpdateTitle(panel, event, deltas);
     this.maybeAdoptCwd(panel, event, deltas);
     deltas.push({ op: 'event_append', panel_id: panel.id, event });
+    // Auto-title proposals from in-band events (substantive follow-up
+    // prompts, agent-emitted `session-title` meta). Skipped on the same
+    // event that just set the first-prompt title, since that already
+    // happened silently above. applyAutoTitle dedupes when the proposal
+    // matches the current title.
+    const proposed = this.maybeProposeAutoTitle(panel, event, titleBefore);
+    if (proposed) {
+      for (const d of this.applyAutoTitle(panel.id, proposed)) deltas.push(d);
+    }
     this.persistEvent(panel, event, ts);
     this.persistPanel(panel);
     // Subagent finality by checklist: when a subagent's pinned
@@ -462,6 +480,7 @@ export class SessionStore {
       ended_provenance: null,
       tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
       context_size: 0,
+      hook_overhead_tokens: 0,
       status: 'live',
       // started_at is wall-clock-now so the panel "age" reflects the
       // observation; last_event_at/status_changed_at are stamped with the
@@ -536,6 +555,25 @@ export class SessionStore {
     }
   }
 
+  /** In-band auto-title trigger. Returns a proposed title, or null when
+   * the event isn't a re-title signal.
+   *
+   *   - Any panel + `meta` with `record_type === 'session-title'`: an
+   *     explicit agent-emitted retitle. `raw.title` is the proposal.
+   *
+   * Returned strings are pre-truncated to the 80-char display cap; the
+   * caller routes the proposal through `applyAutoTitle` so the title
+   * change comes with the flash/toast cue. */
+  private maybeProposeAutoTitle(_panel: Panel, event: Event, _titleBefore: string): string | null {
+    if (event.kind === 'meta' && event.payload.record_type === 'session-title') {
+      const raw = (event.payload.raw ?? {}) as { title?: string };
+      const proposed = (raw.title ?? '').trim();
+      if (!proposed) return null;
+      return proposed.length > 80 ? `${proposed.slice(0, 79)}…` : proposed;
+    }
+    return null;
+  }
+
   private toDto(p: Panel): PanelDto {
     return {
       id: p.id,
@@ -557,6 +595,7 @@ export class SessionStore {
       ended_provenance: p.ended_provenance,
       tokens: p.tokens,
       context_size: p.context_size,
+      hook_overhead_tokens: p.hook_overhead_tokens,
     };
   }
 
@@ -567,6 +606,22 @@ export class SessionStore {
     const panel = this.panels.get(panelId);
     if (!panel) return;
     this.materializeSummary(panel, provenance);
+  }
+
+  /** Accumulate token-cost accounting for a brainhouse hook that injected
+   * context (UserPromptSubmit `additionalContext`, SessionStart
+   * `additionalContext` / `initialUserMessage`). The hook itself
+   * estimates tokens (chars/4 proxy) and reports them via a
+   * `hook_overhead` side-channel record; we sum them onto the panel and
+   * surface the running total in the DTO so the UI can show
+   * "instrumentation overhead". */
+  recordHookOverhead(panelId: string, tokens: number): Delta[] {
+    const panel = this.panels.get(panelId);
+    if (!panel) return [];
+    if (!Number.isFinite(tokens) || tokens <= 0) return [];
+    panel.hook_overhead_tokens += Math.floor(tokens);
+    this.persistPanel(panel);
+    return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 
   /** Apply an auto-title proposal from the Stop-hook side-channel. Dedupes
@@ -771,6 +826,7 @@ function panelRowToPanel(r: PanelRow): Panel {
     // acceptable trade-off vs. the schema work for now.
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
     context_size: 0,
+    hook_overhead_tokens: 0,
   };
 }
 

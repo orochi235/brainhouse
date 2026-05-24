@@ -15,6 +15,7 @@
 import { readFile, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { estimateTokens, recordHookOverhead } from './lib/overhead.mjs';
 
 async function readStdin() {
   const chunks = [];
@@ -59,6 +60,11 @@ async function main() {
 
   await unlink(file).catch(() => {});
   process.stdout.write(JSON.stringify({ hookSpecificOutput: out }));
+
+  const sessionId = payload?.session_id ?? payload?.sessionId;
+  const injectedTokens =
+    estimateTokens(out.additionalContext ?? '') + estimateTokens(out.initialUserMessage ?? '');
+  await recordHookOverhead({ sessionId, hookName: 'handoff-resume', tokens: injectedTokens });
 }
 
 main().catch(() => process.exit(0));

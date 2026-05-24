@@ -168,6 +168,22 @@ describe('parseLine', () => {
     }
   });
 
+  it('uuid-less meta records get content-derived synthetic uuids', () => {
+    // Two custom-title records with the same payload collapse to the same
+    // uuid (so SessionStore's dedupe drops the repeat); a different title
+    // gets a different uuid (so the change actually flows through).
+    const a = parseLine({ type: 'custom-title', customTitle: 'one', sessionId: 's1' });
+    const b = parseLine({ type: 'custom-title', customTitle: 'one', sessionId: 's1' });
+    const c = parseLine({ type: 'custom-title', customTitle: 'two', sessionId: 's1' });
+    expect(a[0]?.uuid).toBe(b[0]?.uuid);
+    expect(a[0]?.uuid).not.toBe(c[0]?.uuid);
+    // Different record types with no uuid don't collide either.
+    const d = parseLine({ type: 'last-prompt', lastPrompt: 'one', sessionId: 's1' });
+    expect(a[0]?.uuid).not.toBe(d[0]?.uuid);
+    // Synthesized uuids are namespaced so they're identifiable.
+    expect(a[0]?.uuid.startsWith('synth:custom-title:')).toBe(true);
+  });
+
   it('non-list / non-string content yields no events', () => {
     const events = parseLine({
       type: 'user',

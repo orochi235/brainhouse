@@ -23,6 +23,7 @@ function panelDto(overrides: Partial<PanelDto> = {}): PanelDto {
     ended: false,
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
     context_size: 0,
+    hook_overhead_tokens: 0,
     ...overrides,
   };
 }

@@ -547,7 +547,12 @@ function PanelHeader({
             {panel.context_size > 0 && (
               <HoverPopover
                 className="panel-context"
-                content={<ContextSizeTooltip contextSize={panel.context_size} />}
+                content={
+                  <ContextSizeTooltip
+                    contextSize={panel.context_size}
+                    hookOverheadTokens={panel.hook_overhead_tokens}
+                  />
+                }
               >
                 <span aria-label="context window size">{formatTokens(panel.context_size)}</span>
               </HoverPopover>

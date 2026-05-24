@@ -254,6 +254,12 @@ export class TranscriptMonitor {
       for (const d of this.store.applyAutoTitle(sid, title)) this.broadcast(d);
       return;
     }
+    if (event.kind === 'hook_overhead') {
+      const tokens = Number(event.tokens) || 0;
+      if (tokens <= 0) return;
+      for (const d of this.store.recordHookOverhead(sid, tokens)) this.broadcast(d);
+      return;
+    }
     if (event.kind === 'session_end') {
       // Authoritative terminate signal — Claude Code is shutting down this
       // session for real. Mark the parent panel ended and demote any live

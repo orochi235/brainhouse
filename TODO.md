@@ -13,32 +13,18 @@ groups Read/Edit/Write/MultiEdit runs on the same path into a
 - Smarter handling of MultiEdit: collapse multiple sub-edits into one
   visual hunk where the regions are adjacent.
 
-## Session names: update more frequently + more accurately
-Today a parent panel's title is set once from the first user message and
-locked in (`session.ts:maybeUpdateTitle`). Subsequent prompts, scope shifts,
-or `/rename`-style retitling don't propagate. Subagent titles do better
-(they pick up the `description` from `subagent-meta`), but parents stay
-frozen on the original opening line — which is often "set up the project"
-or "look at this bug" and rarely captures what the session actually became.
-
-Possible signals to feed a better title:
-- Latest user prompt (most-recent intent often beats first-prompt intent).
-- Heuristic on the dominant tool mix (e.g. session that's mostly Bash on
-  Docker files → "container debugging").
-- LLM-derived 1-sentence summary, computed once per ~N turns or at session
-  end — could share infra with `session_summary.key_decisions`.
-- A `meta`-typed `session-title` record the agent itself emits ("I'm
-  now working on X"). Pairs with the negotiated-interruption-points
-  proposal — the agent already knows what it's doing; let it tell us.
-
-Open questions:
-- Show only the latest title, or layer them ("opened: setup → now: bug")?
-- Manual override still wins (`custom-title` already works); make sure
-  whatever auto-updater we add respects that.
-- Update cadence: every turn is too noisy. Every N turns, or only when
-  the heuristic confidence is high.
-
-Pairs with: `session_summary` rollup, harvest-learnings flow.
+## Session names: more signals
+Heuristic re-title from later substantive `user_text` events + an
+agent-emitted `session-title` meta record are wired (see assertions).
+Remaining ideas:
+- Tool-mix heuristic ("mostly Bash on Docker files → container
+  debugging") — cheap but signal/noise unclear; revisit if titles still
+  feel stale in practice.
+- LLM-derived summary on a longer cadence (every ~N turns) — would
+  share infra with `session_summary.key_decisions` / the Stop-hook
+  `experimental.autoTitle` flow that already exists.
+- Layered title display ("opened: setup → now: bug") instead of
+  replace-in-place. Cheap to try once we have stronger signals to layer.
 
 ## Universal object drag
 Today drag-and-drop is piecemeal: dragging is only wired up where we've
@@ -82,28 +68,22 @@ in the layout state.
 Replace the auto-fill grid with a tiling layout: drag panels into slots, resize between rows, persist layout per project. Likely needs a dedicated layout state in `App.tsx` and a thin manager component.
 
 ## Token usage: metering, counting, budgets
-Surface per-session token usage as a first-class signal. Claude Code writes
-usage info into the JSONL on every API response (input/output token counts,
-cache hits, model id) — pipe that through to brainhouse so each panel
-shows: tokens consumed so far this session, rate-per-minute while live,
-running cost estimate at posted model prices, and a per-project rollup
-("you've burned ~3M tokens in ~/src/foo this week").
+Per-session usage is wired (tokens + context_size on PanelDto, capsule
+in the header, tooltip breakdown). Hook instrumentation overhead is also
+tracked separately (`hook_overhead_tokens`, via the side-channel records
+each brainhouse hook writes through `hooks/lib/overhead.mjs`).
 
-Concrete pieces:
-- Parser: extract `usage` block from assistant messages into a new
-  `ResourceUsage` event kind (or a side-channel on assistant_text)
-- Session store: accumulate input/output/cache totals + model used on the
-  Panel; surface via PanelDto
-- UI: small "tokens" capsule in the panel header (next to the idle/waiting
-  badge); click → modal with the breakdown + cost estimate
-- session_summary: persist the totals so the per-project rollup works
-  beyond the events_index retention window
-- Optional: per-project budget prefs that flash the panel when crossed
-- Tricky: cost estimates need model-pricing table; either hard-code (and
-  keep it stale) or pull from a maintained source
-
-This pairs naturally with #9 (schema/pipeline buildout) since the
-`usage` field is one of the higher-value passthrough records.
+Still open:
+- Rate-per-minute while live + per-project rollup ("~3M tokens in
+  ~/src/foo this week"). Needs session_summary to carry the totals so
+  the rollup survives panel reaping.
+- Cost estimates — need a model-pricing table; either hard-code (and
+  keep it stale) or pull from a maintained source.
+- Per-project budget prefs that flash the panel when crossed.
+- Foreign-hook overhead estimation (option #2 from the discussion):
+  detect hook-injected text in the JSONL even when it's not from a
+  brainhouse hook. Speculative until we see overhead-from-other-hooks
+  matter in practice.
 
 ## Nag the user when a session is awaiting input
 The Notification hook already populates `awaiting_input: true` on panels

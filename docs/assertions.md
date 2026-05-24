@@ -60,6 +60,24 @@ UI/server is meant to uphold. New entries go at the bottom.
   `<command-message>`, `<command-args>`). The panel keeps its short-id
   placeholder until the user's first real prompt arrives, which then
   becomes the title.
+- Hook instrumentation overhead: each brainhouse hook that injects
+  context (UserPromptSubmit `additionalContext`, SessionStart
+  `additionalContext` / `initialUserMessage`) records its estimated
+  token cost (~chars/4 proxy) via a `hook_overhead` side-channel record
+  written by `hooks/lib/overhead.mjs`. The server accumulates these onto
+  `panel.hook_overhead_tokens` and the context-size tooltip shows the
+  absolute total plus its share of the current context window. Counter
+  is in-memory; resets on server restart (re-accumulates as the watcher
+  replays the side-channel JSONL).
+- Agent-emitted retitle: a `meta` record with `record_type:
+  'session-title'` and `raw.title` routes through the auto-title path
+  (`panel_upsert`, synthetic `auto-title` breadcrumb, `auto_titled`
+  cue). No string-heuristic on later `user_text` events — mid-session
+  prompts routinely reference unstated context ("oh and that should
+  also take a param like the other two"), so a length/word heuristic
+  reliably degrades titles instead of improving them. Real re-titling
+  needs context (LLM, agent self-report); until that's wired, only the
+  explicit `session-title` meta channel re-titles in-band.
 - Auto-titling (beta, gated on `experimental.autoTitle`): a Stop hook
   shells out to `claude -p` on the user's own CLI auth after each
   assistant turn. Fires when the panel has no `custom-title` meta yet
@@ -82,10 +100,13 @@ UI/server is meant to uphold. New entries go at the bottom.
 - An `AskUserQuestion` tool_use renders as a synthetic assistant bubble
   (bolded question + bulleted options); the matching tool_result is
   swallowed rather than emitted as an orphan tool capsule. When the
-  result is available, each question gets an italic `_Answer: **<label>**_`
-  footer beneath its options block, with multi-select answers joined as
-  comma-separated bolded labels. A rejected/cleared result (`is_error`)
-  renders `_(no answer)_` instead.
+  result is available, the answer is emitted as a *separate user-side
+  bubble* immediately after the assistant bubble, so the exchange looks
+  like a real chat turn (assistant asks, user replies). Single-question
+  answers render as just the bolded label(s); multi-question forms
+  render `**Question** → **label**` per line. Multi-select answers come
+  through joined as comma-separated bolded labels. A rejected/cleared
+  result (`is_error`) renders the user-side bubble as `_(no answer)_`.
 - Panels are not dimmed merely for going idle. A panel only dims after we
   have an explicit "this session is over" signal — currently, the
   SubagentStop hook on a subagent panel. The dim level is user-controlled

@@ -90,7 +90,14 @@ export interface ParseContext {
 export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
   const sid = asString(raw.sessionId) ?? ctx.session_id ?? '';
   const aid = asString(raw.agentId) ?? ctx.agent_id ?? null;
-  const uuid = asString(raw.uuid) ?? '';
+  // Most records carry a uuid. Side-channel metadata records
+  // (`custom-title`, `last-prompt`, `ai-title`, `file-history-snapshot`,
+  // `permission-mode`, …) don't — and SessionStore dedupes by uuid, so
+  // multiple uuid-less records all collide on `''` and only the first one
+  // ever lands. Synthesize a content-derived uuid in that case: identical
+  // re-emissions still dedupe (Claude Code repeats `custom-title` every
+  // turn), but a new title or a different record type flows through.
+  const uuid = asString(raw.uuid) ?? synthesizeUuid(raw);
   const parentUuid = asString(raw.parentUuid) ?? null;
   const ts = asString(raw.timestamp) ?? '';
   const cwd = asString(raw.cwd) ?? null;
@@ -218,6 +225,16 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+/** djb2 hash of a stably-stringified record. Used to fabricate a stable,
+ * content-derived uuid for JSONL lines that don't carry one. */
+function synthesizeUuid(raw: Raw): string {
+  const rtype = asString(raw.type) ?? 'unknown';
+  const s = JSON.stringify(raw) ?? '';
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return `synth:${rtype}:${(h >>> 0).toString(36)}`;
 }
 
 function asNonNegInt(value: unknown): number {

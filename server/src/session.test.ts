@@ -832,6 +832,35 @@ describe('SessionStore', () => {
     });
   });
 
+  describe('in-band auto-title proposals', () => {
+    it('agent-emitted session-title meta retitles via the auto-title path', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'first prompt' } }));
+      const deltas = store.apply(
+        ev('meta', {
+          uuid: 'u2',
+          payload: { record_type: 'session-title', raw: { title: 'now: rewriting the parser' } },
+        }),
+      );
+      expect(deltas.some((d) => d.op === 'auto_titled')).toBe(true);
+      expect(store.snapshot()[0]?.title).toBe('now: rewriting the parser');
+    });
+
+    it('later user_text events do NOT retitle on their own', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'design a haiku' } }));
+      store.apply(
+        ev('user_text', {
+          uuid: 'u2',
+          payload: { text: 'oh and that should also take a param like the other two' },
+        }),
+      );
+      expect(store.snapshot()[0]?.title).toBe('design a haiku');
+    });
+  });
+
   it('snapshot serializes panels with events', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });

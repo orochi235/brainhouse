@@ -31,28 +31,32 @@ export function OpStripLightbox({
   title: string;
 }) {
   const [mode, setMode] = useState<ViewMode>('conversation');
+  const hasFiles = useMemo(() => item.items.some((it) => it.type === 'file-change'), [item.items]);
+  const effectiveMode: ViewMode = hasFiles ? mode : 'conversation';
   return (
     <div className="op-strip-lightbox">
       <div className="lightbox-title-row">
         <h3 className="lightbox-title">{title}</h3>
-        <ToolChips>
-          <ToolChip
-            aria-pressed={mode === 'conversation'}
-            onClick={() => setMode('conversation')}
-            title="Show sub-items in the order they happened"
-          >
-            Conversation
-          </ToolChip>
-          <ToolChip
-            aria-pressed={mode === 'file'}
-            onClick={() => setMode('file')}
-            title="Browse file changes via a directory tree"
-          >
-            File
-          </ToolChip>
-        </ToolChips>
+        {hasFiles && (
+          <ToolChips>
+            <ToolChip
+              aria-pressed={effectiveMode === 'conversation'}
+              onClick={() => setMode('conversation')}
+              title="Show sub-items in the order they happened"
+            >
+              Conversation
+            </ToolChip>
+            <ToolChip
+              aria-pressed={effectiveMode === 'file'}
+              onClick={() => setMode('file')}
+              title="Browse file changes via a directory tree"
+            >
+              File
+            </ToolChip>
+          </ToolChips>
+        )}
       </div>
-      {mode === 'conversation' ? (
+      {effectiveMode === 'conversation' ? (
         <ViewItemList items={item.items} startedAt={startedAt} />
       ) : (
         <FileView items={item.items} />

@@ -34,7 +34,17 @@ export function SessionTimeTooltip({
   );
 }
 
-export function ContextSizeTooltip({ contextSize }: { contextSize: number }) {
+export function ContextSizeTooltip({
+  contextSize,
+  hookOverheadTokens = 0,
+}: {
+  contextSize: number;
+  hookOverheadTokens?: number;
+}) {
+  const overheadPct =
+    contextSize > 0 && hookOverheadTokens > 0
+      ? (hookOverheadTokens / contextSize) * 100
+      : null;
   return (
     <div className="header-tooltip">
       <div className="header-tooltip-title">current context window</div>
@@ -47,6 +57,13 @@ export function ContextSizeTooltip({ contextSize }: { contextSize: number }) {
       <div className="header-tooltip-meta">
         {contextSize.toLocaleString()} tokens ({formatTokens(contextSize)})
       </div>
+      {hookOverheadTokens > 0 && (
+        <div className="header-tooltip-meta">
+          + ~{hookOverheadTokens.toLocaleString()} tokens (
+          {formatTokens(hookOverheadTokens)}) from brainhouse hook instrumentation
+          {overheadPct !== null && ` · ${overheadPct.toFixed(1)}% of context`}
+        </div>
+      )}
     </div>
   );
 }

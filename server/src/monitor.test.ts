@@ -108,6 +108,35 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.panel('S')?.title).toBe(before);
   });
 
+  it('applyHookEvent hook_overhead accumulates onto the panel counter', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({}));
+    expect(monitor.store.panel('S')?.hook_overhead_tokens).toBe(0);
+    monitor.applyHookEvent({
+      session_id: 'S',
+      kind: 'hook_overhead',
+      hook_name: 'context-reminder',
+      tokens: 70,
+      ts: 0,
+    });
+    monitor.applyHookEvent({
+      session_id: 'S',
+      kind: 'hook_overhead',
+      hook_name: 'handoff-resume',
+      tokens: 120,
+      ts: 0,
+    });
+    expect(monitor.store.panel('S')?.hook_overhead_tokens).toBe(190);
+  });
+
+  it('applyHookEvent hook_overhead with zero / missing tokens is a no-op', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({}));
+    monitor.applyHookEvent({ session_id: 'S', kind: 'hook_overhead', ts: 0 });
+    monitor.applyHookEvent({ session_id: 'S', kind: 'hook_overhead', tokens: 0, ts: 0 });
+    expect(monitor.store.panel('S')?.hook_overhead_tokens).toBe(0);
+  });
+
   it('subagent_stop also marks each subagent as ended', () => {
     const monitor = newMonitor();
     monitor.ingest(userTextEvent({}));

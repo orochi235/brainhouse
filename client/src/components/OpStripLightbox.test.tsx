@@ -121,9 +121,9 @@ describe('<OpStripLightbox>', () => {
     expect(screen.getByText(/Write · entire file/)).toBeInTheDocument();
   });
 
-  it('file view with no file ops shows empty message', () => {
+  it('hides the view toggle entirely when there are no file changes', () => {
     renderLb(strip([op('Bash', { command: 'ls' }, 'out')]));
-    fireEvent.click(screen.getByRole('button', { name: /^file$/i }));
-    expect(screen.getByText(/No file changes/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^file$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /conversation/i })).not.toBeInTheDocument();
   });
 });

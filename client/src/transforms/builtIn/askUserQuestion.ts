@@ -4,9 +4,11 @@
  * tool_use_id as absorbed so the matching tool_result gets swallowed by
  * `mergeToolResult` rather than rendering an orphan capsule.
  *
- * When the matching tool_result is available, the chosen answer for each
- * question is appended as a footer below the options block. Multi-select
- * answers ride along naturally — the answer string carries the joined labels.
+ * When the matching tool_result is available, the answer is emitted as a
+ * *separate* synthetic user-side bubble immediately after the assistant
+ * bubble — so the exchange visually mirrors a real chat (Claude asks, you
+ * reply). Multi-select answers ride along naturally — the answer string
+ * carries the joined labels.
  *
  * Falls through (returns false) for other tool names; the default
  * `toolUseToCapsule` transform handles them.
@@ -25,13 +27,13 @@ export const askUserQuestion: Stage1Transform = {
   key: 'built-in.ask-user-question',
   name: 'AskUserQuestion → assistant bubble',
   description:
-    'Renders an AskUserQuestion tool call as if Claude is speaking — bolded question + bulleted options. The matching tool_result is swallowed; the chosen answer is appended as a footer.',
+    'Renders an AskUserQuestion tool call as if Claude is speaking — bolded question + bulleted options. The matching tool_result is swallowed; the answer is emitted as a separate user-side bubble after the assistant bubble.',
   run(event, items, ctx) {
     if (event.kind !== 'tool_use' || event.payload.name !== 'AskUserQuestion') return false;
     const input = event.payload.input;
     const toolUseId = event.payload.tool_use_id;
     const answerInfo = toolUseId ? findAnswerInfo(ctx.allEvents, toolUseId) : null;
-    const text = formatAskUserQuestion(input, answerInfo);
+    const text = formatAskUserQuestion(input);
     if (!text) return false;
     items.push({
       type: 'bubble',
@@ -39,15 +41,26 @@ export const askUserQuestion: Stage1Transform = {
       role: 'assistant',
       parts: [{ kind: 'text', text }],
     });
+    const answerText = formatAskUserAnswer(input, answerInfo);
+    if (answerText) {
+      items.push({
+        type: 'bubble',
+        event: {
+          ...event,
+          uuid: `${event.uuid}:answer`,
+          kind: 'user_text',
+          payload: { text: answerText },
+        } as Event,
+        role: 'user',
+        parts: [{ kind: 'text', text: answerText }],
+      });
+    }
     if (toolUseId) ctx.scratch.absorbedToolUseIds.add(toolUseId);
     return true;
   },
 };
 
-export function formatAskUserQuestion(
-  input: unknown,
-  answerInfo: AnswerInfo | null = null,
-): string | null {
+export function formatAskUserQuestion(input: unknown): string | null {
   if (!input || typeof input !== 'object') return null;
   const questions = (input as { questions?: unknown }).questions;
   if (!Array.isArray(questions) || questions.length === 0) return null;
@@ -70,25 +83,36 @@ export function formatAskUserQuestion(
         lines.push(`- **${label}**${desc}`);
       }
     }
-    const footer = answerFooter(question, answerInfo);
-    if (footer) lines.push('', footer);
     blocks.push(lines.join('\n'));
   }
   return blocks.length > 0 ? blocks.join('\n\n') : null;
 }
 
-function answerFooter(question: string, info: AnswerInfo | null): string | null {
+/** Build the user-side reply bubble that pairs with an AskUserQuestion.
+ * Single question → just the chosen labels (bolded). Multiple questions →
+ * `**Question** → A` per line. `null` when there's no answer to render. */
+export function formatAskUserAnswer(input: unknown, info: AnswerInfo | null): string | null {
   if (!info) return null;
   if (info.kind === 'rejected') return '_(no answer)_';
-  const raw = info.answers[question];
-  if (!raw) return null;
-  // Multi-select answers come back joined ("A, B"); render each label bold.
-  const labels = raw
-    .split(/,\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (labels.length === 0) return null;
-  return `_Answer: ${labels.map((l) => `**${l}**`).join(', ')}_`;
+  if (!input || typeof input !== 'object') return null;
+  const questions = (input as { questions?: unknown }).questions;
+  if (!Array.isArray(questions) || questions.length === 0) return null;
+  const lines: string[] = [];
+  for (const q of questions) {
+    if (!q || typeof q !== 'object') continue;
+    const question = (q as { question?: unknown }).question;
+    if (typeof question !== 'string') continue;
+    const raw = info.answers[question];
+    if (!raw) continue;
+    const labels = raw
+      .split(/,\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (labels.length === 0) continue;
+    const bold = labels.map((l) => `**${l}**`).join(', ');
+    lines.push(questions.length === 1 ? bold : `**${question}** → ${bold}`);
+  }
+  return lines.length > 0 ? lines.join('\n\n') : null;
 }
 
 function findAnswerInfo(events: readonly Event[], toolUseId: string): AnswerInfo | null {

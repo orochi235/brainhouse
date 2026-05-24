@@ -416,19 +416,27 @@ describe('preprocessEvents', () => {
       expect(text).toContain('SQLite');
     });
 
-    it('swallows the matching tool_result and renders the chosen answer', () => {
+    it('swallows the matching tool_result and emits a separate user-side answer bubble', () => {
       const { items } = preprocessEvents([
         toolUse('q1', 'AskUserQuestion', {
           questions: [{ question: 'go?', options: [{ label: 'yes' }, { label: 'no' }] }],
         }),
         toolResult('q1', { answers: { 'go?': 'yes' } }),
       ]);
-      // Only the synthetic asst bubble — no orphan tool capsule from the result.
-      expect(items.length).toBe(1);
+      // Two bubbles: assistant (question), user (answer). No orphan capsule.
+      expect(items.length).toBe(2);
       const asst = items[0];
-      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
-      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
-      expect(text).toMatch(/Answer:\s*\*\*yes\*\*/);
+      const reply = items[1];
+      if (asst?.type !== 'bubble' || reply?.type !== 'bubble') {
+        throw new Error('expected two bubbles');
+      }
+      expect(asst.role).toBe('assistant');
+      const asstText = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      // Assistant bubble no longer carries the answer footer.
+      expect(asstText).not.toMatch(/Answer:/);
+      expect(reply.role).toBe('user');
+      const replyText = reply.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(replyText).toBe('**yes**');
     });
 
     it('parses the Claude Code answer-string form ("Q"="A")', () => {
@@ -443,10 +451,12 @@ describe('preprocessEvents', () => {
           'User has answered your questions: "Which db?"="SQLite". You can now continue.',
         ),
       ]);
-      const asst = items[0];
-      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
-      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
-      expect(text).toMatch(/Answer:\s*\*\*SQLite\*\*/);
+      expect(items.length).toBe(2);
+      const reply = items[1];
+      if (reply?.type !== 'bubble') throw new Error('expected reply bubble');
+      expect(reply.role).toBe('user');
+      const text = reply.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toBe('**SQLite**');
     });
 
     it('renders multi-select answers as joined bolded labels', () => {
@@ -462,10 +472,10 @@ describe('preprocessEvents', () => {
         }),
         toolResult('q1', { answers: { 'pick any': 'a, c' } }),
       ]);
-      const asst = items[0];
-      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
-      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
-      expect(text).toMatch(/Answer:\s*\*\*a\*\*,\s*\*\*c\*\*/);
+      const reply = items[1];
+      if (reply?.type !== 'bubble') throw new Error('expected reply bubble');
+      const text = reply.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toBe('**a**, **c**');
     });
 
     it('marks a rejected tool_result as (no answer)', () => {
@@ -475,9 +485,11 @@ describe('preprocessEvents', () => {
         }),
         toolResult('q1', 'The user does not want to proceed', true),
       ]);
-      const asst = items[0];
-      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
-      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(items.length).toBe(2);
+      const reply = items[1];
+      if (reply?.type !== 'bubble') throw new Error('expected reply bubble');
+      expect(reply.role).toBe('user');
+      const text = reply.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
       expect(text).toMatch(/\(no answer\)/);
     });
 

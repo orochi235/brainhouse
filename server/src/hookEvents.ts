@@ -26,6 +26,7 @@ export const HookEventSchema = z.object({
     'session_end',
     'session_start',
     'auto_title',
+    'hook_overhead',
   ]),
   session_id: z.string().min(1),
   /** Absolute path of the transcript that triggered the hook, if Claude
@@ -42,6 +43,11 @@ export const HookEventSchema = z.object({
   /** auto_title only. The proposed new panel title. Server validates and
    * applies if it differs from the current title. */
   title: z.string().optional(),
+  /** hook_overhead only. Which brainhouse hook injected context. */
+  hook_name: z.string().optional(),
+  /** hook_overhead only. Estimated tokens added to the next turn's
+   * context by this hook's output (chars/4 proxy). */
+  tokens: z.number().optional(),
   /** Unix seconds, set by the dispatcher. */
   ts: z.number(),
 });

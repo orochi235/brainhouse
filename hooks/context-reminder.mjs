@@ -29,6 +29,7 @@
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { estimateTokens, recordHookOverhead } from './lib/overhead.mjs';
 
 const DEFAULT_THRESHOLD = 150_000;
 
@@ -45,6 +46,7 @@ async function main() {
   }
   const transcriptPath = payload?.transcript_path ?? payload?.transcriptPath;
   if (typeof transcriptPath !== 'string') return;
+  const sessionId = payload?.session_id ?? payload?.sessionId;
 
   const threshold = Number(process.env.BRAINHOUSE_CONTEXT_THRESHOLD) || DEFAULT_THRESHOLD;
   const tokens = await estimateContextTokens(transcriptPath);
@@ -63,6 +65,11 @@ async function main() {
       },
     })}\n`,
   );
+  await recordHookOverhead({
+    sessionId,
+    hookName: 'context-reminder',
+    tokens: estimateTokens(message),
+  });
 }
 
 /**
