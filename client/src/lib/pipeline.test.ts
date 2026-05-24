@@ -562,19 +562,62 @@ describe('preprocessEvents', () => {
       expect(b.btw).toBeUndefined();
     });
 
-    it('suppresses the queue-operation meta from the rendered list', () => {
-      const { items } = preprocessEvents([queueOp('queued prompt')]);
-      // No bubble yet (no matching user_text) and the meta itself is consumed.
-      expect(items).toEqual([]);
+    it('renders a queued_command attachment directly as a btw user bubble (no later user_text)', () => {
+      // Inline delivery flow (Claude Code ≥ 2.1.13x): the attachment IS the
+      // user input; there is no follow-up `type:user` record.
+      const { items } = preprocessEvents([
+        queueOp('what does that first part mean?'),
+        ev('meta', {
+          record_type: 'attachment',
+          raw: {
+            type: 'attachment',
+            attachment: {
+              type: 'queued_command',
+              prompt: 'what does that first part mean?',
+              commandMode: 'prompt',
+            },
+          },
+        }),
+      ]);
+      expect(items).toHaveLength(1);
+      const b = items[0];
+      if (b?.type !== 'bubble') throw new Error('expected bubble');
+      expect(b.role).toBe('user');
+      expect(b.btw).toBe(true);
+      const text = b.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toBe('what does that first part mean?');
     });
 
-    it('suppresses attachment side-channel records', () => {
+    it('queued_command attachment alone (no preceding queue-operation) still renders as btw', () => {
       const { items } = preprocessEvents([
         ev('meta', {
           record_type: 'attachment',
-          raw: { type: 'attachment', attachment: { type: 'queued_command', prompt: 'x' } },
+          raw: {
+            type: 'attachment',
+            attachment: { type: 'queued_command', prompt: 'standalone btw' },
+          },
         }),
       ]);
+      expect(items).toHaveLength(1);
+      const b = items[0];
+      if (b?.type !== 'bubble') throw new Error('expected bubble');
+      expect(b.btw).toBe(true);
+    });
+
+    it('non-queued attachment shapes fall through (defaultEventItem absorbs them)', () => {
+      const { items } = preprocessEvents([
+        ev('meta', {
+          record_type: 'attachment',
+          raw: { type: 'attachment', attachment: { type: 'hook_success' } },
+        }),
+      ]);
+      // Absorbed by defaultEventItem; nothing rendered.
+      expect(items).toEqual([]);
+    });
+
+    it('suppresses the queue-operation meta from the rendered list', () => {
+      const { items } = preprocessEvents([queueOp('queued prompt')]);
+      // No bubble yet (no matching user_text) and the meta itself is consumed.
       expect(items).toEqual([]);
     });
 

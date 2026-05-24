@@ -107,13 +107,22 @@ UI/server is meant to uphold. New entries go at the bottom.
   render `**Question** → **label**` per line. Multi-select answers come
   through joined as comma-separated bolded labels. A rejected/cleared
   result (`is_error`) renders the user-side bubble as `_(no answer)_`.
-- A `/btw` queued prompt renders as a marked user bubble: the
-  `queue-operation` meta record stashes its `content`, and the next
-  `user_text` whose trimmed text matches is emitted with a `btw` flag
-  (left accent + "↩ btw" chip). The original `queue-operation` meta and
-  the sibling `attachment` record are suppressed from the rendered list.
-  The immediately-adjacent assistant bubble inherits a hairline left rail
-  so the reply visually threads back to the interjection.
+- A `/btw` queued prompt renders as a marked user bubble (left accent +
+  "↩ btw" chip), driven by whichever of Claude Code's two delivery shapes
+  appears in the JSONL:
+  - **Inline (Claude Code ≥ 2.1.13x):** the queued prompt arrives as an
+    `attachment` record with `attachment.type === 'queued_command'`. No
+    follow-up `type:user` record exists; the attachment IS the user
+    input, and the bubble is synthesized from `attachment.prompt`.
+  - **Deferred (older flow):** the queued prompt eventually arrives as a
+    normal `type:user` record. A preceding `queue-operation` enqueue
+    stashes the content; the matching user_text gets the btw flag.
+  All `queue-operation` records (enqueue/dequeue/popAll/remove) are
+  consumed without rendering — they're queue bookkeeping. Non-`queued_command`
+  `attachment` shapes (hook_success, hook_additional_context, …) are
+  absorbed by the default-event handler. The immediately-adjacent
+  assistant bubble inherits a hairline left rail so the reply visually
+  threads back to the interjection.
 - Panels are not dimmed merely for going idle. A panel only dims after we
   have an explicit "this session is over" signal — currently, the
   SubagentStop hook on a subagent panel. The dim level is user-controlled
