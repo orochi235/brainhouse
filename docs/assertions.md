@@ -107,6 +107,13 @@ UI/server is meant to uphold. New entries go at the bottom.
   render `**Question** → **label**` per line. Multi-select answers come
   through joined as comma-separated bolded labels. A rejected/cleared
   result (`is_error`) renders the user-side bubble as `_(no answer)_`.
+- A `/btw` queued prompt renders as a marked user bubble: the
+  `queue-operation` meta record stashes its `content`, and the next
+  `user_text` whose trimmed text matches is emitted with a `btw` flag
+  (left accent + "↩ btw" chip). The original `queue-operation` meta and
+  the sibling `attachment` record are suppressed from the rendered list.
+  The immediately-adjacent assistant bubble inherits a hairline left rail
+  so the reply visually threads back to the interjection.
 - Panels are not dimmed merely for going idle. A panel only dims after we
   have an explicit "this session is over" signal — currently, the
   SubagentStop hook on a subagent panel. The dim level is user-controlled

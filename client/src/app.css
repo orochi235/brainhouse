@@ -1556,6 +1556,36 @@ body.imessage .panel.has-theme .event-user_text .bubble {
     0 0 32px -4px color-mix(in srgb, var(--panel-theme-bg) 75%, transparent);
 }
 
+/* /btw — queued mid-turn user prompt. Subtle accent + "↩ btw" chip so it
+   reads as an interjection, not a fresh turn. The immediately-following
+   assistant bubble (when not separated by tool capsules) shares a hairline
+   left rail to visually thread the reply back to the interjection. */
+.bubble.is-btw {
+  border-left: 2px solid color-mix(in srgb, var(--bubble-user-fg) 35%, transparent);
+  padding-left: 0.55rem;
+  position: relative;
+}
+.bubble.is-btw::before {
+  content: "↩ btw";
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  opacity: 0.7;
+  margin-right: 0.4em;
+  padding: 0 0.3em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bubble-user-fg) 12%, transparent);
+}
+.event-user_text.is-btw + .event-assistant_text {
+  margin-top: -0.1rem;
+}
+.event-user_text.is-btw + .event-assistant_text .bubble {
+  border-left: 2px solid color-mix(in srgb, var(--bubble-user-fg) 22%, transparent);
+  padding-left: 0.55rem;
+}
+
 /* sawtooth divider inside merged user bubbles */
 .interrupt-sawtooth {
   height: 6px;

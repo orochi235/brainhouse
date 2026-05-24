@@ -25,6 +25,11 @@ export interface ViewPipelineScratch {
   pending: boolean;
   /** Most recent ```brainhouse-checklist block found in any bubble. */
   checklist: ChecklistItem[] | null;
+  /** Trimmed text of `/btw` prompts seen in queue-operation meta records
+   * that haven't been matched to a later user_text yet. The first user_text
+   * whose trimmed text matches is rendered as a `btw` bubble and the entry
+   * is popped. */
+  pendingBtw: string[];
 }
 
 export interface ViewContext {

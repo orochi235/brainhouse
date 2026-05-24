@@ -54,6 +54,10 @@ export interface BubbleItem {
   role: 'user' | 'assistant';
   parts: BubblePart[];
   canceled?: boolean;
+  /** This user bubble was queued via `/btw` — the user interjected mid-turn
+   * rather than typing it as a fresh prompt. Rendered with an accent + chip;
+   * the immediately-following assistant bubble visually threads back to it. */
+  btw?: boolean;
 }
 
 export type ViewItem =

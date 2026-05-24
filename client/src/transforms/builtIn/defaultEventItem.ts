@@ -10,7 +10,16 @@
 
 import type { Stage1Transform } from '../types.ts';
 
-const ABSORBED_META = new Set(['subagent-meta', 'custom-title', 'agent-name']);
+const ABSORBED_META = new Set([
+  'subagent-meta',
+  'custom-title',
+  'agent-name',
+  // /btw side channel: `queue-operation` is consumed by `tagBtwUserText`
+  // already, but listed here for defense-in-depth. `attachment` records
+  // mirror the same prompt and would render as a noisy duplicate.
+  'queue-operation',
+  'attachment',
+]);
 
 export const defaultEventItem: Stage1Transform = {
   kind: 'view',

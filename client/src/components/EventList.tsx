@@ -112,10 +112,14 @@ function Bubble({
 }) {
   return (
     <li
-      className={classNames(`event event-${item.role}_text`, item.canceled && 'canceled')}
+      className={classNames(
+        `event event-${item.role}_text`,
+        item.canceled && 'canceled',
+        item.btw && 'is-btw',
+      )}
       onClick={() => onBubbleClick?.(item.event)}
     >
-      <div className="bubble">
+      <div className={classNames('bubble', item.btw && 'is-btw')}>
         {item.parts.map((part, i) => (
           <BubblePartView
             key={`${item.event.uuid}-${i}`}

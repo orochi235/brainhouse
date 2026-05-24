@@ -519,6 +519,92 @@ describe('preprocessEvents', () => {
       expect(text).toMatch(/pick any/i);
     });
   });
+
+  describe('/btw queue-operation → marked user bubble', () => {
+    const queueOp = (content: string) =>
+      ev('meta', {
+        record_type: 'queue-operation',
+        raw: { type: 'queue-operation', operation: 'enqueue', content },
+      });
+
+    it('pairs a queue-operation enqueue with the later user_text and marks it btw', () => {
+      const { items } = preprocessEvents([
+        userText('do thing'),
+        asstText('working on it'),
+        queueOp('also rename foo to bar'),
+        userText('also rename foo to bar'),
+      ]);
+      expect(items.map((i) => i.type)).toEqual(['bubble', 'bubble', 'bubble']);
+      const btw = items[2];
+      if (btw?.type !== 'bubble') throw new Error('expected bubble');
+      expect(btw.role).toBe('user');
+      expect(btw.btw).toBe(true);
+      const text = btw.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toBe('also rename foo to bar');
+    });
+
+    it('matches against trimmed text (whitespace tolerated on either side)', () => {
+      const { items } = preprocessEvents([
+        queueOp('a quick note'),
+        userText('  a quick note\n'),
+      ]);
+      expect(items).toHaveLength(1);
+      const b = items[0];
+      if (b?.type !== 'bubble') throw new Error('expected bubble');
+      expect(b.btw).toBe(true);
+    });
+
+    it('non-/btw user_text passes through without the btw flag', () => {
+      const { items } = preprocessEvents([userText('typed normally')]);
+      expect(items).toHaveLength(1);
+      const b = items[0];
+      if (b?.type !== 'bubble') throw new Error('expected bubble');
+      expect(b.btw).toBeUndefined();
+    });
+
+    it('suppresses the queue-operation meta from the rendered list', () => {
+      const { items } = preprocessEvents([queueOp('queued prompt')]);
+      // No bubble yet (no matching user_text) and the meta itself is consumed.
+      expect(items).toEqual([]);
+    });
+
+    it('suppresses attachment side-channel records', () => {
+      const { items } = preprocessEvents([
+        ev('meta', {
+          record_type: 'attachment',
+          raw: { type: 'attachment', attachment: { type: 'queued_command', prompt: 'x' } },
+        }),
+      ]);
+      expect(items).toEqual([]);
+    });
+
+    it('pops each pending entry — two /btw prompts pair with two user_texts in order', () => {
+      const { items } = preprocessEvents([
+        queueOp('one'),
+        queueOp('two'),
+        userText('one'),
+        userText('two'),
+      ]);
+      const flags = items
+        .filter((i) => i.type === 'bubble')
+        .map((i) => (i.type === 'bubble' ? i.btw : undefined));
+      expect(flags).toEqual([true, true]);
+    });
+
+    it('ignores non-enqueue queue-operation records (dequeue etc.)', () => {
+      const { items } = preprocessEvents([
+        ev('meta', {
+          record_type: 'queue-operation',
+          raw: { type: 'queue-operation', operation: 'dequeue', content: 'x' },
+        }),
+        userText('x'),
+      ]);
+      expect(items).toHaveLength(1);
+      const b = items[0];
+      if (b?.type !== 'bubble') throw new Error('expected bubble');
+      expect(b.btw).toBeUndefined();
+    });
+  });
 });
 
 describe('extractLastChecklist', () => {

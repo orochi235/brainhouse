@@ -25,7 +25,12 @@ export function runViewPipeline(
 ): PreprocessResult {
   const ctx: ViewContext = {
     allEvents: events,
-    scratch: { absorbedToolUseIds: new Set(), pending: false, checklist: null },
+    scratch: {
+      absorbedToolUseIds: new Set(),
+      pending: false,
+      checklist: null,
+      pendingBtw: [],
+    },
   };
   const stage1 = transforms.filter(isStage1);
   const stage2 = transforms.filter(isStage2);

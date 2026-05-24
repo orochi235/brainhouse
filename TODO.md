@@ -1,59 +1,5 @@
 # brainhouse — project todos
 
-## [HIGH] Render /btw queued prompts as marked user bubbles + thread
-Today `/btw` prompts render as regular user bubbles at delivery time —
-indistinguishable from prompts the user typed normally. We want them
-visually distinct (the user is interrupting their own in-flight turn)
-and grouped with the assistant's reply that addressed them.
-
-How `/btw` looks in the JSONL: when the user fires `/btw`, Claude Code
-writes two uuid-less meta records at queue time:
-  - `{"type":"queue-operation","operation":"enqueue","content":"<the prompt>","sessionId":…}`
-  - `{"type":"attachment","attachment":{"type":"queued_command","prompt":"<the prompt>","commandMode":"prompt"},…}`
-Then on the next turn the same text arrives as a normal `user_text`.
-Both meta records lacked `uuid`s; the parser now synthesizes one from
-record content, so they flow through `panel.events` instead of getting
-deduped to nothing (the fix that made `/rename` work again).
-
-Plan:
-1. New stage-1 transform `tagBtwUserText` (in
-   `client/src/transforms/builtIn/`): when a `meta` event with
-   `record_type === 'queue-operation'` is seen, stash its `content`
-   into the transform `ctx.scratch` (e.g. `pendingBtw: string[]`).
-   When the next `user_text` arrives whose trimmed text matches one
-   of those stashed strings, mark its emitted bubble with
-   `parts.push({kind:'badge', text:'btw'})` (or a new bubble-level
-   flag) and pop the entry. Falls through unmodified for non-/btw
-   user_texts.
-2. Suppress the noisy `queue-operation` + `attachment` meta records
-   from rendering — they're already represented by the marked
-   user bubble. Add their record_types to whatever default-suppression
-   filter `defaultEventItem.ts` uses.
-3. CSS: a small `.bubble.is-btw` variant — e.g. left border accent
-   + a tiny "↩ btw" chip. Keep it understated.
-4. Thread heuristic (cheaper than it sounds): the assistant_text that
-   *follows* a /btw bubble is "in response to it." A pure
-   visual-grouping pass at render time — wrap the /btw bubble and the
-   immediately-following assistant bubble in a `.bubble-thread`
-   container with a hairline left rail. No data-model change needed;
-   the pipeline already orders events chronologically.
-
-Files:
-- Pipeline + transforms: `client/src/transforms/builtIn/*.ts`,
-  `client/src/transforms/registry.ts`.
-- Default suppression of noisy meta record types lives in
-  `client/src/transforms/builtIn/defaultEventItem.ts`.
-- Bubble rendering: `client/src/components/EventList.tsx` (and the
-  `.bubble` CSS — search `.bubble` in `client/src/index.css`).
-- Tests pattern: `client/src/lib/pipeline.test.ts` (the
-  `AskUserQuestion → assistant bubble` describe block is a good
-  template — meta-record-driven transforms with paired user_text).
-
-Context: see `docs/assertions.md` entry for `AskUserQuestion` (it
-splits Q + A across an asst bubble and a separate user-side bubble,
-similar shape). Recent commit `fd90692` did the parser uuid fix and
-the AskUserQuestion split; rebase or branch off main.
-
 ## Coalesce file ops — richer diff rendering
 Basic coalescing already lands (`coalesceFileOps()` in `pipeline.ts`
 groups Read/Edit/Write/MultiEdit runs on the same path into a
