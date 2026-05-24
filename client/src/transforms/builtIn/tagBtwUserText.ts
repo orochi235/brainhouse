@@ -1,20 +1,22 @@
 /**
- * Renders `/btw` interjections as marked user bubbles. Claude Code's /btw
- * has two side-channel shapes in the JSONL, both handled here:
+ * Detects `/btw` interjections and flags the *next* assistant bubble as
+ * btw — the user bubble itself renders normally. Claude Code's /btw has
+ * two side-channel shapes in the JSONL, both handled here:
  *
  * 1. **Inline delivery (Claude Code ≥ 2.1.13x).** The agent is mid-turn,
  *    the queued prompt is delivered as an `attachment` record with
  *    `attachment.type === 'queued_command'` and `attachment.prompt`. There
  *    is **no** follow-up `type:user` record carrying the same text. The
- *    `attachment` IS the user input. We emit a btw user bubble from
- *    `prompt`. A preceding `queue-operation` enqueue is bookkeeping noise
- *    that we still consume but don't need to match against.
+ *    `attachment` IS the user input. We emit a plain user bubble from
+ *    `prompt` and set `pendingBtwAssistant` so the next assistant_text
+ *    bubble carries the btw chip.
  *
  * 2. **Deferred delivery (older flow).** The agent was idle, so the
  *    queued prompt eventually arrives as a normal `type:user` record with
  *    its own uuid. We stash any enqueued content from `queue-operation`
- *    in `ctx.scratch.pendingBtw` and mark the matching user_text as btw.
- *    Non-/btw user_texts fall through to `userTextBubble`.
+ *    in `ctx.scratch.pendingBtw` and, on the matching user_text, emit a
+ *    plain user bubble and set `pendingBtwAssistant`. Non-/btw user_texts
+ *    fall through to `userTextBubble`.
  *
  * In both flows, `queue-operation` records (enqueue/dequeue/popAll/remove)
  * are consumed and never rendered — they're queue bookkeeping. Other
@@ -29,9 +31,9 @@ export const tagBtwUserText: Stage1Transform = {
   kind: 'view',
   stage: 1,
   key: 'built-in.tag-btw-user-text',
-  name: '/btw queued prompt → marked user bubble',
+  name: '/btw queued prompt → flag next assistant bubble',
   description:
-    'Renders queued /btw prompts as user bubbles with btw:true — directly from queued_command attachment payloads, or by pairing queue-operation enqueues with a later user_text. Consumes the noisy queue-operation bookkeeping records.',
+    'Detects queued /btw prompts (queued_command attachment payloads or queue-operation/user_text pairs) and sets pendingBtwAssistant so the next assistant bubble renders with btw:true. The queued prompt itself emits a plain user bubble. Consumes the noisy queue-operation bookkeeping records.',
   run(event, items, ctx) {
     if (event.kind === 'meta') {
       if (event.payload.record_type === 'queue-operation') {
@@ -62,8 +64,8 @@ export const tagBtwUserText: Stage1Transform = {
             event: { ...event, kind: 'user_text', payload: { text: prompt } } as Event,
             role: 'user',
             parts: [{ kind: 'text', text: prompt }],
-            btw: true,
           });
+          ctx.scratch.pendingBtwAssistant = true;
           return true;
         }
         // Other attachment shapes fall through; defaultEventItem absorbs them.
@@ -75,15 +77,20 @@ export const tagBtwUserText: Stage1Transform = {
     const trimmed = text.trim();
     if (!trimmed) return false;
     const idx = ctx.scratch.pendingBtw.indexOf(trimmed);
-    if (idx < 0) return false;
+    if (idx < 0) {
+      // Non-/btw fresh prompt — clears any stale pending flag so a new
+      // turn doesn't accidentally inherit the chip.
+      ctx.scratch.pendingBtwAssistant = false;
+      return false;
+    }
     ctx.scratch.pendingBtw.splice(idx, 1);
     items.push({
       type: 'bubble',
       event,
       role: 'user',
       parts: [{ kind: 'text', text }],
-      btw: true,
     });
+    ctx.scratch.pendingBtwAssistant = true;
     return true;
   },
 };

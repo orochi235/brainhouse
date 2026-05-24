@@ -38,6 +38,11 @@ export interface Panel {
    * Plan, …). Used as the panel's small subtitle so the title can be the
    * task description itself instead of `agentType: description`. */
   agent_type: string | null;
+  /** For subagents: the original task description from `.meta.json`,
+   * captured once and never overwritten. Lets a parent panel join its
+   * `Task` tool_use entries to live child panels even after auto-title
+   * may have replaced the title. */
+  task_description: string | null;
   /** Optional account label (from prefs.roots[].label) identifying which
    * Claude config root owns this session. Client renders a small badge when
    * more than one account is configured. */
@@ -95,6 +100,14 @@ export interface Panel {
    * show "instrumentation overhead" against the live context_size. Not
    * persisted across server restarts — re-accumulates from the JSONL. */
   hook_overhead_tokens: number;
+  /** When set, this panel was just started via `/clear` and we want to
+   * suppress the *inherited* custom title that Claude Code re-emits into
+   * the fresh transcript. The first `custom-title` meta we see records
+   * its text here; identical subsequent records are dropped. The user's
+   * first real `user_text` post-/clear clears this. An explicit
+   * `/rename` to a *different* string is honored immediately and also
+   * clears the suppression. */
+  clear_title_suppression: { suppressed_title: string | null } | null;
 }
 
 export interface PanelDto {
@@ -103,6 +116,7 @@ export interface PanelDto {
   parent_panel_id: string | null;
   title: string;
   agent_type: string | null;
+  task_description: string | null;
   account_label: string | null;
   status: PanelStatus;
   started_at: number;
@@ -154,6 +168,12 @@ export class SessionStore {
   private readonly clock: () => number;
   private readonly panels = new Map<string, Panel>();
   private readonly store: Store | null;
+  /** Session ids that started via `/clear` whose panel hasn't been
+   * created yet. Drained at `ensurePanel` time to arm
+   * `panel.clear_title_suppression`. SessionStart hook events typically
+   * land before the first JSONL record for the new session, so the
+   * panel does not yet exist when supersede fires. */
+  private readonly pendingClearTitleSuppression = new Set<string>();
 
   constructor(opts: SessionStoreOptions = {}) {
     this.idleSeconds = opts.idleSeconds ?? 60;
@@ -473,6 +493,7 @@ export class SessionStore {
       parent_panel_id,
       title: initialTitle(id, kind),
       agent_type: null,
+      task_description: null,
       account_label: accountLabel,
       binned_at: null,
       awaiting_input: false,
@@ -481,6 +502,9 @@ export class SessionStore {
       tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
       context_size: 0,
       hook_overhead_tokens: 0,
+      clear_title_suppression: this.pendingClearTitleSuppression.delete(id)
+        ? { suppressed_title: null }
+        : null,
       status: 'live',
       // started_at is wall-clock-now so the panel "age" reflects the
       // observation; last_event_at/status_changed_at are stamped with the
@@ -507,11 +531,36 @@ export class SessionStore {
   }
 
   private maybeUpdateTitle(panel: Panel, event: Event, deltas: Delta[]): void {
+    // The first real user_text on a /clear'd session signals the user's
+    // first prompt post-clear. Any inherited-title suppression ends here
+    // — subsequent custom-title records (auto-emitted or explicit) flow
+    // normally. Slash-command artifacts (`<command-name>` etc.) are not
+    // real prompts; ignore them here too.
+    if (panel.clear_title_suppression && event.kind === 'user_text') {
+      const t = (event.payload.text ?? '').trim();
+      if (t && !/^<(local-command-(caveat|stdout)|command-(name|message|args))>/.test(t)) {
+        panel.clear_title_suppression = null;
+      }
+    }
     let title = panel.title;
     // Explicit /rename — always wins, regardless of panel kind or current title.
     if (event.kind === 'meta' && event.payload.record_type === 'custom-title') {
       const raw = (event.payload.raw ?? {}) as { customTitle?: string };
       const custom = (raw.customTitle ?? '').trim();
+      // /clear suppression: Claude Code re-emits the prior session's
+      // custom-title into the fresh transcript. The first one we see we
+      // remember; identical subsequent ones are dropped. A *different*
+      // customTitle is treated as an explicit /rename — honored, and the
+      // suppression clears.
+      if (panel.clear_title_suppression) {
+        const supp = panel.clear_title_suppression;
+        if (supp.suppressed_title === null) {
+          supp.suppressed_title = custom;
+          return;
+        }
+        if (custom === supp.suppressed_title) return;
+        panel.clear_title_suppression = null;
+      }
       if (custom) title = custom.length > 80 ? `${custom.slice(0, 79)}…` : custom;
     } else if (panel.kind === 'subagent') {
       if (event.kind !== 'meta') return;
@@ -523,6 +572,12 @@ export class SessionStore {
       if (agentType && panel.agent_type !== agentType) {
         panel.agent_type = agentType;
         deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+      }
+      // Capture the original task description once; never overwrite. The
+      // parent panel uses this to join its `Task` tool_use entries to live
+      // child panels even if auto-title later changes `panel.title`.
+      if (description && panel.task_description === null) {
+        panel.task_description = description;
       }
       // Title is the task description; agentType lives in the subtitle.
       if (description)
@@ -581,6 +636,7 @@ export class SessionStore {
       parent_panel_id: p.parent_panel_id,
       title: p.title,
       agent_type: p.agent_type,
+      task_description: p.task_description,
       account_label: p.account_label,
       binned_at: p.binned_at,
       status: p.status,
@@ -615,6 +671,21 @@ export class SessionStore {
    * `hook_overhead` side-channel record; we sum them onto the panel and
    * surface the running total in the DTO so the UI can show
    * "instrumentation overhead". */
+  /** Arm inherited-title suppression for a session about to start via
+   * `/clear`. If the panel already exists we set the marker directly;
+   * otherwise we stash the id and `ensurePanel` picks it up. The new
+   * session's first `custom-title` meta — which Claude Code carries
+   * over from the prior transcript — will be dropped. */
+  armClearTitleSuppression(panelId: string): void {
+    const panel = this.panels.get(panelId);
+    if (panel) {
+      panel.clear_title_suppression = { suppressed_title: null };
+      this.persistPanel(panel);
+      return;
+    }
+    this.pendingClearTitleSuppression.add(panelId);
+  }
+
   recordHookOverhead(panelId: string, tokens: number): Delta[] {
     const panel = this.panels.get(panelId);
     if (!panel) return [];
@@ -808,6 +879,7 @@ function panelRowToPanel(r: PanelRow): Panel {
     parent_panel_id: r.parent_panel_id,
     title: r.title,
     agent_type: r.agent_type,
+    task_description: null,
     account_label: r.account_label,
     status: r.status,
     started_at: r.started_at,
@@ -827,6 +899,10 @@ function panelRowToPanel(r: PanelRow): Panel {
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
     context_size: 0,
     hook_overhead_tokens: 0,
+    // Not persisted: a /clear's suppression window is short-lived and
+    // closes on the user's first post-clear prompt. If brainhouse
+    // restarts mid-window we accept the inherited title.
+    clear_title_suppression: null,
   };
 }
 

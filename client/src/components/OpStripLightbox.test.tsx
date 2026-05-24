@@ -49,7 +49,7 @@ describe('groupByFile', () => {
     const bash = op('Bash', { command: 'ls' }, 'out');
     const { files, nonFile } = groupByFile([a, bash]);
     expect(files).toHaveLength(1);
-    expect(files[0].path).toBe('/a.ts');
+    expect(files[0]!.path).toBe('/a.ts');
     expect(nonFile).toHaveLength(1);
     expect(nonFile[0]).toBe(bash);
   });
@@ -59,7 +59,7 @@ describe('groupByFile', () => {
     const a2 = fileChange('/a.ts', [op('Edit', { old_string: 'y', new_string: 'z' })]);
     const { files } = groupByFile([a1, a2]);
     expect(files).toHaveLength(1);
-    expect(files[0].ops).toHaveLength(2);
+    expect(files[0]!.ops).toHaveLength(2);
   });
 });
 
@@ -68,8 +68,8 @@ describe('buildTree', () => {
     const tree = buildTree(['/Users/x/src/a.ts', '/Users/x/src/b.ts']);
     // The whole /Users/x/src prefix collapses into one node.
     expect(tree.children).toHaveLength(1);
-    expect(tree.children[0].name).toBe('Users/x/src');
-    expect(tree.children[0].children.map((c) => c.name).sort()).toEqual(['a.ts', 'b.ts']);
+    expect(tree.children[0]!.name).toBe('Users/x/src');
+    expect(tree.children[0]!.children.map((c) => c.name).sort()).toEqual(['a.ts', 'b.ts']);
   });
 
   it('branches where paths diverge', () => {

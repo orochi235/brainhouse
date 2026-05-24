@@ -29,7 +29,9 @@ export function runViewPipeline(
       absorbedToolUseIds: new Set(),
       pending: false,
       checklist: null,
+      subagentSpawns: [],
       pendingBtw: [],
+      pendingBtwAssistant: false,
     },
   };
   const stage1 = transforms.filter(isStage1);
@@ -56,5 +58,10 @@ export function runViewPipeline(
     }
   }
 
-  return { items, checklist: ctx.scratch.checklist, pending: ctx.scratch.pending };
+  return {
+    items,
+    checklist: ctx.scratch.checklist,
+    pending: ctx.scratch.pending,
+    subagentSpawns: ctx.scratch.subagentSpawns,
+  };
 }

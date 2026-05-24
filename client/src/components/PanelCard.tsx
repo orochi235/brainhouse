@@ -3,19 +3,20 @@ import classNames from 'classnames';
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import trashIcon from '../assets/icons/trash.svg?raw';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
-import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
-import { HoverPopover } from './HoverPopover.tsx';
-import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
-import { TokenTooltip } from './TokenTooltip.tsx';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
+import type { SubagentSpawn } from '../lib/pipeline-types.ts';
 import { projectLabel } from '../lib/project.ts';
 import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
+import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
 import { usePrefs } from '../lib/usePrefs.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import { EventList } from './EventList.tsx';
+import { HoverPopover, TruncationTooltip } from './HoverPopover.tsx';
+import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
+import { TokenTooltip } from './TokenTooltip.tsx';
 import { ToolChip, ToolChips } from './ToolChips.tsx';
 
 /** How long after the user's last click in a panel we treat them as actively
@@ -53,6 +54,15 @@ interface Props {
   /** Hex color tied to the account. When set, stamps `--account-color`
    * on the panel so the badge + a subtle border tint pick it up. */
   accountColor?: string;
+  /** Live child panels (subagents this panel spawned). Joined against
+   * the parent's `Task` tool_use list to render the spawned-subagent
+   * section. Empty / undefined skips the section. */
+  subagents?: PanelState[];
+  /** Replay / fixture mode: suppress action affordances whose tRPC
+   * mutations would fail (panel id is synthetic) or have meaningless
+   * semantics. Currently hides the trash buttons and the debug
+   * dev-chip section in the tool palette. */
+  readOnly?: boolean;
 }
 
 /**
@@ -73,6 +83,8 @@ export function PanelCard({
   parentTitle,
   account,
   accountColor,
+  subagents,
+  readOnly,
 }: Props) {
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => {
@@ -189,7 +201,7 @@ export function PanelCard({
     lastStatusRef.current = panel.status;
   }, [panel.status]);
 
-  const { items, checklist, pending } = useMemo(
+  const { items, checklist, pending, subagentSpawns } = useMemo(
     () => preprocessEvents(panel.events),
     [panel.events],
   );
@@ -275,6 +287,7 @@ export function PanelCard({
           brokenOut={brokenOut}
           onToggleBrokenOut={onToggleBrokenOut}
           parentTitle={parentTitle}
+          readOnly={readOnly}
         />
         {panel.status !== 'mini' && (
           <PanelToolPalette
@@ -282,9 +295,13 @@ export function PanelCard({
             onHide={onHide}
             brokenOut={!!brokenOut}
             onToggleBrokenOut={onToggleBrokenOut}
+            readOnly={readOnly}
           />
         )}
         {checklist && <ChecklistPin items={checklist} />}
+        {subagentSpawns.length > 0 && (
+          <SubagentSection spawns={subagentSpawns} childPanels={subagents ?? []} />
+        )}
         <div
           className="panel-body"
           ref={bodyRef}
@@ -333,7 +350,9 @@ export function PanelCard({
 function TurnLightbox({ panel, events }: { panel: PanelState; events: Event[] }) {
   return (
     <>
-      <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
+      <TruncationTooltip text={panel.title}>
+        <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
+      </TruncationTooltip>
       <EventList events={events} startedAt={panel.started_at} cwd={panel.cwd} />
     </>
   );
@@ -372,6 +391,7 @@ function PanelHeader({
   brokenOut,
   onToggleBrokenOut,
   parentTitle,
+  readOnly,
 }: {
   panel: PanelState;
   now: number;
@@ -385,6 +405,7 @@ function PanelHeader({
   brokenOut?: boolean;
   onToggleBrokenOut?: () => void;
   parentTitle?: string | null;
+  readOnly?: boolean;
 }) {
   const lightbox = useLightbox();
   const isLive = panel.status === 'live';
@@ -474,14 +495,18 @@ function PanelHeader({
         </span>
       )}
       <span className="panel-titles">
-        <span className={classNames('panel-title', useTitleFlash(panel.autoTitledAt) && 'flash')}>
-          {renderInlineCode(panel.title)}
-        </span>
+        <TruncationTooltip text={panel.title}>
+          <span className={classNames('panel-title', useTitleFlash(panel.autoTitledAt) && 'flash')}>
+            {renderInlineCode(panel.title)}
+          </span>
+        </TruncationTooltip>
         <span className="panel-subtitle-row">
           {panel.kind === 'subagent' && panel.agent_type ? (
             <span className="panel-subtitle">{panel.agent_type}</span>
           ) : panel.cwd ? (
-            <span className="panel-subtitle panel-subtitle-cwd">{projectLabel(panel.cwd)}</span>
+            <TruncationTooltip text={panel.cwd}>
+              <span className="panel-subtitle panel-subtitle-cwd">{projectLabel(panel.cwd)}</span>
+            </TruncationTooltip>
           ) : null}
           {brokenOut && parentTitle && (
             <button
@@ -520,15 +545,13 @@ function PanelHeader({
           ) : (
             panel.status !== 'mini' && <span className="panel-idle">{idleLabel}</span>
           )}
-          <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} />
+          <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} readOnly={readOnly} />
         </span>
         {panel.status !== 'mini' && !onRestore && (
           <span className="panel-meta-row panel-meta-row-bottom">
             <HoverPopover
               className="panel-session-time"
-              content={
-                <SessionTimeTooltip startedAt={panel.started_at} isLive={isLive} />
-              }
+              content={<SessionTimeTooltip startedAt={panel.started_at} isLive={isLive} />}
             >
               <span aria-label="total session time">
                 {formatIdleCoarse(
@@ -568,10 +591,12 @@ function HeaderActions({
   panel,
   onHide,
   onRestore,
+  readOnly,
 }: {
   panel: PanelState;
   onHide?: () => void;
   onRestore?: () => void;
+  readOnly?: boolean;
 }) {
   // When the panel lives in the tray (onRestore provided), we swap `×` for
   // a restore affordance. A tray panel doesn't need closing — it's already
@@ -581,7 +606,7 @@ function HeaderActions({
     <>
       {/* Live panels host popout / fullscreen / close in the floating
        * PanelToolPalette; the header only renders these for done/mini. */}
-      {panel.status === 'mini' && (
+      {panel.status === 'mini' && !readOnly && (
         <button
           type="button"
           className="panel-btn panel-trash"
@@ -633,15 +658,17 @@ function PanelToolPalette({
   onHide,
   brokenOut,
   onToggleBrokenOut,
+  readOnly,
 }: {
   panel: PanelState;
   onHide?: () => void;
   brokenOut?: boolean;
   onToggleBrokenOut?: () => void;
+  readOnly?: boolean;
 }) {
   const lightbox = useLightbox();
   const { prefs } = usePrefs();
-  const debug = prefs.debug?.enabled === true;
+  const debug = prefs.debug?.enabled === true && !readOnly;
   const isParent = panel.kind === 'parent';
   const isSubWithParent = panel.kind === 'subagent' && !!panel.parent_panel_id;
   return (
@@ -727,6 +754,7 @@ function PanelToolPalette({
             ⤓
           </ToolChip>
         )}
+        {!readOnly && (
         <ToolChip
           title="Move to trash (reversible from prefs → Trash)"
           onClick={(e) => {
@@ -741,6 +769,7 @@ function PanelToolPalette({
             dangerouslySetInnerHTML={{ __html: trashIcon }}
           />
         </ToolChip>
+        )}
       </ToolChips>
     </div>
   );
@@ -748,21 +777,152 @@ function PanelToolPalette({
 
 function ChecklistPin({ items }: { items: ChecklistItem[] }) {
   const done = items.filter((i) => i.done).length;
+  const pct = items.length === 0 ? 0 : (done / items.length) * 100;
   return (
     <div className="panel-pinned">
       <div className="checklist-summary">
-        progress · {done} / {items.length}
+        <span>
+          progress · {done} / {items.length}
+        </span>
+      </div>
+      <div
+        className="checklist-progress"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={items.length}
+        aria-valuenow={done}
+      >
+        <div className="checklist-progress-fill" style={{ width: `${pct}%` }} />
       </div>
       <ul className="checklist">
-        {items.map((it, i) => (
-          <li key={`${i}-${it.text}`} className={it.done ? 'done' : undefined}>
-            <span className={classNames('check', it.done && 'done')}>{it.done ? '✓' : '○'}</span>
-            <span className="label">{it.text}</span>
-          </li>
+        {items.map((it, i) => {
+          const state = it.done ? 'done' : it.inProgress ? 'in-progress' : undefined;
+          const glyph = it.done ? '✓' : it.inProgress ? '◐' : '○';
+          return (
+            <li key={`${i}-${it.text}`} className={state}>
+              <span className={classNames('check', state)}>{glyph}</span>
+              <span className="label">{it.text}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Header section listing the subagents this panel has dispatched via the
+ * `Task` tool. Each row joins one spawn entry to its matching child panel
+ * (if it exists yet) so we can render the child's live progress next to
+ * the description. Clicking a row scrolls the child panel into view and
+ * pulses it briefly.
+ */
+function SubagentSection({
+  spawns,
+  childPanels,
+}: {
+  spawns: SubagentSpawn[];
+  childPanels: PanelState[];
+}) {
+  const remaining = [...childPanels];
+  // Match spawns to live child panels in event order (so the first spawn
+  // claims the first matching child), then reverse rows so newest is at
+  // the top of the rendered list. Matching order matters; render order
+  // doesn't, so this stays a pure presentation reversal.
+  const rows = spawns
+    .map((spawn) => {
+      const matchIdx = remaining.findIndex(
+        (c) =>
+          c.task_description === spawn.description &&
+          (spawn.agentType === null || c.agent_type === spawn.agentType),
+      );
+      const child = matchIdx >= 0 ? remaining.splice(matchIdx, 1)[0] : null;
+      return { spawn, child };
+    })
+    .reverse();
+  const liveCount = rows.filter(
+    (r) => r.spawn.status === 'running' || (r.child && !r.child.ended),
+  ).length;
+  const doneCount = rows.length - liveCount;
+  return (
+    <div className="panel-pinned subagent-section">
+      <div className="checklist-summary">
+        subagents · {doneCount} / {rows.length}
+        {liveCount > 0 ? ` · ${liveCount} live` : ''}
+      </div>
+      <ul className="subagent-list">
+        {rows.map(({ spawn, child }) => (
+          <SubagentRow key={spawn.toolUseId} spawn={spawn} child={child ?? null} />
         ))}
       </ul>
     </div>
   );
+}
+
+function SubagentRow({ spawn, child }: { spawn: SubagentSpawn; child: PanelState | null }) {
+  const status = effectiveStatus(spawn, child);
+  const glyph = status === 'done' ? '✓' : status === 'failed' ? '✗' : '◐';
+  const onClick = child ? () => focusPanel(child.id) : undefined;
+  const childPct = useMemo(() => childProgressPercent(child), [child]);
+  return (
+    <li className={classNames('subagent-row', status, child && 'has-child')}>
+      <button
+        type="button"
+        className="subagent-row-button"
+        onClick={onClick}
+        disabled={!onClick}
+        title={child ? `jump to ${child.title}` : 'subagent panel not visible yet'}
+      >
+        <span className={classNames('check', status)}>{glyph}</span>
+        <span className="label">{spawn.description}</span>
+        {spawn.agentType && <span className="subagent-row-type">{spawn.agentType}</span>}
+      </button>
+      {childPct !== null && (
+        <div
+          className="subagent-row-progress"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={childPct}
+        >
+          <div className="subagent-row-progress-fill" style={{ width: `${childPct}%` }} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** Returns the child's TodoWrite/checklist completion percent (0–100), or
+ * `null` when the child has no checklist. We run the full pipeline on the
+ * child's events here — it's memoized per child, and the same computation
+ * already runs inside the child's own PanelCard, so the cost is a duplicated
+ * pass only while the parent panel is mounted. */
+function childProgressPercent(child: PanelState | null): number | null {
+  if (!child) return null;
+  const { checklist } = preprocessEvents(child.events);
+  if (!checklist || checklist.length === 0) return null;
+  const done = checklist.filter((i) => i.done).length;
+  return Math.round((done / checklist.length) * 100);
+}
+
+function effectiveStatus(spawn: SubagentSpawn, child: PanelState | null): SubagentSpawn['status'] {
+  // Prefer the child's authoritative state when joined: a child that's
+  // ended (regardless of how) supersedes a still-pending parent-side
+  // tool_result. The reverse is also useful: a parent that saw a failed
+  // tool_result before the child panel was hidden/trashed should still
+  // show as failed.
+  if (spawn.status === 'failed' || spawn.status === 'canceled') return spawn.status;
+  if (child?.ended) return 'done';
+  if (spawn.status === 'done') return 'done';
+  return 'running';
+}
+
+function focusPanel(id: string): void {
+  const el = document.querySelector<HTMLElement>(`[data-panel-id="${CSS.escape(id)}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('focus-pulse');
+  window.setTimeout(() => el.classList.remove('focus-pulse'), 900);
 }
 
 function ThinkingIndicator({ started, now }: { started: number; now: number }) {
@@ -782,7 +942,9 @@ function ThinkingIndicator({ started, now }: { started: number; now: number }) {
 function PanelLightboxContent({ panel }: { panel: PanelState }) {
   return (
     <>
-      <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
+      <TruncationTooltip text={panel.title}>
+        <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
+      </TruncationTooltip>
       <EventList events={panel.events} cwd={panel.cwd} />
     </>
   );

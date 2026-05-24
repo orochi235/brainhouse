@@ -9,12 +9,13 @@
  *   - server validates against Zod schema + persists atomically
  */
 
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DEFAULT_EDITOR_TEMPLATE,
   EDITOR_PRESETS,
   editorPresetIdForTemplate,
 } from '../lib/filenameLinks.ts';
+import { useLightbox } from '../lib/lightbox.tsx';
 import { trpc } from '../trpc.ts';
 
 type Root = { path: string; label?: string; color?: string };
@@ -26,7 +27,6 @@ type SectionKey =
   | 'workspace'
   | 'editor'
   | 'storage'
-  | 'experimental'
   | 'debug'
   | 'trash';
 
@@ -42,6 +42,7 @@ interface PrefsDraft {
     showSessionTime: boolean;
     showTokens: boolean;
     showContext: boolean;
+    autoTitle: boolean;
   };
   messages: {
     thinking: boolean;
@@ -62,6 +63,7 @@ interface PrefsDraft {
     minRows: number;
     maxTileSpan: number;
     spawnSubagentsMinimized: boolean;
+    autoMinimizeOnClear: boolean;
   };
   storage: {
     persistEnabled: boolean;
@@ -69,9 +71,6 @@ interface PrefsDraft {
   };
   editor: {
     urlTemplate: string;
-  };
-  experimental: {
-    autoTitle: boolean;
   };
   debug: {
     enabled: boolean;
@@ -86,7 +85,6 @@ const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
   { key: 'workspace', icon: '▦', label: 'Workspace' },
   { key: 'editor', icon: '↗', label: 'Editor' },
   { key: 'storage', icon: '◫', label: 'Storage' },
-  { key: 'experimental', icon: '⚗', label: 'Experimental' },
   { key: 'debug', icon: '⌬', label: 'Debug' },
   { key: 'trash', icon: '🗑', label: 'Trash' },
 ];
@@ -98,12 +96,34 @@ export function PrefsModal({ initial, onClose }: { initial: PrefsDraft; onClose:
   const [active, setActive] = useState<SectionKey>('accounts');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bounce, setBounce] = useState(false);
+  const { setCloseGuard } = useLightbox();
+
+  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(initial), [draft, initial]);
+
+  // While dirty, intercept Esc / backdrop / × so the user has to make an
+  // explicit choice (save or revert) rather than silently losing edits.
+  // The footer also swaps to a Save/Revert pair when dirty, so there's no
+  // close affordance that does the wrong thing.
+  useEffect(() => {
+    if (!dirty) {
+      setCloseGuard(null);
+      return;
+    }
+    setCloseGuard(() => {
+      setBounce(true);
+      window.setTimeout(() => setBounce(false), 400);
+      return false;
+    });
+    return () => setCloseGuard(null);
+  }, [dirty, setCloseGuard]);
 
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
       await trpc.prefs.update.mutate(draft);
+      setCloseGuard(null);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -112,8 +132,10 @@ export function PrefsModal({ initial, onClose }: { initial: PrefsDraft; onClose:
     }
   };
 
+  const revert = () => setDraft(initial);
+
   return (
-    <div className="prefs-modal">
+    <div className={`prefs-modal${bounce ? ' bounce' : ''}`}>
       <h3 className="lightbox-title">preferences</h3>
       <div className="prefs-body">
         <nav className="prefs-rail" aria-label="Preference sections">
@@ -140,19 +162,27 @@ export function PrefsModal({ initial, onClose }: { initial: PrefsDraft; onClose:
           {active === 'workspace' && <WorkspaceSection draft={draft} setDraft={setDraft} />}
           {active === 'editor' && <EditorSection draft={draft} setDraft={setDraft} />}
           {active === 'storage' && <StorageSection draft={draft} setDraft={setDraft} />}
-          {active === 'experimental' && <ExperimentalSection draft={draft} setDraft={setDraft} />}
           {active === 'debug' && <DebugSection draft={draft} setDraft={setDraft} />}
           {active === 'trash' && <TrashSection />}
         </div>
       </div>
       {error && <p className="prefs-error">{error}</p>}
       <div className="prefs-actions">
-        <button type="button" className="prefs-cancel" onClick={onClose} disabled={busy}>
-          Cancel
-        </button>
-        <button type="button" className="prefs-save" onClick={save} disabled={busy}>
-          {busy ? 'Saving…' : 'Save'}
-        </button>
+        {dirty ? (
+          <>
+            <span className="prefs-dirty-note">Unsaved changes — save or revert to close.</span>
+            <button type="button" className="prefs-cancel" onClick={revert} disabled={busy}>
+              Revert
+            </button>
+            <button type="button" className="prefs-save" onClick={save} disabled={busy}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </>
+        ) : (
+          <button type="button" className="prefs-cancel" onClick={onClose} disabled={busy}>
+            Close
+          </button>
+        )}
       </div>
     </div>
   );
@@ -298,6 +328,12 @@ function DisplaySection({ draft, setDraft }: SectionProps) {
         checked={draft.display.showContext}
         onChange={(v) => set({ showContext: v })}
       />
+      <CheckboxField
+        label="Keep panel titles up to date"
+        hint="After each assistant turn, a background Stop hook runs `claude -p` on your own CLI auth to propose a panel title. Only fires when the panel is still using its short-id placeholder, or every 20 turns to check for drift. The model self-vetoes with KEEP when the current title still fits, so most calls are a no-op."
+        checked={draft.display.autoTitle}
+        onChange={(v) => set({ autoTitle: v })}
+      />
     </Section>
   );
 }
@@ -384,10 +420,12 @@ function SliderField({
 
 function CheckboxField({
   label,
+  hint,
   checked,
   onChange,
 }: {
   label: string;
+  hint?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
@@ -395,6 +433,7 @@ function CheckboxField({
     <label className="prefs-field prefs-checkbox-field">
       <span>{label}</span>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {hint && <span className="prefs-hint">{hint}</span>}
     </label>
   );
 }
@@ -458,6 +497,11 @@ function WorkspaceSection({ draft, setDraft }: SectionProps) {
         label="Spawn subsessions minimized"
         checked={draft.workspace.spawnSubagentsMinimized}
         onChange={(v) => set({ spawnSubagentsMinimized: v })}
+      />
+      <CheckboxField
+        label="Auto-minimize on /clear or /compact"
+        checked={draft.workspace.autoMinimizeOnClear}
+        onChange={(v) => set({ autoMinimizeOnClear: v })}
       />
     </Section>
   );
@@ -553,21 +597,6 @@ function DebugSection({ draft, setDraft }: SectionProps) {
         label="Debug mode"
         checked={draft.debug.enabled}
         onChange={(v) => set({ enabled: v })}
-      />
-    </Section>
-  );
-}
-
-function ExperimentalSection({ draft, setDraft }: SectionProps) {
-  const set = (patch: Partial<PrefsDraft['experimental']>) =>
-    setDraft({ ...draft, experimental: { ...draft.experimental, ...patch } });
-  return (
-    <Section title="Experimental" hint="Features in flight. Behavior may change or disappear.">
-      <CheckboxField
-        label="Keep my session names accurate (beta)"
-        hint="After each assistant turn, run `claude -p` on your own account to propose a panel title. Only fires when the panel is still using its short-id placeholder, or periodically to check for drift. The model self-vetoes with KEEP when the current title still fits, so most calls are a no-op."
-        checked={draft.experimental.autoTitle}
-        onChange={(v) => set({ autoTitle: v })}
       />
     </Section>
   );

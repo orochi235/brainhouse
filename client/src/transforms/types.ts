@@ -14,7 +14,7 @@
  */
 
 import type { Event } from '@server/parser.ts';
-import type { ChecklistItem, ViewItem } from '../lib/pipeline-types.ts';
+import type { ChecklistItem, SubagentSpawn, ViewItem } from '../lib/pipeline-types.ts';
 
 export interface ViewPipelineScratch {
   /** Tool_use ids whose result we've already absorbed elsewhere (e.g. an
@@ -25,11 +25,18 @@ export interface ViewPipelineScratch {
   pending: boolean;
   /** Most recent ```brainhouse-checklist block found in any bubble. */
   checklist: ChecklistItem[] | null;
+  /** Subagents the panel has spawned via `Task` tool_use, in event order.
+   * Populated by `taskSubagents`. */
+  subagentSpawns: SubagentSpawn[];
   /** Trimmed text of `/btw` prompts seen in queue-operation meta records
    * that haven't been matched to a later user_text yet. The first user_text
-   * whose trimmed text matches is rendered as a `btw` bubble and the entry
-   * is popped. */
+   * whose trimmed text matches is rendered as the queued prompt and the
+   * entry is popped. */
   pendingBtw: string[];
+  /** Set when a /btw prompt has just been emitted as a user bubble; the
+   * next assistant_text bubble consumes it and renders with `btw:true`.
+   * Cleared on a non-/btw user_text (a fresh prompt ends the chain). */
+  pendingBtwAssistant: boolean;
 }
 
 export interface ViewContext {

@@ -19,16 +19,35 @@ interface LightboxState {
     opts?: { variant?: 'rich' | 'text'; theme?: LightboxTheme | null },
   ) => void;
   close: () => void;
+  /** Install a guard. While set, attempts to close via Esc, backdrop
+   * click, or the ✕ button are routed through it: returning true allows
+   * the close, false blocks it. Pass `null` to clear. Cleared
+   * automatically on each `open()` so a guard from a prior modal never
+   * leaks. */
+  setCloseGuard: (guard: (() => boolean) | null) => void;
 }
 
 const Ctx = createContext<LightboxState | null>(null);
 
 export function LightboxProvider({ children }: { children: ReactNode }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeGuardRef = useRef<(() => boolean) | null>(null);
   const [content, setContent] = useState<ReactNode>(null);
   const [variant, setVariant] = useState<'rich' | 'text'>('rich');
 
+  const setCloseGuard = useCallback<LightboxState['setCloseGuard']>((g) => {
+    closeGuardRef.current = g;
+  }, []);
+
+  const tryClose = useCallback(() => {
+    const guard = closeGuardRef.current;
+    if (guard && !guard()) return;
+    dialogRef.current?.close();
+  }, []);
+
   const open = useCallback<LightboxState['open']>((c, opts) => {
+    // Clear any guard left behind by a previously-mounted modal.
+    closeGuardRef.current = null;
     setContent(c);
     setVariant(opts?.variant ?? 'rich');
     const d = dialogRef.current;
@@ -61,18 +80,28 @@ export function LightboxProvider({ children }: { children: ReactNode }) {
       if (!box) return;
       const r = box.getBoundingClientRect();
       if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
-        d.close();
+        tryClose();
       }
     };
     d.addEventListener('click', handler);
-    return () => d.removeEventListener('click', handler);
-  }, []);
+    // Esc fires the dialog's `cancel` event before the implicit close.
+    // preventDefault() on it suppresses the close so a guard can block.
+    const cancel = (e: Event) => {
+      const guard = closeGuardRef.current;
+      if (guard && !guard()) e.preventDefault();
+    };
+    d.addEventListener('cancel', cancel);
+    return () => {
+      d.removeEventListener('click', handler);
+      d.removeEventListener('cancel', cancel);
+    };
+  }, [tryClose]);
 
   return (
-    <Ctx.Provider value={{ open, close }}>
+    <Ctx.Provider value={{ open, close, setCloseGuard }}>
       {children}
       <dialog ref={dialogRef} className={`lightbox lightbox-${variant}`}>
-        <button type="button" className="lightbox-close" onClick={close} aria-label="Close">
+        <button type="button" className="lightbox-close" onClick={tryClose} aria-label="Close">
           ×
         </button>
         <div className="lightbox-inner">{content}</div>

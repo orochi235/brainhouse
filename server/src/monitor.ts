@@ -36,6 +36,11 @@ export interface MonitorOptions {
    * pruned on boot + once daily. Default 30 days. Ignored when no
    * `store` is provided. */
   eventsIndexRetentionDays?: number;
+  /** When true (default), `/clear` and `/compact` supersedes force the
+   * predecessor panel to `mini` after `SUPERSEDE_MINI_DELAY_MS`. When
+   * false, the supersede still dims/ends the panel but lets the normal
+   * done→mini timer take over. */
+  autoMinimizeOnClear?: boolean;
 }
 
 const DEFAULT_EVENTS_RETENTION_DAYS = 30;
@@ -61,6 +66,7 @@ export class TranscriptMonitor {
   private hookWatcher: HookEventWatcher | null = null;
   private pruneHandle: NodeJS.Timeout | null = null;
   private eventsIndexRetentionDays: number;
+  private autoMinimizeOnClear: boolean;
   /** rootPath → label. Used to translate watcher "sourceRoot" into a
    * human-readable account name on each ingest. */
   private readonly accountLabels: Map<string, string>;
@@ -87,6 +93,7 @@ export class TranscriptMonitor {
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
     this.eventsIndexRetentionDays = opts.eventsIndexRetentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS;
+    this.autoMinimizeOnClear = opts.autoMinimizeOnClear ?? true;
     const dir = opts.hookEventsDir === undefined ? defaultEventsDir() : opts.hookEventsDir;
     if (dir) {
       this.hookWatcher = new HookEventWatcher(dir, (e) => this.applyHookEvent(e));
@@ -107,6 +114,14 @@ export class TranscriptMonitor {
     // repopulate. Offsets are still useful within a single process
     // lifetime (e.g. setRoots hot-swap mid-run); just not across restarts.
     this.persistStore?.clearAllBootstrapOffsets();
+    // Hydrated panels reach subscribers through the initial trpc `snapshot`
+    // event, which bypasses `broadcast()` and therefore skips the
+    // lazy theme-load side effect. Re-attempt `.hued` for any panel that
+    // came back theme-less so subsequently-added theme files actually
+    // surface on restart instead of waiting for the next ingest.
+    for (const dto of this.store.snapshot()) {
+      if (dto.cwd && !dto.theme) void this.loadThemeFor(dto.id, dto.cwd);
+    }
     await this.watcher.start({ watch });
     if (this.hookWatcher) await this.hookWatcher.start();
     this.startTick();
@@ -134,6 +149,10 @@ export class TranscriptMonitor {
   setEventsIndexRetentionDays(days: number): void {
     this.eventsIndexRetentionDays = days;
     this.prune();
+  }
+
+  setAutoMinimizeOnClear(value: boolean): void {
+    this.autoMinimizeOnClear = value;
   }
 
   private startTick(): void {
@@ -178,6 +197,14 @@ export class TranscriptMonitor {
     const source = event.source;
     if (source !== 'clear' && source !== 'compact') return;
     if (!event.transcript_path) return;
+    // Manual /clear → arm inherited-title suppression on the new session
+    // so Claude Code's re-emission of the prior session's custom-title
+    // (carried over into the fresh transcript) doesn't auto-name the
+    // post-clear panel after the conversation it's replacing. /compact
+    // keeps the conversation so its title legitimately carries forward.
+    if (source === 'clear') {
+      this.store.armClearTitleSuppression(event.session_id);
+    }
     const encodedCwdDir = path.basename(path.dirname(event.transcript_path));
     if (!encodedCwdDir) return;
     const target = this.store.findSupersedablePanel({
@@ -191,13 +218,13 @@ export class TranscriptMonitor {
     for (const d of this.store.markEnded(target.id, 'hook_session_start_supersede')) {
       this.broadcast(d);
     }
-    this.scheduleSupersedeMini(target.id);
+    if (this.autoMinimizeOnClear) this.scheduleSupersedeMini(target.id);
     for (const sub of this.store.liveSubagentsOf(target.id)) {
       for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
       for (const d of this.store.markEnded(sub.id, 'hook_session_start_supersede')) {
         this.broadcast(d);
       }
-      this.scheduleSupersedeMini(sub.id);
+      if (this.autoMinimizeOnClear) this.scheduleSupersedeMini(sub.id);
     }
   }
 

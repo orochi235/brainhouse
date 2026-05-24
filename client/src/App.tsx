@@ -1,6 +1,6 @@
 import classNames from 'classnames';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { ConnTooltip } from './components/ConnTooltip.tsx';
 import { FlowsModal } from './components/FlowsModal.tsx';
 import { HoverPopover } from './components/HoverPopover.tsx';
@@ -23,11 +23,163 @@ import { useTheme } from './lib/preferences.ts';
 import { clearScrollPosition } from './lib/scrollMemory.ts';
 import { useIntentions } from './lib/useIntentions.ts';
 import { usePrefs } from './lib/usePrefs.ts';
+import { ReplayView, type ReplayInlineSource, type ReplaySource } from './ReplayView.tsx';
 import { trpc } from './trpc.ts';
 import { type PanelState, useDeltaStream } from './useDeltaStream.ts';
 import './app.css';
 
+/** Topbar brand label. Picks once per app mount from a tiered pool — each
+ * tier is `rarityFactor` times as likely as the previous, so common ≫
+ * uncommon ≫ rare ≫ epic ≫ legendary. Items within a tier share the
+ * tier's slice equally. Tweak `rarityFactor` below to make rare flavors
+ * more or less common; reload the page to reroll. */
+type Tier = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+
+const TIER_ORDER: Tier[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+
+/** How much rarer each tier is than the previous. 0.6 ⇒ each tier carries
+ * 60% of the previous tier's total weight. */
+const rarityFactor = 0.34;
+
+const TIER_COLOR: Record<Tier, string> = {
+  common: '#ffffff',
+  uncommon: '#1eff00',
+  rare: '#0070dd',
+  epic: '#a335ee',
+  legendary: '#ff8000',
+};
+
+const BRAND_OPTIONS: Array<{
+  label: string;
+  tier: Tier;
+  ariaLabel?: string;
+}> = [
+  { label: '🧠🏠', tier: 'common', ariaLabel: 'brainhouse' },
+  { label: 'Brainhouse', tier: 'common' },
+  { label: '脑屋', tier: 'uncommon', ariaLabel: 'brainhouse (zh)' },
+  { label: '/ˈbɹeɪnˌhaʊs/', tier: 'uncommon', ariaLabel: 'brainhouse (IPA)' },
+  { label: 'Brejnhauß', tier: 'uncommon', ariaLabel: 'brainhouse (de?)' },
+  { label: 'Cerebrodomus', tier: 'uncommon', ariaLabel: 'brainhouse (latinate)' },
+  { label: 'B̸r̷a̴i̸n̵h̷o̴u̶s̷e̵', tier: 'rare', ariaLabel: 'brainhouse (zalgo)' },
+  { label: '𝔅𝔯𝔞𝔦𝔫𝔥𝔬𝔲𝔰𝔢', tier: 'rare', ariaLabel: 'brainhouse (fraktur)' },
+  { label: 'ǝsnoɥuᴉɐɹq', tier: 'epic', ariaLabel: 'brainhouse (upside-down)' },
+  { label: 'ʙʀᴀɪɴʜᴏᴜsᴇ', tier: 'rare', ariaLabel: 'brainhouse (small caps)' },
+  { label: '8®41nh0u$€', tier: 'epic', ariaLabel: 'brainhouse (hardcore leet)' },
+  {
+    label:
+      'B̸̢̧̧̛̛̗̬̘̪̳̮͙͍͚̲̾́̃̌̆͒̓̕͝͠͝r̷̢̛̛͙̠̥͙̗͔̘͕̦̆̔̃̅̑̇̌͐͒̉͝͝͠a̵̢̢̧̧̛̛̛̮̭̩̱̳̘͖̖̥̾̇̈́̆̏̌̏̕͝͠͝ĭ̶̧̢̛̛̪̭̪̳̩͔̭̄͑̃̾̏̕͝͝͝n̴̢̢̧̛̛̮̩͔͖̦̭̪̳͒̂̆̃̅̏̕͝͠h̷̢̛̛͉̫̬̗̳͖̬̳̆̌̾̅̃̆̕͝͝͠ơ̴̢̢̛̩̗̱̥̳̮̳̆̇̌̑̃̅̕͝͠ư̵̢̛̦͖̘̗̱̬̥̇̆̄̌̅̏̕͝͠s̶̢̛̛̪̩͔̬̳̆̇̌͒̕͝͠͝e̷̢̛̛̥̭̬͔̩͒̂̆̃̕͝͠͠',
+    tier: 'epic',
+    ariaLabel: 'brainhouse (corrupted)',
+  },
+  { label: "Brian's House", tier: 'rare', ariaLabel: 'brainhouse' },
+  { label: "🙋🏻‍♂️'s 🏠", tier: 'rare', ariaLabel: "brian's house" },
+  { label: "Brian's Horse", tier: 'legendary', ariaLabel: 'brainhouse' },
+  { label: "🙋🏻‍♂️'s 🐴", tier: 'legendary', ariaLabel: "brian's horse" },
+];
+
+function weightFor(tier: Tier): number {
+  // Tier total = rarityFactor^tierIndex. Per-item weight = tier total /
+  // number of items in that tier (so within-tier choices are uniform).
+  const idx = TIER_ORDER.indexOf(tier);
+  const tierTotal = rarityFactor ** idx;
+  const count = BRAND_OPTIONS.reduce((n, o) => n + (o.tier === tier ? 1 : 0), 0);
+  return count === 0 ? 0 : tierTotal / count;
+}
+
+function pickBrand(): (typeof BRAND_OPTIONS)[number] {
+  // Easter egg: when the wall-clock (12-hour, unpadded hour) is all the
+  // same digit — 1:11, 2:22, 3:33, 4:44, 5:55, 11:11, each AM and PM —
+  // flatten the distribution so every option is equally likely. Twelve
+  // minutes a day where the gacha is suspended.
+  const flat = isAllSameDigitMinute();
+  const weights = flat
+    ? BRAND_OPTIONS.map(() => 1)
+    : BRAND_OPTIONS.map((o) => weightFor(o.tier));
+  const total = weights.reduce((s, w) => s + w, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < BRAND_OPTIONS.length; i++) {
+    r -= weights[i] ?? 0;
+    const opt = BRAND_OPTIONS[i];
+    if (opt && r <= 0) return opt;
+  }
+  return BRAND_OPTIONS[0]!;
+}
+
+function isAllSameDigitMinute(now: Date = new Date()): boolean {
+  // 12-hour, unpadded hour: 1:11 reads as "111" (3 chars), 11:11 as
+  // "1111" (4). Check that every digit equals the first.
+  const hour12 = now.getHours() % 12 || 12;
+  const s = String(hour12) + String(now.getMinutes()).padStart(2, '0');
+  for (const c of s) if (c !== s[0]) return false;
+  return true;
+}
+
+// Picked once per page load — module-init scope so the topbar gradient
+// and the brand label both see the same tier without prop-drilling.
+const CURRENT_BRAND = pickBrand();
+
+function BrandLabel() {
+  const brand = CURRENT_BRAND;
+  return (
+    <span aria-label={brand.ariaLabel ?? brand.label} title={`brainhouse · ${brand.tier}`}>
+      {brand.label}
+    </span>
+  );
+}
+
 export function App() {
+  const replay = useReplayEntry();
+  if (replay) return <ReplayView source={replay} />;
+  return <AppMain />;
+}
+
+/** Read `?replay=<path>` once at mount and watch for drag-dropped
+ * `.jsonl` files. Files become an inline replay source (browsers don't
+ * expose absolute paths); the query-string form goes through the
+ * allowlist-gated server loader. */
+function useReplayEntry(): ReplaySource | ReplayInlineSource | null {
+  const initial = (() => {
+    const q = new URLSearchParams(window.location.search).get('replay');
+    return q ? ({ kind: 'path', path: q } as ReplaySource) : null;
+  })();
+  const [source, setSource] = useState<ReplaySource | ReplayInlineSource | null>(initial);
+
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        document.body.classList.add('replay-drop-target');
+      }
+    };
+    const onDragLeave = (e: DragEvent) => {
+      // Leaving the window — dataTransfer is null on the window-level leave.
+      if (e.relatedTarget === null) document.body.classList.remove('replay-drop-target');
+    };
+    const onDrop = (e: DragEvent) => {
+      document.body.classList.remove('replay-drop-target');
+      const f = e.dataTransfer?.files?.[0];
+      if (!f || !f.name.endsWith('.jsonl')) return;
+      e.preventDefault();
+      const reader = new FileReader();
+      reader.onload = () => {
+        setSource({ kind: 'inline', label: f.name, contents: String(reader.result) });
+      };
+      reader.readAsText(f);
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
+  return source;
+}
+
+function AppMain() {
   const { status, panels } = useDeltaStream();
   const [theme, setTheme] = useTheme();
   const { prefs, refetch: refetchPrefs } = usePrefs();
@@ -246,8 +398,13 @@ export function App() {
 
   return (
     <LightboxProvider>
-      <header className="topbar">
-        <h1>Brainhouse</h1>
+      <header
+        className="topbar"
+        style={{ '--brand-tier-color': TIER_COLOR[CURRENT_BRAND.tier] } as CSSProperties}
+      >
+        <h1>
+          <BrandLabel />
+        </h1>
         <span className="topbar-controls">
           {prefs.debug?.enabled && (
             <>
@@ -674,8 +831,11 @@ function PanelWithSubagents({
   onToggleBrokenOutSub: (sub: PanelState) => void;
   panels: Map<string, PanelState>;
 }) {
-  const live = subagents.filter((s) => s.status === 'live');
-  const rest = subagents.filter((s) => s.status === 'done');
+  // Newest-first inside each status bucket so the most recently spawned
+  // subagent sits at the top of the parent's nested tray.
+  const byNewest = (a: PanelState, b: PanelState) => b.started_at - a.started_at;
+  const live = subagents.filter((s) => s.status === 'live').sort(byNewest);
+  const rest = subagents.filter((s) => s.status === 'done').sort(byNewest);
   // Breadcrumb only when this panel is a broken-out subagent — its parent
   // is somewhere else in the layout and the user might want to re-dock.
   const parentTitle =
@@ -696,6 +856,7 @@ function PanelWithSubagents({
         parentTitle={parentTitle}
         account={account}
         accountColor={accountColor}
+        subagents={subagents}
       />
       {(live.length > 0 || rest.length > 0 || placeholders.length > 0) && (
         <div className="panel-subagents">

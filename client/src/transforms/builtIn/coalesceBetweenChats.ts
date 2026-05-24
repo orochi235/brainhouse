@@ -64,6 +64,7 @@ function anchorOf(item: ViewItem): string {
     return item.anchorUuid;
   }
   if (item.type === 'bubble') return item.event.uuid;
+  if (item.type === 'interrupt-divider') return item.anchorUuid;
   return item.event.uuid;
 }
 
@@ -72,5 +73,6 @@ function anchorTs(item: ViewItem): string {
     return item.ts;
   }
   if (item.type === 'bubble') return item.event.ts;
+  if (item.type === 'interrupt-divider') return item.ts;
   return item.event.ts;
 }

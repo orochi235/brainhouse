@@ -1,91 +1,65 @@
 /**
- * Renderers for a single file-op (Read/Edit/MultiEdit/Write) and a naive
- * unified-diff. Shared between `FileChangeLightbox` (single-file zoomed view)
- * and `OpStripLightbox` (multi-file view-mode toggle).
+ * Renderers for a single file-op (Read/Edit/MultiEdit/Write) as a real
+ * split-pane diff with absolute line numbers when available. Shared
+ * between `FileChangeLightbox` (single-file zoomed view) and
+ * `OpStripLightbox` (multi-file view-mode toggle).
+ *
+ * Absolute line numbering, snapshot replay, and ±3 lines of surrounding
+ * context all live in `lib/fileSnapshot.ts`. Diff rendering itself lives
+ * in `<DiffTable>`. This module is purely the per-op header + dispatch.
  */
 import type { FileChangeItem } from '../lib/pipeline.ts';
+import type { OpRender } from '../lib/fileSnapshot.ts';
+import { DiffTable } from './DiffTable.tsx';
 
-export function OpView({ op }: { op: FileChangeItem['ops'][number] }) {
-  const use = op.use;
-  if (!use) return null;
-  const name = use.name;
-  const input = (use.input ?? {}) as Record<string, unknown>;
-  if (name === 'Read') {
-    const lines = lineCount(op.result?.content);
+export function OpView({
+  op,
+  render,
+}: {
+  op: FileChangeItem['ops'][number];
+  render: OpRender;
+}) {
+  const name = op.use?.name ?? '?';
+
+  if (render.kind === 'read') {
     return (
       <section className="file-change-hunk file-change-hunk-read">
-        <header>Read{lines !== null ? ` · ${lines} lines` : ''}</header>
+        <header>Read{render.lines !== null ? ` · ${render.lines} lines` : ''}</header>
       </section>
     );
   }
-  if (name === 'Edit') {
+
+  if (render.kind === 'edit') {
+    const label = name === 'MultiEdit' ? `MultiEdit · ${render.hunks.length} edits` : 'Edit';
     return (
       <section className="file-change-hunk">
-        <header>Edit</header>
-        <Diff
-          before={typeof input.old_string === 'string' ? input.old_string : ''}
-          after={typeof input.new_string === 'string' ? input.new_string : ''}
-        />
+        <header>{label}</header>
+        {render.hunks.map((h, i) => (
+          <DiffTable key={i} hunk={h} />
+        ))}
       </section>
     );
   }
-  if (name === 'MultiEdit') {
-    const edits = Array.isArray(input.edits) ? input.edits : [];
+
+  if (render.kind === 'write') {
+    const label = render.isFullReplace ? 'Write · diff vs prior content' : 'Write · entire file';
     return (
       <section className="file-change-hunk">
-        <header>MultiEdit · {edits.length} edits</header>
-        {edits.map((edit, i) => {
-          if (!edit || typeof edit !== 'object') return null;
-          const e = edit as Record<string, unknown>;
-          return (
-            <Diff
-              key={i}
-              before={typeof e.old_string === 'string' ? e.old_string : ''}
-              after={typeof e.new_string === 'string' ? e.new_string : ''}
-            />
-          );
-        })}
+        <header>{label}</header>
+        {render.hunks.map((h, i) => (
+          <DiffTable key={i} hunk={h} />
+        ))}
       </section>
     );
   }
-  if (name === 'Write') {
-    return (
-      <section className="file-change-hunk">
-        <header>Write · entire file</header>
-        <Diff before="" after={typeof input.content === 'string' ? input.content : ''} />
-      </section>
-    );
-  }
+
+  // Unknown tool — fall back to a raw input dump.
+  const input = (op.use?.input ?? {}) as Record<string, unknown>;
   return (
     <section className="file-change-hunk">
       <header>{name}</header>
       <pre className="file-change-raw">{JSON.stringify(input, null, 2)}</pre>
     </section>
-  );
-}
-
-/** Naive unified-diff renderer: shows the before block as `-` lines, then
- * the after block as `+` lines. Good-enough for the common Edit case where
- * old_string and new_string are localized; a real LCS-based diff can come
- * later. */
-export function Diff({ before, after }: { before: string; after: string }) {
-  const beforeLines = before === '' ? [] : before.split('\n');
-  const afterLines = after === '' ? [] : after.split('\n');
-  return (
-    <pre className="file-change-diff">
-      {beforeLines.map((l, i) => (
-        <div key={`b${i}`} className="diff-del">
-          <span className="diff-marker">-</span>
-          {l}
-        </div>
-      ))}
-      {afterLines.map((l, i) => (
-        <div key={`a${i}`} className="diff-add">
-          <span className="diff-marker">+</span>
-          {l}
-        </div>
-      ))}
-    </pre>
   );
 }
 

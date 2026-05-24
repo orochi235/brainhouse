@@ -27,7 +27,7 @@ export function rehypeFilenameLinks(options: RehypeFilenameLinksOptions) {
 
   function transformTextNode(node: Text): ElementContent[] | null {
     const segs = segmentFilenameLinks(node.value);
-    if (segs.length === 1 && segs[0].kind === 'text') return null;
+    if (segs.length === 1 && segs[0]!.kind === 'text') return null;
     const out: ElementContent[] = [];
     for (const s of segs) {
       if (s.kind === 'text') {
@@ -77,6 +77,6 @@ export function rehypeFilenameLinks(options: RehypeFilenameLinksOptions) {
   }
 
   return (tree: Root) => {
-    walk(tree, false);
+    walk(tree as unknown as { children: ElementContent[] }, false);
   };
 }

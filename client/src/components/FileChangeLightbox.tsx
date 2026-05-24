@@ -6,11 +6,14 @@
  *   - Write:     the new file content as one big "all replaced" hunk
  */
 
+import { useMemo } from 'react';
 import { LinkifyText } from '../lib/filenameLinksContext.tsx';
+import { reconstructFile } from '../lib/fileSnapshot.ts';
 import type { FileChangeItem } from '../lib/pipeline.ts';
 import { OpView, summarizeFileChange } from './fileOpView.tsx';
 
 export function FileChangeLightbox({ item }: { item: FileChangeItem }) {
+  const renders = useMemo(() => reconstructFile(item.ops), [item.ops]);
   return (
     <div className="file-change-lightbox">
       <h3 className="lightbox-title">
@@ -20,9 +23,11 @@ export function FileChangeLightbox({ item }: { item: FileChangeItem }) {
         {item.ops.length} operations · {summarizeFileChange(item)}
       </p>
       <div className="file-change-hunks">
-        {item.ops.map((op, i) => (
-          <OpView key={`${op.anchorUuid}-${i}`} op={op} />
-        ))}
+        {item.ops.map((op, i) => {
+          const render = renders[i];
+          if (!render) return null;
+          return <OpView key={`${op.anchorUuid}-${i}`} op={op} render={render} />;
+        })}
       </div>
     </div>
   );

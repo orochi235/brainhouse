@@ -18,7 +18,7 @@ export const assistantTextBubble: Stage1Transform = {
   name: 'foldToolAck + assistant_text bubble',
   description:
     'Emits an assistant bubble. A short assistant_text (<=200 chars, no blank line, no code fence) immediately after a tool capsule is folded into the capsule as its ack footer.',
-  run(event, items) {
+  run(event, items, ctx) {
     if (event.kind !== 'assistant_text') return false;
     const text = (event.payload.text ?? '').trim();
     const last = items[items.length - 1];
@@ -27,11 +27,14 @@ export const assistantTextBubble: Stage1Transform = {
       last.ack = text;
       return true;
     }
+    const btw = ctx.scratch.pendingBtwAssistant;
+    ctx.scratch.pendingBtwAssistant = false;
     items.push({
       type: 'bubble',
       event,
       role: 'assistant',
       parts: [{ kind: 'text', text: event.payload.text ?? '' }],
+      ...(btw ? { btw: true } : {}),
     });
     return true;
   },

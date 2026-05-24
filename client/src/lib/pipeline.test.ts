@@ -333,6 +333,74 @@ describe('preprocessEvents', () => {
     ]);
   });
 
+  it('routes TodoWrite tool calls into the pinned checklist and suppresses the capsule', () => {
+    const { items, checklist } = preprocessEvents([
+      userText('go'),
+      toolUse('t1', 'TodoWrite', {
+        todos: [
+          { content: 'one', status: 'completed', activeForm: 'doing one' },
+          { content: 'two', status: 'in_progress', activeForm: 'doing two' },
+          { content: 'three', status: 'pending', activeForm: 'doing three' },
+        ],
+      }),
+    ]);
+    expect(checklist).toEqual([
+      { done: true, text: 'one', inProgress: false },
+      { done: false, text: 'two', inProgress: true },
+      { done: false, text: 'three', inProgress: false },
+    ]);
+    // No tool capsule for the TodoWrite call.
+    expect(items.find((i) => i.type === 'tool')).toBeUndefined();
+  });
+
+  it('TodoWrite uses the latest call when multiple are emitted', () => {
+    const { checklist } = preprocessEvents([
+      toolUse('t1', 'TodoWrite', { todos: [{ content: 'a', status: 'pending' }] }),
+      toolUse('t2', 'TodoWrite', {
+        todos: [
+          { content: 'a', status: 'completed' },
+          { content: 'b', status: 'in_progress' },
+        ],
+      }),
+    ]);
+    expect(checklist).toEqual([
+      { done: true, text: 'a', inProgress: false },
+      { done: false, text: 'b', inProgress: true },
+    ]);
+  });
+
+  it('accumulates Task tool_use spawns and tracks their result status', () => {
+    const { subagentSpawns } = preprocessEvents([
+      toolUse('t1', 'Task', { description: 'do A', subagent_type: 'general-purpose' }),
+      toolUse('t2', 'Task', { description: 'do B', subagent_type: 'Explore' }),
+      toolResult('t1', 'A done'),
+      toolResult('t2', 'B failed', true),
+    ]);
+    expect(subagentSpawns).toEqual([
+      {
+        toolUseId: 't1',
+        description: 'do A',
+        agentType: 'general-purpose',
+        status: 'done',
+        order: 0,
+      },
+      {
+        toolUseId: 't2',
+        description: 'do B',
+        agentType: 'Explore',
+        status: 'failed',
+        order: 1,
+      },
+    ]);
+  });
+
+  it('skips Task tool_use with no description', () => {
+    const { subagentSpawns } = preprocessEvents([
+      toolUse('t1', 'Task', { subagent_type: 'Explore' }),
+    ]);
+    expect(subagentSpawns).toEqual([]);
+  });
+
   describe('interrupt marker → canceled turn', () => {
     const interrupt = () => userText('[Request interrupted by user]');
 
@@ -436,7 +504,7 @@ describe('preprocessEvents', () => {
       expect(asstText).not.toMatch(/Answer:/);
       expect(reply.role).toBe('user');
       const replyText = reply.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
-      expect(replyText).toBe('**yes**');
+      expect(replyText).toBe('yes');
     });
 
     it('parses the Claude Code answer-string form ("Q"="A")', () => {
@@ -456,10 +524,10 @@ describe('preprocessEvents', () => {
       if (reply?.type !== 'bubble') throw new Error('expected reply bubble');
       expect(reply.role).toBe('user');
       const text = reply.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
-      expect(text).toBe('**SQLite**');
+      expect(text).toBe('SQLite');
     });
 
-    it('renders multi-select answers as joined bolded labels', () => {
+    it('renders multi-select answers as joined labels', () => {
       const { items } = preprocessEvents([
         toolUse('q1', 'AskUserQuestion', {
           questions: [
@@ -475,7 +543,7 @@ describe('preprocessEvents', () => {
       const reply = items[1];
       if (reply?.type !== 'bubble') throw new Error('expected reply bubble');
       const text = reply.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
-      expect(text).toBe('**a**, **c**');
+      expect(text).toBe('a, c');
     });
 
     it('marks a rejected tool_result as (no answer)', () => {
@@ -520,49 +588,64 @@ describe('preprocessEvents', () => {
     });
   });
 
-  describe('/btw queue-operation → marked user bubble', () => {
+  describe('/btw queued prompt → marks next assistant bubble', () => {
     const queueOp = (content: string) =>
       ev('meta', {
         record_type: 'queue-operation',
         raw: { type: 'queue-operation', operation: 'enqueue', content },
       });
 
-    it('pairs a queue-operation enqueue with the later user_text and marks it btw', () => {
+    it('queued user_text renders plain; the following assistant bubble is marked btw', () => {
       const { items } = preprocessEvents([
         userText('do thing'),
         asstText('working on it'),
         queueOp('also rename foo to bar'),
         userText('also rename foo to bar'),
+        asstText('renamed'),
       ]);
-      expect(items.map((i) => i.type)).toEqual(['bubble', 'bubble', 'bubble']);
-      const btw = items[2];
-      if (btw?.type !== 'bubble') throw new Error('expected bubble');
-      expect(btw.role).toBe('user');
-      expect(btw.btw).toBe(true);
-      const text = btw.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      expect(bubbles.map((b) => b.type === 'bubble' && b.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ]);
+      const btwUser = bubbles[2];
+      const btwAsst = bubbles[3];
+      if (btwUser?.type !== 'bubble' || btwAsst?.type !== 'bubble') {
+        throw new Error('expected bubbles');
+      }
+      expect(btwUser.btw).toBeUndefined();
+      const text = btwUser.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
       expect(text).toBe('also rename foo to bar');
+      expect(btwAsst.btw).toBe(true);
     });
 
     it('matches against trimmed text (whitespace tolerated on either side)', () => {
       const { items } = preprocessEvents([
         queueOp('a quick note'),
         userText('  a quick note\n'),
+        asstText('noted'),
       ]);
-      expect(items).toHaveLength(1);
-      const b = items[0];
-      if (b?.type !== 'bubble') throw new Error('expected bubble');
-      expect(b.btw).toBe(true);
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      expect(bubbles).toHaveLength(2);
+      const [u, a] = bubbles;
+      if (u?.type !== 'bubble' || a?.type !== 'bubble') throw new Error('expected bubbles');
+      expect(u.btw).toBeUndefined();
+      expect(a.btw).toBe(true);
     });
 
-    it('non-/btw user_text passes through without the btw flag', () => {
-      const { items } = preprocessEvents([userText('typed normally')]);
-      expect(items).toHaveLength(1);
-      const b = items[0];
-      if (b?.type !== 'bubble') throw new Error('expected bubble');
-      expect(b.btw).toBeUndefined();
+    it('non-/btw user_text passes through without flagging the next assistant', () => {
+      const { items } = preprocessEvents([userText('typed normally'), asstText('reply')]);
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      expect(bubbles).toHaveLength(2);
+      for (const b of bubbles) {
+        if (b.type !== 'bubble') throw new Error('expected bubble');
+        expect(b.btw).toBeUndefined();
+      }
     });
 
-    it('renders a queued_command attachment directly as a btw user bubble (no later user_text)', () => {
+    it('queued_command attachment renders as a plain user bubble; next assistant is btw', () => {
       // Inline delivery flow (Claude Code ≥ 2.1.13x): the attachment IS the
       // user input; there is no follow-up `type:user` record.
       const { items } = preprocessEvents([
@@ -578,17 +661,20 @@ describe('preprocessEvents', () => {
             },
           },
         }),
+        asstText('it means…'),
       ]);
-      expect(items).toHaveLength(1);
-      const b = items[0];
-      if (b?.type !== 'bubble') throw new Error('expected bubble');
-      expect(b.role).toBe('user');
-      expect(b.btw).toBe(true);
-      const text = b.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      expect(bubbles).toHaveLength(2);
+      const [u, a] = bubbles;
+      if (u?.type !== 'bubble' || a?.type !== 'bubble') throw new Error('expected bubbles');
+      expect(u.role).toBe('user');
+      expect(u.btw).toBeUndefined();
+      const text = u.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
       expect(text).toBe('what does that first part mean?');
+      expect(a.btw).toBe(true);
     });
 
-    it('queued_command attachment alone (no preceding queue-operation) still renders as btw', () => {
+    it('queued_command attachment alone still flags the next assistant', () => {
       const { items } = preprocessEvents([
         ev('meta', {
           record_type: 'attachment',
@@ -597,11 +683,13 @@ describe('preprocessEvents', () => {
             attachment: { type: 'queued_command', prompt: 'standalone btw' },
           },
         }),
+        asstText('ok'),
       ]);
-      expect(items).toHaveLength(1);
-      const b = items[0];
-      if (b?.type !== 'bubble') throw new Error('expected bubble');
-      expect(b.btw).toBe(true);
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      expect(bubbles).toHaveLength(2);
+      const a = bubbles[1];
+      if (a?.type !== 'bubble') throw new Error('expected bubble');
+      expect(a.btw).toBe(true);
     });
 
     it('non-queued attachment shapes fall through (defaultEventItem absorbs them)', () => {
@@ -621,17 +709,19 @@ describe('preprocessEvents', () => {
       expect(items).toEqual([]);
     });
 
-    it('pops each pending entry — two /btw prompts pair with two user_texts in order', () => {
+    it('two /btw prompts → each pairs with the following assistant bubble', () => {
       const { items } = preprocessEvents([
         queueOp('one'),
         queueOp('two'),
         userText('one'),
+        asstText('reply one'),
         userText('two'),
+        asstText('reply two'),
       ]);
-      const flags = items
-        .filter((i) => i.type === 'bubble')
-        .map((i) => (i.type === 'bubble' ? i.btw : undefined));
-      expect(flags).toEqual([true, true]);
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      const flags = bubbles.map((i) => (i.type === 'bubble' ? i.btw : undefined));
+      // user, assistant(btw), user, assistant(btw)
+      expect(flags).toEqual([undefined, true, undefined, true]);
     });
 
     it('ignores non-enqueue queue-operation records (dequeue etc.)', () => {
@@ -641,11 +731,28 @@ describe('preprocessEvents', () => {
           raw: { type: 'queue-operation', operation: 'dequeue', content: 'x' },
         }),
         userText('x'),
+        asstText('reply'),
       ]);
-      expect(items).toHaveLength(1);
-      const b = items[0];
-      if (b?.type !== 'bubble') throw new Error('expected bubble');
-      expect(b.btw).toBeUndefined();
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      expect(bubbles).toHaveLength(2);
+      for (const b of bubbles) {
+        if (b.type !== 'bubble') throw new Error('expected bubble');
+        expect(b.btw).toBeUndefined();
+      }
+    });
+
+    it('a fresh user_text between /btw and the assistant reply clears the pending flag', () => {
+      // queue-op enqueues but no matching user_text fires; a different
+      // user_text comes in → that's a fresh turn, not the queued one. The
+      // assistant reply that follows should not inherit the chip.
+      const { items } = preprocessEvents([
+        queueOp('queued thing'),
+        userText('something else entirely'),
+        asstText('reply'),
+      ]);
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      const flags = bubbles.map((i) => (i.type === 'bubble' ? i.btw : undefined));
+      expect(flags).toEqual([undefined, undefined]);
     });
   });
 });

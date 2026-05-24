@@ -22,6 +22,7 @@ export interface ClientPrefs {
     showSessionTime: boolean;
     showTokens: boolean;
     showContext: boolean;
+    autoTitle: boolean;
   };
   messages: {
     thinking: boolean;
@@ -36,6 +37,7 @@ export interface ClientPrefs {
     minRows: number;
     maxTileSpan: number;
     spawnSubagentsMinimized: boolean;
+    autoMinimizeOnClear: boolean;
   };
   timings: {
     idleSeconds: number;
@@ -50,9 +52,6 @@ export interface ClientPrefs {
   };
   editor: {
     urlTemplate: string;
-  };
-  experimental: {
-    autoTitle: boolean;
   };
   debug: {
     enabled: boolean;
@@ -70,6 +69,7 @@ const DEFAULT_PREFS: ClientPrefs = {
     showSessionTime: true,
     showTokens: true,
     showContext: true,
+    autoTitle: true,
   },
   messages: {
     thinking: true,
@@ -79,12 +79,17 @@ const DEFAULT_PREFS: ClientPrefs = {
     fileChanges: true,
     opStrips: true,
   },
-  workspace: { minCols: 1, minRows: 1, maxTileSpan: 0, spawnSubagentsMinimized: false },
+  workspace: {
+    minCols: 1,
+    minRows: 1,
+    maxTileSpan: 0,
+    spawnSubagentsMinimized: false,
+    autoMinimizeOnClear: true,
+  },
   timings: { idleSeconds: 60, miniSeconds: 300, removeAfterSeconds: 86400, tickIntervalMs: 5000 },
   roots: [],
   storage: { persistEnabled: false, eventsIndexRetentionDays: 30 },
   editor: { urlTemplate: 'cursor://file/{path}:{line}' },
-  experimental: { autoTitle: false },
   debug: { enabled: false },
 };
 

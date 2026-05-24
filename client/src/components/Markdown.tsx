@@ -1,10 +1,11 @@
 import 'highlight.js/styles/github-dark.css';
 import { useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
 import { useFilenameLinks } from '../lib/filenameLinksContext.tsx';
 import { rehypeFilenameLinks } from '../lib/rehypeFilenameLinks.ts';
+import { MermaidBlock } from './MermaidBlock.tsx';
 
 interface Props {
   text: string;
@@ -25,21 +26,36 @@ export function Markdown({ text, escape }: Props) {
   const source = escape ? escapeHtml(text) : text;
   const rehypePlugins = useMemo(
     () =>
-      [
-        rehypeHighlight,
-        [rehypeFilenameLinks, { cwd, template }],
-      ] as ReadonlyArray<// biome-ignore lint/suspicious/noExplicitAny: rehype plugin tuple
-      any>,
+      // biome-ignore lint/suspicious/noExplicitAny: rehype plugin tuple
+      [rehypeHighlight, [rehypeFilenameLinks, { cwd, template }]] as any[],
     [cwd, template],
   );
   return (
     <div className="markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={rehypePlugins}
+        components={MARKDOWN_COMPONENTS}
+      >
         {source}
       </ReactMarkdown>
     </div>
   );
 }
+
+/** Intercept ```mermaid fences and route them to MermaidBlock. Other
+ * code fences fall through to react-markdown's default `<code>` (which
+ * rehypeHighlight has already syntax-painted). */
+const MARKDOWN_COMPONENTS: Components = {
+  code(props) {
+    const { className, children } = props;
+    if (typeof className === 'string' && /\blanguage-mermaid\b/.test(className)) {
+      const source = String(children ?? '').replace(/\n$/, '');
+      return <MermaidBlock source={source} />;
+    }
+    return <code {...props} />;
+  },
+};
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {

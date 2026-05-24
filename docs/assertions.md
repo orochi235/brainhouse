@@ -103,26 +103,40 @@ UI/server is meant to uphold. New entries go at the bottom.
   result is available, the answer is emitted as a *separate user-side
   bubble* immediately after the assistant bubble, so the exchange looks
   like a real chat turn (assistant asks, user replies). Single-question
-  answers render as just the bolded label(s); multi-question forms
-  render `**Question** → **label**` per line. Multi-select answers come
-  through joined as comma-separated bolded labels. A rejected/cleared
-  result (`is_error`) renders the user-side bubble as `_(no answer)_`.
-- A `/btw` queued prompt renders as a marked user bubble (left accent +
-  "↩ btw" chip), driven by whichever of Claude Code's two delivery shapes
-  appears in the JSONL:
+  answers render as the chosen label(s) verbatim; multi-question forms
+  render `Question → label` per line. Multi-select answers come through
+  joined as comma-separated labels. A rejected/cleared result
+  (`is_error`) renders the user-side bubble as `_(no answer)_`. Answer
+  labels are not emphasized — they render as plain text.
+- A `/btw` queued prompt detection flags the *next assistant bubble* as
+  btw (left accent + "↩ btw" chip on the reply, not the prompt). The
+  user bubble carrying the queued prompt renders plainly. Detection
+  honors both of Claude Code's delivery shapes:
   - **Inline (Claude Code ≥ 2.1.13x):** the queued prompt arrives as an
     `attachment` record with `attachment.type === 'queued_command'`. No
     follow-up `type:user` record exists; the attachment IS the user
-    input, and the bubble is synthesized from `attachment.prompt`.
+    input, and a plain user bubble is synthesized from
+    `attachment.prompt`. `pendingBtwAssistant` is set so the following
+    assistant bubble gets the chip.
   - **Deferred (older flow):** the queued prompt eventually arrives as a
     normal `type:user` record. A preceding `queue-operation` enqueue
-    stashes the content; the matching user_text gets the btw flag.
+    stashes the content; the matching user_text emits a plain user
+    bubble and sets `pendingBtwAssistant`.
   All `queue-operation` records (enqueue/dequeue/popAll/remove) are
   consumed without rendering — they're queue bookkeeping. Non-`queued_command`
   `attachment` shapes (hook_success, hook_additional_context, …) are
-  absorbed by the default-event handler. The immediately-adjacent
-  assistant bubble inherits a hairline left rail so the reply visually
-  threads back to the interjection.
+  absorbed by the default-event handler. A non-/btw user_text (fresh
+  prompt) clears any pending flag so a new turn doesn't inherit the
+  chip.
+- A manual `/clear` arms inherited-title suppression on the new
+  session. Claude Code re-emits the prior session's `custom-title` into
+  the fresh transcript; the first such record (and any identical
+  subsequent ones) is dropped. The suppression ends on the user's first
+  real `user_text` post-clear (slash-command artifacts like
+  `<command-name>` do not count), or earlier if a *different*
+  `custom-title` arrives — that's treated as an explicit `/rename` and
+  honored immediately. `/compact` does not arm suppression (the
+  conversation continues, so its title legitimately carries forward).
 - Panels are not dimmed merely for going idle. A panel only dims after we
   have an explicit "this session is over" signal — currently, the
   SubagentStop hook on a subagent panel. The dim level is user-controlled
@@ -143,7 +157,10 @@ UI/server is meant to uphold. New entries go at the bottom.
   never supersedes. After the dim, the panel (and any demoted subagents)
   are forced to `mini` 5 seconds later — bypassing the usual
   `done → mini` wait — *unless* the panel is pinned at fire time, in
-  which case it stays dimmed in the grid.
+  which case it stays dimmed in the grid. The auto-minimize step is
+  gated by `prefs.workspace.autoMinimizeOnClear` (default on); flip it
+  off to keep cleared sessions visible until the normal lifecycle
+  ticks them down.
 
 - A subagent panel (`kind === 'subagent'` with a `parent_panel_id`) has a
   `↗` pop-out affordance in its tool palette. Clicking it opens

@@ -54,9 +54,10 @@ export interface BubbleItem {
   role: 'user' | 'assistant';
   parts: BubblePart[];
   canceled?: boolean;
-  /** This user bubble was queued via `/btw` — the user interjected mid-turn
-   * rather than typing it as a fresh prompt. Rendered with an accent + chip;
-   * the immediately-following assistant bubble visually threads back to it. */
+  /** This assistant bubble responds to a `/btw` queued interjection. The
+   * user bubble carrying the queued prompt itself renders normally; this
+   * flag drives the "↩ btw" chip + accent on the reply so the response
+   * (not the prompt) is what's marked. */
   btw?: boolean;
 }
 
@@ -82,6 +83,29 @@ export const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit']);
 export interface ChecklistItem {
   done: boolean;
   text: string;
+  /** TodoWrite-sourced item currently in_progress. Rendered with a
+   * distinct glyph + accent (no strikethrough, not yet done). */
+  inProgress?: boolean;
+}
+
+/** One spawned subagent the parent panel saw via a `Task` tool_use.
+ * Populated by the `taskSubagents` transform. Independent of TodoWrite;
+ * a session can have both a todo checklist and a list of dispatched
+ * subagents. The matching child panel (if any) is joined in the UI by
+ * `(parent_panel_id, agent_type, task_description)`. */
+export interface SubagentSpawn {
+  toolUseId: string;
+  /** The `description` field from the Task tool input. Stable — survives
+   * auto-title rename on the child via the server-side `task_description`. */
+  description: string;
+  /** The `subagent_type` (Explore, general-purpose, Plan, …). */
+  agentType: string | null;
+  /** 'running' until the matching tool_result lands. 'done'/'failed'
+   * after. 'canceled' if the parent turn was interrupted (the tool
+   * capsule was marked canceled). */
+  status: 'running' | 'done' | 'failed' | 'canceled';
+  /** Event order index — keeps rows stable across re-renders. */
+  order: number;
 }
 
 export interface PreprocessResult {
@@ -90,4 +114,7 @@ export interface PreprocessResult {
   checklist: ChecklistItem[] | null;
   /** True if the panel is currently awaiting Claude's reply (user → no asst yet). */
   pending: boolean;
+  /** Subagents this panel spawned via the `Task` tool, in event order.
+   * Empty array when none. */
+  subagentSpawns: SubagentSpawn[];
 }

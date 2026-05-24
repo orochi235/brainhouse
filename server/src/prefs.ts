@@ -95,6 +95,12 @@ export const WorkspaceSchema = z.object({
    * dock instead of taking a full slot in the grid. Useful for sessions
    * that fan out into many subagents. */
   spawnSubagentsMinimized: z.boolean().default(false),
+  /** When true, a panel superseded by `/clear` or `/compact` is forced
+   * to `mini` shortly after the supersede (`SUPERSEDE_MINI_DELAY_MS` in
+   * monitor.ts) instead of waiting the normal done→mini interval. Set
+   * false to keep cleared sessions visible in the grid until the regular
+   * lifecycle ticks them down. */
+  autoMinimizeOnClear: z.boolean().default(true),
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
@@ -121,6 +127,11 @@ export const DisplaySchema = z.object({
   showSessionTime: z.boolean().default(true),
   showTokens: z.boolean().default(true),
   showContext: z.boolean().default(true),
+  /** When true, a Stop hook runs `claude -p` after each assistant turn to
+   * propose a panel title, using the user's own Claude CLI auth. The hook
+   * decides whether to fire based on turn count + current title; the
+   * server applies the new title only if it differs. */
+  autoTitle: z.boolean().default(true),
 });
 export type Display = z.infer<typeof DisplaySchema>;
 
@@ -169,16 +180,6 @@ export const DebugSchema = z.object({
 });
 export type Debug = z.infer<typeof DebugSchema>;
 
-/** Opt-in features that aren't fully baked yet. */
-export const ExperimentalSchema = z.object({
-  /** When true, a Stop hook runs `claude -p` after each assistant turn to
-   * propose a panel title, using the user's own Claude CLI auth. The
-   * hook decides whether to fire based on turn count + current title;
-   * the server applies the new title only if it differs. */
-  autoTitle: z.boolean().default(false),
-});
-export type Experimental = z.infer<typeof ExperimentalSchema>;
-
 export const PrefsSchema = z.object({
   /** Transcript roots to monitor. Empty array → fall back to platform defaults. */
   roots: z.array(RootSchema).default([]),
@@ -189,7 +190,6 @@ export const PrefsSchema = z.object({
   workspace: WorkspaceSchema.default(WorkspaceSchema.parse({})),
   storage: StorageSchema.default(StorageSchema.parse({})),
   editor: EditorSchema.default(EditorSchema.parse({})),
-  experimental: ExperimentalSchema.default(ExperimentalSchema.parse({})),
   debug: DebugSchema.default(DebugSchema.parse({})),
 });
 export type Prefs = z.infer<typeof PrefsSchema>;
@@ -223,7 +223,17 @@ export class PrefsStore {
       return this.prefs;
     }
     try {
-      const parsed = PrefsSchema.parse(JSON.parse(raw));
+      const obj = JSON.parse(raw) as Record<string, unknown>;
+      // Migration: autoTitle moved from `experimental.autoTitle` to
+      // `display.autoTitle` (it's no longer experimental, and on by
+      // default now). Carry over an explicit prior value before Zod
+      // strips the old key.
+      const exp = obj.experimental as { autoTitle?: unknown } | undefined;
+      const disp = (obj.display as Record<string, unknown> | undefined) ?? {};
+      if (exp && typeof exp.autoTitle === 'boolean' && disp.autoTitle === undefined) {
+        obj.display = { ...disp, autoTitle: exp.autoTitle };
+      }
+      const parsed = PrefsSchema.parse(obj);
       this.prefs = parsed;
     } catch (_err) {
       // Malformed file: keep defaults, but don't overwrite the broken file

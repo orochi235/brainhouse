@@ -91,6 +91,15 @@ body {
   align-items: center;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--panel-border);
+  /* Rarity tier accent: the brand tier color washes in from the top-left
+   * corner and fades to transparent over ~50px diagonally. The variable
+   * is set inline by `<App>` from CURRENT_BRAND. Mixed with transparent
+   * at the start stop so even the brightest corner stays understated. */
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--brand-tier-color, transparent) 45%, transparent),
+    transparent 50px
+  );
 }
 .topbar h1 {
   font-size: 1.9rem;
@@ -1197,6 +1206,18 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   letter-spacing: 0.05em;
   margin-bottom: 0.25rem;
 }
+.checklist-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--panel-border) 70%, transparent);
+  overflow: hidden;
+  margin-bottom: 0.35rem;
+}
+.checklist-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 240ms ease-out;
+}
 .checklist {
   list-style: none;
   padding: 0;
@@ -1218,9 +1239,115 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   color: var(--accent);
   opacity: 1;
 }
+.checklist .check.in-progress {
+  color: var(--accent);
+  opacity: 1;
+}
+.checklist li.in-progress .label {
+  color: var(--accent);
+}
 .checklist li.done .label {
   text-decoration: line-through;
   opacity: 0.55;
+}
+
+/* ---- pinned subagent list ---- */
+.subagent-section .subagent-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.76rem;
+}
+.subagent-row {
+  margin: 0;
+  padding: 0;
+}
+.subagent-row-button {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0.08rem 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.subagent-row-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.subagent-row-button:hover:not(:disabled) .label {
+  color: var(--accent);
+}
+.subagent-row .check {
+  font-family: ui-monospace, monospace;
+  opacity: 0.55;
+  width: 1ch;
+}
+.subagent-row .check.done {
+  color: var(--accent);
+  opacity: 1;
+}
+.subagent-row .check.failed {
+  color: #ef4444;
+  opacity: 1;
+}
+.subagent-row .check.running {
+  color: var(--accent);
+  opacity: 0.8;
+  animation: subagent-spin 1.4s linear infinite;
+  display: inline-block;
+}
+@keyframes subagent-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.subagent-row.done .label {
+  opacity: 0.7;
+}
+.subagent-row.failed .label {
+  color: #ef4444;
+}
+.subagent-row-type {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.subagent-row-progress {
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--panel-border) 70%, transparent);
+  overflow: hidden;
+  margin: 0.1rem 0 0.15rem 1.45rem;
+}
+.subagent-row-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 240ms ease-out;
+}
+.subagent-row.done .subagent-row-progress-fill {
+  opacity: 0.6;
+}
+
+/* Brief halo when another panel "jumps" focus here (clicked from a
+ * parent's subagent row). */
+.panel.focus-pulse {
+  animation: panel-focus-pulse 0.9s ease-out;
+}
+@keyframes panel-focus-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 18px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
 }
 
 /* ---- panel body / events ---- */
@@ -1533,17 +1660,20 @@ body.imessage .event-assistant_text .bubble {
     var(--panel-border)
   );
 }
-body:not(.imessage) .panel.has-theme .event-assistant_text .bubble {
+body:not(.imessage) .panel.has-theme .event-assistant_text .bubble,
+body:not(.imessage) .lightbox.has-theme .event-assistant_text .bubble {
   background: var(--panel-theme-bg);
   color: var(--panel-theme-fg);
 }
-body.imessage .panel.has-theme .event-user_text .bubble {
+body.imessage .panel.has-theme .event-user_text .bubble,
+body.imessage .lightbox.has-theme .event-user_text .bubble {
   background: var(--panel-theme-bg);
   color: var(--panel-theme-fg);
 }
 /* Themed thinking indicator — match the dominant bubble color in the current
  * view so the "..." pill reads as part of the same conversation. */
-.panel.has-theme .thinking-indicator {
+.panel.has-theme .thinking-indicator,
+.lightbox.has-theme .thinking-indicator {
   background: var(--panel-theme-bg);
   color: var(--panel-theme-fg);
 }
@@ -1556,12 +1686,12 @@ body.imessage .panel.has-theme .event-user_text .bubble {
     0 0 32px -4px color-mix(in srgb, var(--panel-theme-bg) 75%, transparent);
 }
 
-/* /btw — queued mid-turn user prompt. Subtle accent + "↩ btw" chip so it
-   reads as an interjection, not a fresh turn. The immediately-following
-   assistant bubble (when not separated by tool capsules) shares a hairline
-   left rail to visually thread the reply back to the interjection. */
+/* /btw — assistant response to a queued mid-turn interjection. Subtle
+   accent + "↩ btw" chip on the assistant bubble so the *reply* reads as
+   the one tied to the interjection. The user bubble carrying the queued
+   prompt renders normally. */
 .bubble.is-btw {
-  border-left: 2px solid color-mix(in srgb, var(--bubble-user-fg) 35%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--bubble-assistant-fg) 35%, transparent);
   padding-left: 0.55rem;
   position: relative;
 }
@@ -1576,14 +1706,7 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   margin-right: 0.4em;
   padding: 0 0.3em;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--bubble-user-fg) 12%, transparent);
-}
-.event-user_text.is-btw + .event-assistant_text {
-  margin-top: -0.1rem;
-}
-.event-user_text.is-btw + .event-assistant_text .bubble {
-  border-left: 2px solid color-mix(in srgb, var(--bubble-user-fg) 22%, transparent);
-  padding-left: 0.55rem;
+  background: color-mix(in srgb, var(--bubble-assistant-fg) 12%, transparent);
 }
 
 /* sawtooth divider inside merged user bubbles */
@@ -1745,34 +1868,71 @@ body.imessage .panel.has-theme .event-user_text .bubble {
 .file-change-hunk-read header {
   opacity: 0.7;
 }
-.file-change-diff {
-  margin: 0;
-  padding: 0.4rem 0.6rem;
+/* Split-pane diff: two columns, each with [gutter | line]. Numbers are
+ * absolute file positions when we can reconstruct them from a preceding
+ * Read; otherwise relative 1..N (signaled by .diff-table-relative). */
+.diff-table {
+  width: 100%;
+  margin: 0 0 0.5rem;
+  border-collapse: collapse;
   background: var(--code-bg);
   border-radius: 6px;
   border: 1px solid var(--panel-border);
   font-family: ui-monospace, monospace;
   font-size: 0.78rem;
   line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-word;
+  table-layout: fixed;
+  overflow: hidden;
 }
-.diff-del,
-.diff-add {
-  display: block;
+.diff-table .diff-gutter-col {
+  width: 3.5rem;
 }
-.diff-del {
+.diff-table .diff-line-col {
+  width: auto;
+}
+.diff-row {
+  vertical-align: top;
+}
+.diff-gutter {
+  padding: 0 0.5rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
+}
+.diff-gutter-del {
   background: color-mix(in srgb, #ef4444 14%, transparent);
   color: color-mix(in srgb, #ef4444 75%, var(--fg));
 }
-.diff-add {
+.diff-gutter-add {
   background: color-mix(in srgb, #84cc16 14%, transparent);
   color: color-mix(in srgb, #84cc16 75%, var(--fg));
 }
-.diff-marker {
-  display: inline-block;
-  width: 1.2ch;
-  opacity: 0.6;
+.diff-cell {
+  padding: 0 0.6rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diff-cell-del {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  color: color-mix(in srgb, #ef4444 75%, var(--fg));
+}
+.diff-cell-add {
+  background: color-mix(in srgb, #84cc16 14%, transparent);
+  color: color-mix(in srgb, #84cc16 75%, var(--fg));
+}
+.diff-cell-empty {
+  background: color-mix(in srgb, var(--muted) 6%, transparent);
+}
+.diff-row-equal .diff-cell,
+.diff-row-equal .diff-gutter {
+  opacity: 0.7;
+}
+.diff-table-relative {
+  /* Subtle marker that line numbers in this hunk are 1..N within the
+   * fragment, not real file positions. */
+  border-style: dashed;
 }
 .file-change-raw {
   margin: 0;
@@ -1978,6 +2138,17 @@ body.imessage .panel.has-theme .event-user_text .bubble {
   color: var(--fg);
   box-shadow: 0 6px 24px -4px rgba(0, 0, 0, 0.4);
   max-width: 320px;
+}
+/* TruncationTooltip anchor: keep the wrapper layout-transparent so the
+ * wrapped element (e.g. .panel-title) still participates directly in its
+ * parent's flex layout and ellipsis behavior. */
+.hover-anchor-contents {
+  display: contents;
+}
+.hover-popover-truncation {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- ConnTooltip ---- */
@@ -2370,6 +2541,14 @@ body.view-conversation
     var(--panel-theme-bg) 60%,
     var(--panel-border)
   );
+  /* Faint wash of the theme into the lightbox surface itself, mirroring
+   * the panel-header tint so the modal feels like the same surface as
+   * the parent panel rather than a neutral overlay. */
+  background: color-mix(
+    in srgb,
+    var(--panel-theme-bg) calc(var(--hued-header-strength, 0.14) * 100%),
+    var(--panel-bg)
+  );
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--panel-theme-bg) 35%, transparent),
     0 16px 60px -10px color-mix(in srgb, var(--panel-theme-bg) 50%, transparent);
@@ -2666,10 +2845,37 @@ body.view-conversation
 .prefs-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 0.6rem;
   padding-top: 0.8rem;
   border-top: 1px solid var(--panel-border);
   margin-top: 0.8rem;
+}
+.prefs-dirty-note {
+  margin-right: auto;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.prefs-modal.bounce .prefs-dirty-note {
+  color: var(--accent);
+  animation: prefs-dirty-bounce 0.4s ease-out;
+}
+@keyframes prefs-dirty-bounce {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 .prefs-cancel,
 .prefs-save {
@@ -2852,4 +3058,106 @@ body.view-conversation
 }
 .event-meta.event-meta-auto-title .event-kind {
   color: var(--accent);
+}
+
+/* ---- replay view (debug / fixture playback) -------------------------- */
+.replay-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 1rem;
+  gap: 0.75rem;
+}
+.replay-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--accent, #888);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.replay-tag {
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent, #888);
+}
+.replay-source {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+.replay-counts {
+  opacity: 0.7;
+}
+.replay-exit {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+}
+.replay-status {
+  padding: 1rem;
+  opacity: 0.7;
+}
+.replay-error {
+  color: #c44;
+  opacity: 1;
+}
+.replay-hint {
+  font-size: 0.8rem;
+}
+.replay-grid {
+  /* Single panel — let PanelCard size itself rather than forcing the
+   * grid layout. Keeps the replay view simple. */
+  max-width: 1200px;
+  width: 100%;
+  align-self: center;
+}
+.replay-parse-errors {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  padding: 0.5rem;
+}
+.replay-parse-errors ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.5rem;
+}
+body.replay-drop-target::after {
+  content: 'Drop .jsonl to replay';
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 1.25rem;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ---- mermaid diagrams ------------------------------------------------ */
+.mermaid-diagram {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+.mermaid-loading,
+.mermaid-fallback {
+  opacity: 0.6;
+  font-size: 0.85em;
+}
+.mermaid-loading {
+  /* Slight pulse so the user sees something's coming. */
+  animation: mermaid-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mermaid-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
 }

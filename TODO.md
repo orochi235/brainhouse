@@ -167,6 +167,69 @@ Cautious + transparent design notes:
 - A "what does brainhouse touch on my machine?" report at any time
   (`brainhouse status` or in the UI) so the user can always audit
 
+## Replay debug tools (Phase 2: scrubber)
+
+Phase 1 shipped: `/?replay=<abs path>` and global drag-and-drop of
+`.jsonl` files render one read-only `PanelCard` driven by
+`server/src/replay.ts`. The view pipeline (`runViewPipeline`) is reused
+unchanged, so this already exercises every transform against any saved
+transcript. Trash + dev affordances are gated behind a new
+`readOnly` prop on PanelCard.
+
+Phase 2 adds a scrubber so we can step through a transcript event by
+event and see what the transforms produce at each cut. Cheap because
+`runViewPipeline` is pure with respect to its input array.
+
+### Goals
+- Slider above the panel: index 0..events.length. Default = full.
+- Each scrubber change re-runs `runViewPipeline(events.slice(0, N))`.
+  Memoize by N so the common forward/backward dragging is fast.
+- Keyboard: `←`/`→` step one event, `Shift+←`/`Shift+→` jump to the
+  nearest `user_text` boundary, `Home`/`End` for 0 / max.
+- Show the virtual `now` in the header chip — derive from the
+  current event's `ts` rather than wall-clock, so "idle for 3s" etc.
+  reflect the moment captured in the transcript.
+- Mark `user_text` indexes as tick marks under the slider — they're
+  the most useful coarse stops (turn boundaries).
+
+### Implementation sketch
+- New component `ReplayScrubber` inside `ReplayView.tsx`; lifts
+  `events` from `ReplayView` state and slices before passing to
+  `PanelCard`.
+- PanelCard already recomputes its pipeline from `panel.events` on
+  every render via `preprocessEvents` — no extra hook needed. If
+  performance bites for large transcripts (>5k events), memoize the
+  sliced array by index inside `ReplayView` and pass a stable
+  reference.
+- Virtual-`now` is trickier: PanelCard reads `Date.now()` directly
+  in a few places (`now` state, `useTitleFlash`). Cleanest fix is a
+  new optional `nowOverride?: number` prop that, when set, replaces
+  the `setInterval`-driven `now`. Replay mode passes
+  `events[N-1].ts` parsed to seconds.
+- Tick marks: extract `user_text` indexes from `events`, render as
+  absolutely-positioned tick `<span>`s inside the slider track.
+
+### Open questions
+- Persistence: should the scrubber position survive reload? Probably
+  yes for the path-based form (URL query `?at=<index>`); inline /
+  drag-dropped sessions have no stable identity so they reset.
+- Do we want a "play" button that auto-advances at 1× / 4× / 16×
+  speed? Useful for watching a session unfold, but easy to add
+  later — first deliver the static scrubber.
+- Subagent transcripts: the scrubber today only operates on the
+  parent JSONL. To replay a parent + its subagents together (so the
+  nested-tray rendering works) we'd need to load multiple files
+  and merge events by timestamp. Deferred — single-file replay
+  already covers the transform debugging use case.
+
+### Phase 3 preview
+Pairs naturally with "transforms-as-diagrams (#2 live pipeline trace)"
+above: once the scrubber exists, an event-by-event side panel showing
+"which transform handled this event, what items it pushed, what
+scratch state changed" is a small extension. The trace data is already
+within reach inside `runViewPipeline`; we'd just need to plumb a
+trace-recording option through the runner.
+
 ## Schema / pipeline buildout
 Continue extending `preprocessEvents` to interpret newer record types as Claude Code adds them. Inventory current passthrough `meta` records (we already saw `custom-title`, `agent-name`, `subagent-meta`, `permission-mode`, `agent-color`, `pr-link`, `queue-operation`, `file-history-snapshot`, `attachment`, `last-prompt`) and decide which deserve first-class rendering.
 

@@ -10,8 +10,12 @@
  * during a single brainhouse run.
  */
 
+import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 export interface PanelTheme {
   /** Original hex from .hued, e.g. "#320053". */
@@ -20,19 +24,27 @@ export interface PanelTheme {
   foreground: string;
 }
 
-const cache = new Map<string, PanelTheme | null>();
+// Cache only successful reads — caching misses would prevent picking up a
+// `.hued` that gets added after the first attempt within one process
+// lifetime.
+const cache = new Map<string, PanelTheme>();
 
 export async function readPanelTheme(cwd: string): Promise<PanelTheme | null> {
   if (!cwd) return null;
-  if (cache.has(cwd)) return cache.get(cwd) ?? null;
+  const hit = cache.get(cwd);
+  if (hit) return hit;
 
-  let text: string;
-  try {
-    text = await readFile(path.join(cwd, '.hued'), 'utf8');
-  } catch {
-    cache.set(cwd, null);
-    return null;
+  // Try the cwd first; if there's no `.hued` there, fall back to the main
+  // worktree (git common-dir's parent). Worktrees are typically siblings
+  // of the main repo, so a plain walk-up wouldn't reach the shared
+  // `.hued`. This is the only fallback location we consider — `.hued`
+  // sitting outside both cwd and the main worktree isn't a thing.
+  let text = await readHued(cwd);
+  if (text === null) {
+    const mainRoot = await mainWorktreeRoot(cwd);
+    if (mainRoot && mainRoot !== cwd) text = await readHued(mainRoot);
   }
+  if (text === null) return null;
 
   let theme: PanelTheme | null = null;
   for (const rawLine of text.split('\n')) {
@@ -47,8 +59,34 @@ export async function readPanelTheme(cwd: string): Promise<PanelTheme | null> {
     }
   }
 
-  cache.set(cwd, theme);
+  if (theme) cache.set(cwd, theme);
   return theme;
+}
+
+async function readHued(dir: string): Promise<string | null> {
+  try {
+    return await readFile(path.join(dir, '.hued'), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+async function mainWorktreeRoot(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { timeout: 1000 },
+    );
+    const commonDir = stdout.trim();
+    if (!commonDir) return null;
+    // `--git-common-dir` returns the shared `.git` directory of the main
+    // worktree; its parent is the main worktree's root. (For bare repos
+    // it's the repo dir itself, which won't have a `.hued` — harmless.)
+    return path.dirname(commonDir);
+  } catch {
+    return null;
+  }
 }
 
 function isHexColor(value: string): boolean {

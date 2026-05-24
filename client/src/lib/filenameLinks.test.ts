@@ -12,21 +12,21 @@ describe('findFilenameMatches', () => {
   it('finds absolute paths with extension', () => {
     const m = findFilenameMatches('see /Users/me/src/foo.ts for details');
     expect(m).toHaveLength(1);
-    expect(m[0].path).toBe('/Users/me/src/foo.ts');
-    expect(m[0].line).toBeUndefined();
+    expect(m[0]!.path).toBe('/Users/me/src/foo.ts');
+    expect(m[0]!.line).toBeUndefined();
   });
 
   it('captures :line and :col suffixes', () => {
     const m = findFilenameMatches('error at /a/b.ts:42:7 line');
-    expect(m[0].path).toBe('/a/b.ts');
-    expect(m[0].line).toBe(42);
-    expect(m[0].col).toBe(7);
+    expect(m[0]!.path).toBe('/a/b.ts');
+    expect(m[0]!.line).toBe(42);
+    expect(m[0]!.col).toBe(7);
   });
 
   it('matches relative paths with extensions', () => {
     const m = findFilenameMatches('open src/components/Foo.tsx now');
     expect(m).toHaveLength(1);
-    expect(m[0].path).toBe('src/components/Foo.tsx');
+    expect(m[0]!.path).toBe('src/components/Foo.tsx');
   });
 
   it('matches extensionless relative paths only when :line is present', () => {
@@ -34,7 +34,7 @@ describe('findFilenameMatches', () => {
     expect(m1).toHaveLength(0);
     const m2 = findFilenameMatches('see src/utils:5 there');
     expect(m2).toHaveLength(1);
-    expect(m2[0].line).toBe(5);
+    expect(m2[0]!.line).toBe(5);
   });
 
   it('does not match URL paths', () => {
@@ -45,14 +45,14 @@ describe('findFilenameMatches', () => {
   it('strips trailing sentence punctuation', () => {
     const m = findFilenameMatches('look at src/foo.ts.');
     expect(m).toHaveLength(1);
-    expect(m[0].raw).toBe('src/foo.ts');
+    expect(m[0]!.raw).toBe('src/foo.ts');
   });
 
   it('handles ~/ paths', () => {
     const m = findFilenameMatches('open ~/.bashrc:1 yo');
     expect(m).toHaveLength(1);
-    expect(m[0].path).toBe('~/.bashrc');
-    expect(m[0].line).toBe(1);
+    expect(m[0]!.path).toBe('~/.bashrc');
+    expect(m[0]!.line).toBe(1);
   });
 
   it('returns multiple matches in order', () => {
@@ -78,7 +78,7 @@ describe('segmentFilenameLinks', () => {
     const segs = segmentFilenameLinks('see /a/b.ts now');
     expect(segs).toHaveLength(3);
     expect(segs[0]).toEqual({ kind: 'text', value: 'see ' });
-    expect(segs[1].kind).toBe('link');
+    expect(segs[1]!.kind).toBe('link');
     expect(segs[2]).toEqual({ kind: 'text', value: ' now' });
   });
 });
@@ -142,7 +142,7 @@ describe('buildEditorUrl', () => {
 
 describe('editorPresetIdForTemplate', () => {
   it('matches a known preset', () => {
-    expect(editorPresetIdForTemplate(EDITOR_PRESETS[0].template)).toBe(EDITOR_PRESETS[0].id);
+    expect(editorPresetIdForTemplate(EDITOR_PRESETS[0]!.template)).toBe(EDITOR_PRESETS[0]!.id);
   });
 
   it('returns custom for unknown templates', () => {

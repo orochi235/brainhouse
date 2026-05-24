@@ -20,6 +20,7 @@ function panel(overrides: Partial<PanelState> = {}): PanelState {
     parent_panel_id: null,
     title: 'Demo session',
     agent_type: null,
+    task_description: null,
     account_label: null,
     status: 'live',
     started_at: NOW - 600,

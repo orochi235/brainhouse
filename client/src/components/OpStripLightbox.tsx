@@ -13,6 +13,7 @@
  * lightbox closes).
  */
 import { useMemo, useState } from 'react';
+import { reconstructFile } from '../lib/fileSnapshot.ts';
 import { LinkifyText } from '../lib/filenameLinksContext.tsx';
 import type { FileChangeItem, OpStripItem, ToolItem, ViewItem } from '../lib/pipeline.ts';
 import { ViewItemList } from './EventList.tsx';
@@ -100,6 +101,7 @@ function FileView({ items }: { items: ViewItem[] }) {
 }
 
 function FileSection({ file }: { file: FileChangeItem }) {
+  const renders = useMemo(() => reconstructFile(file.ops), [file.ops]);
   return (
     <section className="op-strip-file-section">
       <h4 className="op-strip-file-path">
@@ -109,9 +111,11 @@ function FileSection({ file }: { file: FileChangeItem }) {
         {file.ops.length} operation{file.ops.length === 1 ? '' : 's'} · {summarizeFileChange(file)}
       </p>
       <div className="file-change-hunks">
-        {file.ops.map((op, i) => (
-          <OpView key={`${op.anchorUuid}-${i}`} op={op} />
-        ))}
+        {file.ops.map((op, i) => {
+          const render = renders[i];
+          if (!render) return null;
+          return <OpView key={`${op.anchorUuid}-${i}`} op={op} render={render} />;
+        })}
       </div>
     </section>
   );
@@ -179,7 +183,7 @@ export function buildTree(paths: string[]): TreeNode {
     const segs = p.split('/').filter(Boolean);
     let cur = root;
     for (let i = 0; i < segs.length; i++) {
-      const seg = segs[i];
+      const seg = segs[i]!;
       const isLeaf = i === segs.length - 1;
       let child = cur.children.find((c) => c.name === seg && !c.path === !isLeaf);
       if (!child) {
@@ -195,8 +199,8 @@ export function buildTree(paths: string[]): TreeNode {
 
 function collapseChains(node: TreeNode): TreeNode {
   const collapsedChildren = node.children.map(collapseChains);
-  if (!node.path && collapsedChildren.length === 1 && !collapsedChildren[0].path && node.name) {
-    const only = collapsedChildren[0];
+  const only = collapsedChildren[0];
+  if (!node.path && collapsedChildren.length === 1 && only && !only.path && node.name) {
     return { name: `${node.name}/${only.name}`, children: only.children };
   }
   return { ...node, children: collapsedChildren };

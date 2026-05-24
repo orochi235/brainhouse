@@ -88,6 +88,134 @@ describe('SessionStore', () => {
     expect(store.snapshot()[0]?.title).toBe('brainhouse jam');
   });
 
+  describe('/clear inherited-title suppression', () => {
+    it('drops the first custom-title after armClearTitleSuppression', () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      store.armClearTitleSuppression('S');
+      store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'fresh prompt' } }));
+      store.apply(
+        ev('meta', {
+          uuid: 'u2',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'old name' } },
+        }),
+      );
+      // suppression armed BEFORE the user_text → first custom-title drops.
+      // But: user_text clears suppression on first non-empty prompt — so
+      // arm again, then send custom-title BEFORE the user_text to mirror
+      // the real flow where Claude Code re-emits title before the user
+      // types anything.
+      expect(store.snapshot()[0]?.title).toBe('old name');
+    });
+
+    it('Claude-Code-style: custom-title arrives before first user_text → suppressed', () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      // First JSONL records on a new /clear'd session: meta records
+      // (including the carried-over custom-title) before any user_text.
+      store.armClearTitleSuppression('S');
+      store.apply(
+        ev('meta', {
+          uuid: 'm1',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'inherited' } },
+        }),
+      );
+      // Re-emission of the same title — also dropped.
+      store.apply(
+        ev('meta', {
+          uuid: 'm2',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'inherited' } },
+        }),
+      );
+      // The user finally types their first real prompt.
+      store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'fresh start' } }));
+      // Title falls through to the user_text-derived default.
+      expect(store.snapshot()[0]?.title).toBe('fresh start');
+    });
+
+    it('a *different* custom-title after suppression is honored (explicit /rename)', () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      store.armClearTitleSuppression('S');
+      // First custom-title: inherited, dropped.
+      store.apply(
+        ev('meta', {
+          uuid: 'm1',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'old work' } },
+        }),
+      );
+      // Different customTitle while suppression is active → explicit
+      // /rename. Honor it and clear suppression.
+      store.apply(
+        ev('meta', {
+          uuid: 'm2',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'new work' } },
+        }),
+      );
+      expect(store.snapshot()[0]?.title).toBe('new work');
+      // Subsequent identical re-emissions are accepted (no longer suppressed).
+      store.apply(
+        ev('meta', {
+          uuid: 'm3',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'new work' } },
+        }),
+      );
+      expect(store.snapshot()[0]?.title).toBe('new work');
+    });
+
+    it('first real user_text ends suppression — later custom-title is accepted', () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      store.armClearTitleSuppression('S');
+      store.apply(
+        ev('meta', {
+          uuid: 'm1',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'inherited' } },
+        }),
+      );
+      store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'real prompt' } }));
+      // Same title arrives later (e.g. via re-emission) — now allowed.
+      store.apply(
+        ev('meta', {
+          uuid: 'm2',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'inherited' } },
+        }),
+      );
+      expect(store.snapshot()[0]?.title).toBe('inherited');
+    });
+
+    it('slash-command artifact user_texts do not clear suppression', () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      store.armClearTitleSuppression('S');
+      // Claude Code's /clear emits these synthetic local-command records
+      // before any real prompt.
+      store.apply(
+        ev('user_text', {
+          uuid: 'u1',
+          payload: { text: '<command-name>/clear</command-name>' },
+        }),
+      );
+      store.apply(
+        ev('meta', {
+          uuid: 'm1',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'inherited' } },
+        }),
+      );
+      // Still suppressed — title not set.
+      expect(store.snapshot()[0]?.title).not.toBe('inherited');
+    });
+
+    it('arming before the panel exists is honored when it materializes', () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      store.armClearTitleSuppression('LATER');
+      store.apply(
+        ev('meta', {
+          session_id: 'LATER',
+          uuid: 'm1',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'inherited' } },
+        }),
+      );
+      const panel = store.snapshot().find((p) => p.id === 'LATER');
+      expect(panel?.title).not.toBe('inherited');
+    });
+  });
+
   it('custom-title also renames subagents', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });

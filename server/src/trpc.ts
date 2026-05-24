@@ -19,6 +19,12 @@ import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from '.
 import { aggregateFlows } from './flows.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
+import {
+  isReplayPathAllowed,
+  loadJsonlAsPanel,
+  parseJsonlToPanel,
+  replayAllowedRoots,
+} from './replay.js';
 import { resolveRoots } from './roots.js';
 import { getScenario, listScenarios } from './scenarios.js';
 import type { Delta, PanelDto } from './session.js';
@@ -110,6 +116,9 @@ export const appRouter = t.router({
       // next daily prune. No restart needed.
       if (before.storage.eventsIndexRetentionDays !== updated.storage.eventsIndexRetentionDays) {
         ctx.monitor.setEventsIndexRetentionDays(updated.storage.eventsIndexRetentionDays);
+      }
+      if (before.workspace.autoMinimizeOnClear !== updated.workspace.autoMinimizeOnClear) {
+        ctx.monitor.setAutoMinimizeOnClear(updated.workspace.autoMinimizeOnClear);
       }
       return updated;
     }),
@@ -220,6 +229,26 @@ export const appRouter = t.router({
      * toast, inline meta breadcrumb) without involving `claude -p`. The
      * `title` input is the demo string the panel will flash to; omit it
      * to use a timestamped default. */
+    /** Read a transcript JSONL from disk and return a synthesized
+     * PanelDto + parsed events. The path must live under one of the
+     * configured roots or under `~/.claude/projects`. Read-only: never
+     * touches the store or broadcaster. Used by the replay debug view. */
+    replayJsonl: t.procedure
+      .input(z.object({ path: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const allowed = replayAllowedRoots(ctx.prefs.get());
+        if (!isReplayPathAllowed(input.path, allowed)) {
+          throw new Error(`Path not in replay allowlist: ${input.path}`);
+        }
+        return loadJsonlAsPanel(input.path);
+      }),
+    /** Same as `replayJsonl` but takes the JSONL contents inline. Used
+     * by drag-and-drop in the browser, where the absolute path isn't
+     * exposed to the page. No allowlist gate — the contents are
+     * already in the client's possession. */
+    replayJsonlInline: t.procedure
+      .input(z.object({ contents: z.string(), label: z.string().optional() }))
+      .query(({ input }) => parseJsonlToPanel(input.contents, input.label ?? 'inline')),
     previewAutoTitle: t.procedure
       .input(
         z.object({

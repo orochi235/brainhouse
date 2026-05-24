@@ -8,7 +8,7 @@
  *
  * Flow (silent unless gated on, exits 0 unconditionally so Claude Code
  * never blocks on us):
- *   1. Read prefs.json — bail if autoTitle is off.
+ *   1. Read prefs.json — bail if display.autoTitle is off.
  *   2. Read transcript JSONL — bail if not enough turns yet.
  *   3. Scan for a `custom-title` meta record to decide placeholder vs. set.
  *   4. Build a compact slice (first user prompt + last two turns) and
@@ -54,7 +54,11 @@ async function main() {
   if (!sessionId || !transcriptPath) return;
 
   const prefs = await readPrefs();
-  if (!prefs?.experimental?.autoTitle) {
+  // Migrated from `experimental.autoTitle`. Read the new location first;
+  // fall back to the old one for prefs.json files that haven't been
+  // resaved since the move. Default is on.
+  const autoTitle = prefs?.display?.autoTitle ?? prefs?.experimental?.autoTitle ?? true;
+  if (!autoTitle) {
     return debug('autoTitle disabled');
   }
 

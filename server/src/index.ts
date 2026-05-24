@@ -19,7 +19,7 @@ async function main() {
   await prefs.load();
   const roots = resolveRoots(prefs.get());
 
-  const { timings, roots: configuredRoots, storage } = prefs.get();
+  const { timings, roots: configuredRoots, storage, workspace } = prefs.get();
   const store = storage.persistEnabled ? Store.open() : null;
   const monitor = new TranscriptMonitor({
     roots,
@@ -30,6 +30,7 @@ async function main() {
     tickIntervalMs: timings.tickIntervalMs,
     store,
     eventsIndexRetentionDays: storage.eventsIndexRetentionDays,
+    autoMinimizeOnClear: workspace.autoMinimizeOnClear,
   });
   await monitor.start();
 

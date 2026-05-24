@@ -89,8 +89,8 @@ export function formatAskUserQuestion(input: unknown): string | null {
 }
 
 /** Build the user-side reply bubble that pairs with an AskUserQuestion.
- * Single question → just the chosen labels (bolded). Multiple questions →
- * `**Question** → A` per line. `null` when there's no answer to render. */
+ * Single question → the chosen labels alone. Multiple questions →
+ * `Question → answer` per line. `null` when there's no answer to render. */
 export function formatAskUserAnswer(input: unknown, info: AnswerInfo | null): string | null {
   if (!info) return null;
   if (info.kind === 'rejected') return '_(no answer)_';
@@ -109,8 +109,8 @@ export function formatAskUserAnswer(input: unknown, info: AnswerInfo | null): st
       .map((s) => s.trim())
       .filter(Boolean);
     if (labels.length === 0) continue;
-    const bold = labels.map((l) => `**${l}**`).join(', ');
-    lines.push(questions.length === 1 ? bold : `**${question}** → ${bold}`);
+    const joined = labels.join(', ');
+    lines.push(questions.length === 1 ? joined : `${question} → ${joined}`);
   }
   return lines.length > 0 ? lines.join('\n\n') : null;
 }

@@ -49,7 +49,7 @@ export function useFilenameLinks(): FilenameLinksConfig {
 export function LinkifyText({ text }: { text: string }) {
   const { cwd, template } = useFilenameLinks();
   const segs = useMemo(() => segmentFilenameLinks(text), [text]);
-  if (segs.length === 1 && segs[0].kind === 'text') return <>{text}</>;
+  if (segs.length === 1 && segs[0]!.kind === 'text') return <>{text}</>;
   return (
     <>
       {segs.map((s, i) => {

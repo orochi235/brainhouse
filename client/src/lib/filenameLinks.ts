@@ -78,7 +78,7 @@ export const EDITOR_PRESETS: EditorPreset[] = [
   { id: 'zed', label: 'Zed', template: 'zed://file/{path}:{line}:{col}' },
 ];
 
-export const DEFAULT_EDITOR_TEMPLATE = EDITOR_PRESETS[0].template;
+export const DEFAULT_EDITOR_TEMPLATE = EDITOR_PRESETS[0]!.template;
 
 /** Match an EDITOR_PRESETS entry by template string; returns its id, or
  * `'custom'` if no preset matches the template verbatim. */
@@ -115,7 +115,7 @@ export function resolveAbsolute(
 export function inferHomeFromCwd(cwd: string | null | undefined): string | null {
   if (!cwd) return null;
   const m = cwd.match(/^(\/(?:Users|home)\/[^/]+)(?:\/|$)/);
-  return m ? m[1] : null;
+  return m && m[1] ? m[1] : null;
 }
 
 /** Build an editor deeplink. Returns null if the template is empty. */

@@ -53,16 +53,16 @@ describe('<FileChangeLightbox>', () => {
         item={fileChange('/x', [op('Edit', { old_string: 'old', new_string: 'new' })])}
       />,
     );
-    expect(container.querySelector('.diff-del')).toHaveTextContent('old');
-    expect(container.querySelector('.diff-add')).toHaveTextContent('new');
+    expect(container.querySelector('.diff-cell-del')).toHaveTextContent('old');
+    expect(container.querySelector('.diff-cell-add')).toHaveTextContent('new');
   });
 
   it('Write op renders as add-only diff against an empty before', () => {
     const { container } = render(
       <FileChangeLightbox item={fileChange('/x', [op('Write', { content: 'whole new file' })])} />,
     );
-    expect(container.querySelector('.diff-del')).toBeNull();
-    expect(container.querySelector('.diff-add')).toHaveTextContent('whole new file');
+    expect(container.querySelector('.diff-cell-del')).toBeNull();
+    expect(container.querySelector('.diff-cell-add')).toHaveTextContent('whole new file');
   });
 
   it('Read op shows the line count when content is a string', () => {
@@ -83,8 +83,8 @@ describe('<FileChangeLightbox>', () => {
         ])}
       />,
     );
-    // Two diffs → two `.diff-del` + two `.diff-add` (one per sub-edit).
-    expect(container.querySelectorAll('.diff-del').length).toBe(2);
-    expect(container.querySelectorAll('.diff-add').length).toBe(2);
+    // Two diffs → two `.diff-cell-del` + two `.diff-cell-add` (one per sub-edit).
+    expect(container.querySelectorAll('.diff-cell-del').length).toBe(2);
+    expect(container.querySelectorAll('.diff-cell-add').length).toBe(2);
   });
 });

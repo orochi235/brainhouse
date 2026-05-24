@@ -11,7 +11,18 @@
  * viewport bottom. Horizontally clamped to stay inside the viewport.
  */
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 
 interface Coords {
@@ -20,7 +31,7 @@ interface Coords {
   placement: 'below' | 'above';
 }
 
-const SHOW_DELAY_MS = 200;
+const SHOW_DELAY_MS = 80;
 const HIDE_DELAY_MS = 100;
 const GAP_PX = 6;
 const VIEWPORT_PAD = 8;
@@ -136,5 +147,68 @@ export function HoverPopover({
           document.body,
         )}
     </span>
+  );
+}
+
+/**
+ * Wraps a single element child (typically a text-truncating `<span>`) and
+ * shows the given `text` as a hover-popover tooltip *only when the child is
+ * actually overflowing*. Replaces the native `title=` attribute for cases
+ * where the value is potentially-clipped data (panel titles, paths) rather
+ * than a fixed control label.
+ *
+ * Requirements on the child:
+ * - Must accept a `ref` (forwarded or a host element like `<span>`).
+ * - Should already have `text-overflow: ellipsis` styling.
+ */
+export function TruncationTooltip({
+  text,
+  children,
+  popoverClassName,
+}: {
+  text: string;
+  children: ReactElement<{ ref?: Ref<HTMLElement> }>;
+  popoverClassName?: string;
+}) {
+  const elRef = useRef<HTMLElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  const measure = useCallback(() => {
+    const el = elRef.current;
+    if (!el) return;
+    setOverflowing(el.scrollWidth > el.clientWidth + 1);
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const el = elRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure, text]);
+
+  const only = Children.only(children);
+  if (!isValidElement(only)) return children;
+
+  const setRef: Ref<HTMLElement> = (node) => {
+    elRef.current = node;
+    const incoming = (only as ReactElement<{ ref?: Ref<HTMLElement> }>).props.ref;
+    if (typeof incoming === 'function') incoming(node);
+    else if (incoming && typeof incoming === 'object')
+      (incoming as { current: HTMLElement | null }).current = node;
+  };
+
+  const child = cloneElement(only, { ref: setRef });
+
+  if (!overflowing) return child;
+  return (
+    <HoverPopover
+      className="hover-anchor-contents"
+      content={<span className="hover-popover-truncation">{text}</span>}
+      popoverClassName={popoverClassName}
+    >
+      {child}
+    </HoverPopover>
   );
 }
