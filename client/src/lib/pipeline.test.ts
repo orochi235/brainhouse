@@ -416,16 +416,69 @@ describe('preprocessEvents', () => {
       expect(text).toContain('SQLite');
     });
 
-    it('swallows the matching tool_result', () => {
+    it('swallows the matching tool_result and renders the chosen answer', () => {
+      const { items } = preprocessEvents([
+        toolUse('q1', 'AskUserQuestion', {
+          questions: [{ question: 'go?', options: [{ label: 'yes' }, { label: 'no' }] }],
+        }),
+        toolResult('q1', { answers: { 'go?': 'yes' } }),
+      ]);
+      // Only the synthetic asst bubble — no orphan tool capsule from the result.
+      expect(items.length).toBe(1);
+      const asst = items[0];
+      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
+      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toMatch(/Answer:\s*\*\*yes\*\*/);
+    });
+
+    it('parses the Claude Code answer-string form ("Q"="A")', () => {
+      const { items } = preprocessEvents([
+        toolUse('q1', 'AskUserQuestion', {
+          questions: [
+            { question: 'Which db?', options: [{ label: 'Postgres' }, { label: 'SQLite' }] },
+          ],
+        }),
+        toolResult(
+          'q1',
+          'User has answered your questions: "Which db?"="SQLite". You can now continue.',
+        ),
+      ]);
+      const asst = items[0];
+      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
+      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toMatch(/Answer:\s*\*\*SQLite\*\*/);
+    });
+
+    it('renders multi-select answers as joined bolded labels', () => {
+      const { items } = preprocessEvents([
+        toolUse('q1', 'AskUserQuestion', {
+          questions: [
+            {
+              question: 'pick any',
+              multiSelect: true,
+              options: [{ label: 'a' }, { label: 'b' }, { label: 'c' }],
+            },
+          ],
+        }),
+        toolResult('q1', { answers: { 'pick any': 'a, c' } }),
+      ]);
+      const asst = items[0];
+      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
+      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toMatch(/Answer:\s*\*\*a\*\*,\s*\*\*c\*\*/);
+    });
+
+    it('marks a rejected tool_result as (no answer)', () => {
       const { items } = preprocessEvents([
         toolUse('q1', 'AskUserQuestion', {
           questions: [{ question: 'go?', options: [{ label: 'yes' }] }],
         }),
-        toolResult('q1', { answers: { go: 'yes' } }),
+        toolResult('q1', 'The user does not want to proceed', true),
       ]);
-      // Only the synthetic asst bubble — no orphan tool capsule from the result.
-      expect(items.length).toBe(1);
-      expect(items[0]?.type).toBe('bubble');
+      const asst = items[0];
+      if (asst?.type !== 'bubble') throw new Error('expected asst bubble');
+      const text = asst.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+      expect(text).toMatch(/\(no answer\)/);
     });
 
     it('falls back to a normal tool capsule on a malformed payload', () => {

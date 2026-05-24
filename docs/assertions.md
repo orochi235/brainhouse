@@ -79,6 +79,13 @@ UI/server is meant to uphold. New entries go at the bottom.
   - Panel toolbar: `+sub` / `+count` (on parents) + `!title` (preview
     auto-title animations).
   The pref lives under a dedicated Debug section in the prefs modal.
+- An `AskUserQuestion` tool_use renders as a synthetic assistant bubble
+  (bolded question + bulleted options); the matching tool_result is
+  swallowed rather than emitted as an orphan tool capsule. When the
+  result is available, each question gets an italic `_Answer: **<label>**_`
+  footer beneath its options block, with multi-select answers joined as
+  comma-separated bolded labels. A rejected/cleared result (`is_error`)
+  renders `_(no answer)_` instead.
 - Panels are not dimmed merely for going idle. A panel only dims after we
   have an explicit "this session is over" signal — currently, the
   SubagentStop hook on a subagent panel. The dim level is user-controlled

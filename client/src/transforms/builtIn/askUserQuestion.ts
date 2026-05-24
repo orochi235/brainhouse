@@ -4,6 +4,10 @@
  * tool_use_id as absorbed so the matching tool_result gets swallowed by
  * `mergeToolResult` rather than rendering an orphan capsule.
  *
+ * When the matching tool_result is available, the chosen answer for each
+ * question is appended as a footer below the options block. Multi-select
+ * answers ride along naturally — the answer string carries the joined labels.
+ *
  * Falls through (returns false) for other tool names; the default
  * `toolUseToCapsule` transform handles them.
  */
@@ -11,16 +15,23 @@
 import type { Event } from '@server/parser.ts';
 import type { Stage1Transform } from '../types.ts';
 
+type AnswerInfo =
+  | { kind: 'answered'; answers: Record<string, string> }
+  | { kind: 'rejected' };
+
 export const askUserQuestion: Stage1Transform = {
   kind: 'view',
   stage: 1,
   key: 'built-in.ask-user-question',
   name: 'AskUserQuestion → assistant bubble',
   description:
-    'Renders an AskUserQuestion tool call as if Claude is speaking — bolded question + bulleted options. The matching tool_result is swallowed.',
+    'Renders an AskUserQuestion tool call as if Claude is speaking — bolded question + bulleted options. The matching tool_result is swallowed; the chosen answer is appended as a footer.',
   run(event, items, ctx) {
     if (event.kind !== 'tool_use' || event.payload.name !== 'AskUserQuestion') return false;
-    const text = formatAskUserQuestion(event.payload.input);
+    const input = event.payload.input;
+    const toolUseId = event.payload.tool_use_id;
+    const answerInfo = toolUseId ? findAnswerInfo(ctx.allEvents, toolUseId) : null;
+    const text = formatAskUserQuestion(input, answerInfo);
     if (!text) return false;
     items.push({
       type: 'bubble',
@@ -28,12 +39,15 @@ export const askUserQuestion: Stage1Transform = {
       role: 'assistant',
       parts: [{ kind: 'text', text }],
     });
-    if (event.payload.tool_use_id) ctx.scratch.absorbedToolUseIds.add(event.payload.tool_use_id);
+    if (toolUseId) ctx.scratch.absorbedToolUseIds.add(toolUseId);
     return true;
   },
 };
 
-export function formatAskUserQuestion(input: unknown): string | null {
+export function formatAskUserQuestion(
+  input: unknown,
+  answerInfo: AnswerInfo | null = null,
+): string | null {
   if (!input || typeof input !== 'object') return null;
   const questions = (input as { questions?: unknown }).questions;
   if (!Array.isArray(questions) || questions.length === 0) return null;
@@ -56,7 +70,64 @@ export function formatAskUserQuestion(input: unknown): string | null {
         lines.push(`- **${label}**${desc}`);
       }
     }
+    const footer = answerFooter(question, answerInfo);
+    if (footer) lines.push('', footer);
     blocks.push(lines.join('\n'));
   }
   return blocks.length > 0 ? blocks.join('\n\n') : null;
+}
+
+function answerFooter(question: string, info: AnswerInfo | null): string | null {
+  if (!info) return null;
+  if (info.kind === 'rejected') return '_(no answer)_';
+  const raw = info.answers[question];
+  if (!raw) return null;
+  // Multi-select answers come back joined ("A, B"); render each label bold.
+  const labels = raw
+    .split(/,\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (labels.length === 0) return null;
+  return `_Answer: ${labels.map((l) => `**${l}**`).join(', ')}_`;
+}
+
+function findAnswerInfo(events: readonly Event[], toolUseId: string): AnswerInfo | null {
+  for (const e of events) {
+    if (e.kind !== 'tool_result') continue;
+    if (e.payload.tool_use_id !== toolUseId) continue;
+    if (e.payload.is_error) return { kind: 'rejected' };
+    const answers = extractAnswers(e.payload.content);
+    if (answers) return { kind: 'answered', answers };
+    return null;
+  }
+  return null;
+}
+
+/** Pulls the {question: label} map out of a tool_result content payload. */
+function extractAnswers(content: unknown): Record<string, string> | null {
+  // Structured form (e.g. test fixtures): { answers: { ... } }
+  if (content && typeof content === 'object' && !Array.isArray(content)) {
+    const a = (content as { answers?: unknown }).answers;
+    if (a && typeof a === 'object') {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(a as Record<string, unknown>)) {
+        if (typeof v === 'string') out[k] = v;
+      }
+      if (Object.keys(out).length > 0) return out;
+    }
+  }
+  // Real Claude Code form: a string like
+  //   `User has answered your questions: "Q1"="A1", "Q2"="A2". You can now…`
+  const str = typeof content === 'string' ? content : null;
+  if (!str) return null;
+  const out: Record<string, string> = {};
+  const re = /"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"/g;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex iter
+  while ((m = re.exec(str)) !== null) {
+    const q = m[1]?.replace(/\\(.)/g, '$1');
+    const a = m[2]?.replace(/\\(.)/g, '$1');
+    if (q && a) out[q] = a;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }

@@ -405,7 +405,8 @@ const askUserQuestion: Scenario = {
   name: 'AskUserQuestion tool',
   description:
     'An AskUserQuestion tool call. Pipeline should render this as if Claude is speaking — bolded question with bulleted options — and swallow the matching tool_result.',
-  expect: 'No tool capsule. Single assistant bubble showing the question + options as markdown.',
+  expect:
+    'No tool capsule. Single assistant bubble showing the question + options as markdown, with the chosen answer rendered as an italic footer below the options.',
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     emit(
       monitor,
@@ -451,7 +452,12 @@ const askUserQuestion: Scenario = {
       null,
       `${sessionId}:tr1`,
       'tool_result',
-      { tool_use_id: tid, content: 'pending user response', is_error: false },
+      {
+        tool_use_id: tid,
+        content:
+          'User has answered your questions: "Which database?"="SQLite". You can now continue with the user\'s answers in mind.',
+        is_error: false,
+      },
       cwd,
     );
     return { sessionId };
