@@ -5,6 +5,7 @@
  *     - trackPending           pass-through; flips the pending flag
  *     - scanChecklist          pass-through; picks up the latest checklist
  *     - taskSubagents          pass-through; accumulates spawned-subagent list
+ *     - stripBhTitleMarker     strips trailing `<<bh-title>>...</bh-title>>` from assistant_text
  *     - mergeToolResult        attaches tool_result to prior capsule
  *     - askUserQuestion        AskUserQuestion → assistant bubble (must beat the default tool_use handler)
  *     - todoWriteToChecklist   TodoWrite → pinned checklist (consumes; no capsule)
@@ -34,6 +35,7 @@ import { coalesceFileOps } from './builtIn/coalesceFileOps.ts';
 import { defaultEventItem } from './builtIn/defaultEventItem.ts';
 import { mergeToolResult } from './builtIn/mergeToolResult.ts';
 import { scanChecklist } from './builtIn/scanChecklist.ts';
+import { stripBhTitleMarker } from './builtIn/stripBhTitleMarker.ts';
 import { suppressInterruptMarker } from './builtIn/suppressInterruptMarker.ts';
 import { tagBtwUserText } from './builtIn/tagBtwUserText.ts';
 import { taskSubagents } from './builtIn/taskSubagents.ts';
@@ -47,6 +49,7 @@ export const VIEW_TRANSFORMS: ViewTransform[] = [
   trackPending,
   scanChecklist,
   taskSubagents,
+  stripBhTitleMarker,
   mergeToolResult,
   askUserQuestion,
   todoWriteToChecklist,

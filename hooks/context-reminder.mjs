@@ -37,7 +37,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { estimateTokens, recordHookOverhead } from './lib/overhead.mjs';
 
-const DEFAULT_THRESHOLD = 150_000;
+const DEFAULT_THRESHOLD = 250_000;
 const WARN_COOLDOWN_MS = 15 * 60 * 1000;
 const STATE_PATH = path.join(os.homedir(), '.brainhouse', 'context-reminder-state.json');
 /** Drop session entries older than this on each write so the file doesn't

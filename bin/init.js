@@ -1,16 +1,16 @@
 /**
- * `brainhouse init` — wire the hook dispatcher into Claude Code's settings.
+ * `brainhouse init` — wire brainhouse's hooks into Claude Code's settings.
  *
- * Targets:
- *   ~/.claude/settings.json
+ * Targets: ~/.claude/settings.json plus any sibling ~/.claude-* config dirs
+ * (per-account harness homes such as .claude-pw, .claude-msb).
  *
- * Idempotent: re-running replaces any existing brainhouse hooks rather than
- * appending duplicates. Adds a `brainhouse` marker to each hook entry so we
- * can recognize ours on uninstall without disturbing user-authored hooks.
+ * Idempotent: re-running strips every brainhouse-tagged entry and re-adds
+ * the current canonical set, so updates to the hook table take effect on
+ * the next `brainhouse init` invocation.
  *
  * Flags:
  *   --uninstall    remove brainhouse hook entries
- *   --dry-run      show the diff but don't write
+ *   --dry-run      show what would be written but don't write
  */
 import { existsSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -18,30 +18,60 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HOOK_EVENTS = /** @type {const} */ ([
+const MARKER = 'brainhouse';
+
+/** Events the brainhouse dispatcher mirrors into the sidecar JSONL. Kind
+ * strings are the CLI arg passed to dispatcher.mjs. */
+const DISPATCHER_EVENTS = /** @type {const} */ ([
   ['Stop', 'stop'],
   ['SubagentStop', 'subagent_stop'],
   ['Notification', 'notification'],
   ['SessionEnd', 'session_end'],
   ['SessionStart', 'session_start'],
 ]);
-const MARKER = 'brainhouse';
 
-function dispatcherPath() {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.resolve(here, '..', 'hooks', 'dispatcher.mjs');
+/** Canonical table of hooks brainhouse manages. Each entry produces one
+ * settings.json hook registration tagged `brainhouse: "<role>"`. Add a
+ * new hook by appending a row — install/uninstall iterate this list. */
+function hookRegistry(hooksDir) {
+  /** @type {{ role: string, event: string, command: string }[]} */
+  const entries = [];
+  const dispatcher = path.join(hooksDir, 'dispatcher.mjs');
+  for (const [event, kind] of DISPATCHER_EVENTS) {
+    entries.push({
+      role: 'dispatcher',
+      event,
+      command: `node ${quote(dispatcher)} ${kind}`,
+    });
+  }
+  // UserPromptSubmit hooks: piggyback small instructions onto the live
+  // session's context, paying near-zero token cost instead of spawning
+  // fresh `claude -p` subprocesses.
+  entries.push({
+    role: 'auto-title-inline',
+    event: 'UserPromptSubmit',
+    command: `node ${quote(path.join(hooksDir, 'auto-title-inline.mjs'))}`,
+  });
+  entries.push({
+    role: 'context-reminder',
+    event: 'UserPromptSubmit',
+    command: `node ${quote(path.join(hooksDir, 'context-reminder.mjs'))}`,
+  });
+  return entries;
 }
 
-function autoTitlePath() {
+/** Wrap a path in double quotes safely (no embedded quotes/backslashes
+ * expected, but escape just in case). */
+function quote(p) {
+  return `"${p.replace(/(["\\])/g, '\\$1')}"`;
+}
+
+function hooksDir() {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.resolve(here, '..', 'hooks', 'auto-title.mjs');
+  return path.resolve(here, '..', 'hooks');
 }
 
 function targetSettingsPaths() {
-  // Pick up every Claude Code config dir at the top of $HOME — the canonical
-  // `~/.claude` plus any sibling `~/.claude-*` dirs used to host multiple
-  // accounts under separate `CLAUDE_CONFIG_DIR` values (e.g. `.claude-pw`,
-  // `.claude-msb`). Each gets the same dispatcher + auto-title wiring.
   const home = os.homedir();
   let entries;
   try {
@@ -49,10 +79,9 @@ function targetSettingsPaths() {
   } catch {
     return [];
   }
-  const dirs = entries
+  return entries
     .filter((e) => e.isDirectory() && (e.name === '.claude' || e.name.startsWith('.claude-')))
     .map((e) => path.join(home, e.name, 'settings.json'));
-  return dirs;
 }
 
 async function readJson(file) {
@@ -62,14 +91,15 @@ async function readJson(file) {
   return JSON.parse(raw);
 }
 
+/** Remove every hook entry tagged with our marker, regardless of role.
+ * Truthy check covers both the legacy `brainhouse: true` form and the
+ * current role-string form (`brainhouse: "dispatcher"` etc.). */
 function stripBrainhouse(settings) {
   const hooks = settings.hooks ?? {};
-  for (const [event] of HOOK_EVENTS) {
-    const entries = hooks[event];
-    if (!Array.isArray(entries)) continue;
-    // Truthy match covers both the legacy `brainhouse: true` form and the
-    // newer role-tagged form (`brainhouse: "dispatcher" | "auto-title"`).
-    const filtered = entries.filter((e) => !e?.[MARKER]);
+  for (const event of Object.keys(hooks)) {
+    const arr = hooks[event];
+    if (!Array.isArray(arr)) continue;
+    const filtered = arr.filter((e) => !e?.[MARKER]);
     if (filtered.length === 0) delete hooks[event];
     else hooks[event] = filtered;
   }
@@ -77,35 +107,23 @@ function stripBrainhouse(settings) {
   return settings;
 }
 
-function addBrainhouse(settings, dispatcher, autoTitle) {
+function addBrainhouse(settings, registry) {
   if (!settings.hooks) settings.hooks = {};
   const hooks = settings.hooks;
-  const cmd = `node ${JSON.stringify(dispatcher).slice(1, -1)}`;
-  for (const [event, kind] of HOOK_EVENTS) {
+  for (const { role, event, command } of registry) {
     if (!hooks[event]) hooks[event] = [];
     hooks[event].push({
-      [MARKER]: 'dispatcher',
+      [MARKER]: role,
       matcher: '.*',
-      hooks: [{ type: 'command', command: `${cmd} ${kind}` }],
+      hooks: [{ type: 'command', command }],
     });
   }
-  // Auto-title side-channel: separate Stop entry that runs `claude -p` on
-  // the user's account when `display.autoTitle` is on in prefs.json. The
-  // script gates itself; install is unconditional so toggling the pref
-  // takes effect without re-running init. Tagged distinctly from the
-  // dispatcher entry so future strips can tell them apart.
-  hooks.Stop.push({
-    [MARKER]: 'auto-title',
-    matcher: '.*',
-    hooks: [{ type: 'command', command: `node ${JSON.stringify(autoTitle).slice(1, -1)}` }],
-  });
   return settings;
 }
 
 async function writeJson(file, data) {
   await mkdir(path.dirname(file), { recursive: true });
-  const json = `${JSON.stringify(data, null, 2)}\n`;
-  await writeFile(file, json, 'utf8');
+  await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
 }
 
 export async function runInit(argv) {
@@ -113,16 +131,17 @@ export async function runInit(argv) {
   const uninstall = args.has('--uninstall');
   const dryRun = args.has('--dry-run');
 
-  const dispatcher = dispatcherPath();
-  if (!existsSync(dispatcher)) {
-    console.error(`brainhouse: dispatcher missing at ${dispatcher}`);
-    console.error('Did you run `npm run build` and `npm link`?');
-    process.exit(1);
-  }
-  const autoTitle = autoTitlePath();
-  if (!existsSync(autoTitle)) {
-    console.error(`brainhouse: auto-title hook missing at ${autoTitle}`);
-    process.exit(1);
+  const dir = hooksDir();
+  const registry = hookRegistry(dir);
+  // Pre-flight: every script the table references must exist.
+  for (const { command } of registry) {
+    const m = command.match(/^node "([^"]+)"/);
+    const script = m?.[1];
+    if (script && !existsSync(script)) {
+      console.error(`brainhouse: hook script missing at ${script}`);
+      console.error('Did you run `npm run build` and `npm link`?');
+      process.exit(1);
+    }
   }
 
   const targets = targetSettingsPaths();
@@ -136,7 +155,7 @@ export async function runInit(argv) {
     const beforeStr = JSON.stringify(before, null, 2);
     const next = uninstall
       ? stripBrainhouse(structuredClone(before))
-      : addBrainhouse(stripBrainhouse(structuredClone(before)), dispatcher, autoTitle);
+      : addBrainhouse(stripBrainhouse(structuredClone(before)), registry);
     const nextStr = JSON.stringify(next, null, 2);
     if (beforeStr === nextStr) {
       console.log(`= ${file} (no change)`);
@@ -151,10 +170,9 @@ export async function runInit(argv) {
   }
 
   if (!uninstall && !dryRun) {
+    const roles = [...new Set(registry.map((e) => e.role))].join(', ');
     console.log('');
-    console.log('Hooks installed. Start brainhouse and any new Claude Code session');
-    console.log(
-      'will emit Stop / SubagentStop / Notification / SessionEnd / SessionStart events to the sidecar.',
-    );
+    console.log(`Hooks installed (${roles}).`);
+    console.log('New Claude Code sessions will pick up the changes immediately.');
   }
 }
