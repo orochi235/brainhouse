@@ -1061,6 +1061,41 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
     var(--panel-border)
   );
 }
+/* Worktree surfacing: thin colored stripe down the left edge of the panel
+ * + a small chip in the subtitle row naming the worktree. Color is a
+ * deterministic hash of the worktree key (see lib/worktree.ts), so all
+ * panels on the same worktree share a stripe + swatch tint. */
+.panel.has-worktree::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--panel-worktree-color);
+  border-top-left-radius: inherit;
+  border-bottom-left-radius: inherit;
+  pointer-events: none;
+}
+.panel-worktree-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6rem;
+  padding: 0.02rem 0.35rem 0.02rem 0.25rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-worktree-color, var(--accent)) 18%, transparent);
+  color: color-mix(in srgb, var(--panel-worktree-color, var(--accent)) 75%, var(--fg));
+  letter-spacing: 0.02em;
+}
+.panel-worktree-swatch {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--panel-worktree-color, var(--accent));
+  flex-shrink: 0;
+}
 .panel-status.live {
   color: var(--live);
 }

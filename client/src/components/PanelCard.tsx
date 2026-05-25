@@ -9,6 +9,7 @@ import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
 import type { SubagentSpawn } from '../lib/pipeline-types.ts';
 import { projectLabel } from '../lib/project.ts';
+import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
 import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
@@ -238,10 +239,13 @@ export function PanelCard({
     });
   };
 
+  const worktree = deriveWorktree(panel.cwd);
+
   const style: CSSProperties = {};
   const styleVars = style as Record<string, string>;
   if (progressPct !== null) styleVars['--progress'] = `${progressPct}%`;
   if (accountColor) styleVars['--account-color'] = accountColor;
+  if (worktree) styleVars['--panel-worktree-color'] = worktreeColor(worktree.key);
   if (panel.theme) {
     styleVars['--panel-theme-bg'] = panel.theme.background;
     styleVars['--panel-theme-fg'] = panel.theme.foreground;
@@ -265,6 +269,7 @@ export function PanelCard({
           panel.awaiting_input && 'awaiting-input',
           progressPct !== null && 'has-progress',
           panel.theme && 'has-theme',
+          worktree && 'has-worktree',
           nested && 'nested',
           pinned && 'pinned',
           panel.removing && 'removing',
@@ -441,6 +446,7 @@ function PanelHeader({
     const t = setTimeout(() => setSpinDir(null), 550);
     return () => clearTimeout(t);
   }, [pinned]);
+  const worktree = deriveWorktree(panel.cwd);
   // Headline is input-equivalent (each bucket × its billing coefficient)
   // rather than a naive sum — cache_read dominates the raw total at 0.1×
   // actual cost, so an unweighted sum overstates effective usage by ~5×.
@@ -514,6 +520,16 @@ function PanelHeader({
               <span className="panel-subtitle panel-subtitle-cwd">{projectLabel(panel.cwd)}</span>
             </TruncationTooltip>
           ) : null}
+          {worktree && (
+            <span
+              className="panel-worktree-chip"
+              title={`worktree: ${worktree.key}`}
+              aria-label={`worktree ${worktree.name} on ${worktree.repo}`}
+            >
+              <span className="panel-worktree-swatch" aria-hidden="true" />
+              {worktree.name}
+            </span>
+          )}
           {brokenOut && parentTitle && (
             <button
               type="button"
