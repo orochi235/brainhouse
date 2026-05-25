@@ -12,7 +12,7 @@
  *   --uninstall    remove brainhouse hook entries
  *   --dry-run      show the diff but don't write
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,8 +38,21 @@ function autoTitlePath() {
 }
 
 function targetSettingsPaths() {
-  const claudeDir = path.join(os.homedir(), '.claude');
-  return existsSync(claudeDir) ? [path.join(claudeDir, 'settings.json')] : [];
+  // Pick up every Claude Code config dir at the top of $HOME — the canonical
+  // `~/.claude` plus any sibling `~/.claude-*` dirs used to host multiple
+  // accounts under separate `CLAUDE_CONFIG_DIR` values (e.g. `.claude-pw`,
+  // `.claude-msb`). Each gets the same dispatcher + auto-title wiring.
+  const home = os.homedir();
+  let entries;
+  try {
+    entries = readdirSync(home, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const dirs = entries
+    .filter((e) => e.isDirectory() && (e.name === '.claude' || e.name.startsWith('.claude-')))
+    .map((e) => path.join(home, e.name, 'settings.json'));
+  return dirs;
 }
 
 async function readJson(file) {
@@ -54,7 +67,9 @@ function stripBrainhouse(settings) {
   for (const [event] of HOOK_EVENTS) {
     const entries = hooks[event];
     if (!Array.isArray(entries)) continue;
-    const filtered = entries.filter((e) => e?.[MARKER] !== true);
+    // Truthy match covers both the legacy `brainhouse: true` form and the
+    // newer role-tagged form (`brainhouse: "dispatcher" | "auto-title"`).
+    const filtered = entries.filter((e) => !e?.[MARKER]);
     if (filtered.length === 0) delete hooks[event];
     else hooks[event] = filtered;
   }
@@ -68,25 +83,19 @@ function addBrainhouse(settings, dispatcher, autoTitle) {
   const cmd = `node ${JSON.stringify(dispatcher).slice(1, -1)}`;
   for (const [event, kind] of HOOK_EVENTS) {
     if (!hooks[event]) hooks[event] = [];
-    const entries = hooks[event];
-    // Drop any previous brainhouse entry for this event first.
-    for (let i = entries.length - 1; i >= 0; i--) {
-      if (entries[i]?.[MARKER] === true) entries.splice(i, 1);
-    }
-    entries.push({
-      [MARKER]: true,
+    hooks[event].push({
+      [MARKER]: 'dispatcher',
       matcher: '.*',
       hooks: [{ type: 'command', command: `${cmd} ${kind}` }],
     });
   }
   // Auto-title side-channel: separate Stop entry that runs `claude -p` on
-  // the user's account when `experimental.autoTitle` is on in prefs.json.
-  // The script gates itself; install is unconditional so toggling the
-  // pref takes effect without re-running init.
-  if (!hooks.Stop) hooks.Stop = [];
-  const stop = hooks.Stop;
-  stop.push({
-    [MARKER]: true,
+  // the user's account when `display.autoTitle` is on in prefs.json. The
+  // script gates itself; install is unconditional so toggling the pref
+  // takes effect without re-running init. Tagged distinctly from the
+  // dispatcher entry so future strips can tell them apart.
+  hooks.Stop.push({
+    [MARKER]: 'auto-title',
     matcher: '.*',
     hooks: [{ type: 'command', command: `node ${JSON.stringify(autoTitle).slice(1, -1)}` }],
   });
