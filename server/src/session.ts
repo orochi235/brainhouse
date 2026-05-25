@@ -141,7 +141,11 @@ export interface PanelDto {
 }
 
 export type Delta =
-  | { op: 'panel_upsert'; panel: PanelDto }
+  /** `events` is included on dock-restore (unbin) so the client can
+   * repopulate the panel's history in one shot — the snapshot path that
+   * normally seeds events skips binned panels. All other upsert emitters
+   * omit it and the client preserves any events it already has. */
+  | { op: 'panel_upsert'; panel: PanelDto; events?: Event[] }
   | { op: 'panel_status'; panel_id: string; status: PanelStatus }
   | { op: 'panel_remove'; panel_id: string }
   | { op: 'event_append'; panel_id: string; event: Event }
@@ -363,7 +367,11 @@ export class SessionStore {
     // get demoted by the next tick.
     panel.status_changed_at = this.clock();
     this.persistPanel(panel);
-    return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
+    // Carry events in the upsert: while binned, the panel was excluded
+    // from `snapshot()`, so any client that connected during the binned
+    // window has zero events for it. Without this the restored panel
+    // renders as an empty div.
+    return [{ op: 'panel_upsert', panel: this.toDto(panel), events: panel.events.slice() }];
   }
 
   /** Permanent removal. Used by the trash-bin "purge" button or the

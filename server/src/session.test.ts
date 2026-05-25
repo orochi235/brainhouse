@@ -322,6 +322,19 @@ describe('SessionStore', () => {
     expect(store.binnedDtos()).toHaveLength(0);
   });
 
+  it('unbin() carries events on the upsert so the restored panel re-hydrates', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { payload: { text: 'hi' } }));
+    store.apply(ev('assistant_text', { uuid: 'u2', payload: { text: 'hello' } }));
+    store.bin('S');
+    const [upsert] = store.unbin('S');
+    if (upsert?.op !== 'panel_upsert') throw new Error('expected panel_upsert');
+    expect(upsert.events?.length).toBe(2);
+    expect(upsert.events?.[0]?.kind).toBe('user_text');
+    expect(upsert.events?.[1]?.kind).toBe('assistant_text');
+  });
+
   it('binned panels are frozen — tick() does not progress their status', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ idleSeconds: 10, miniSeconds: 100, clock: clock.now });

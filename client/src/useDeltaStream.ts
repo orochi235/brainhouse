@@ -62,7 +62,11 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
       const d = action.delta;
       if (d.op === 'panel_upsert') {
         const existing = panels.get(d.panel.id);
-        panels.set(d.panel.id, { ...d.panel, events: existing?.events ?? [] });
+        // `events` only rides on the upsert when the server is reseeding
+        // history (dock-restore). Otherwise keep the events we have so a
+        // routine DTO refresh doesn't blow away the panel's transcript.
+        const events = d.events ?? existing?.events ?? [];
+        panels.set(d.panel.id, { ...d.panel, events });
       } else if (d.op === 'event_append') {
         const existing = panels.get(d.panel_id);
         if (existing) {
