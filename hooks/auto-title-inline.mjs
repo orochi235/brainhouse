@@ -89,9 +89,9 @@ function buildInstruction(hasCustomTitle) {
     ? 'The session already has a title. If it still fits the work, reply KEEP — otherwise propose a fresh one.'
     : 'The session needs its first real title.';
   return `[brainhouse auto-title] ${role} On the very last line of your response, AFTER everything else, emit exactly one of:
-  <<bh-title>>KEEP</bh-title>>
-  <<bh-title>>your concise session title</bh-title>>
-Rules: max ${TITLE_MAX_WORDS} words, sentence case, no quotes, no trailing punctuation. Describe the work, not the tool ("Wire auto-titling hook", not "Helping the user with auto-titling"). The marker is stripped from the UI; it is purely a side channel.`;
+  <!-- bh-title: KEEP -->
+  <!-- bh-title: your concise session title -->
+Rules: max ${TITLE_MAX_WORDS} words, sentence case, no quotes, no trailing punctuation. Describe the work, not the tool ("Wire auto-titling hook", not "Helping the user with auto-titling"). The marker is an HTML comment so it stays invisible in every markdown renderer; it is purely a side channel.`;
 }
 
 function shouldFire(hasCustomTitle, turnCount) {

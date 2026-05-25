@@ -627,12 +627,14 @@ export class SessionStore {
       return proposed.length > 80 ? `${proposed.slice(0, 79)}…` : proposed;
     }
     // Inline auto-title marker: the auto-title-inline UserPromptSubmit hook
-    // asks the model to emit `<<bh-title>>X</bh-title>>` at the end of its
-    // response. KEEP is a no-op; anything else is a proposal. The client
-    // transform stripBhTitleMarker hides the marker from the rendered text.
+    // asks the model to emit `<!-- bh-title: X -->` at the end of its
+    // response. HTML-comment form so it stays invisible in any markdown
+    // renderer (Claude Code's own UI included). KEEP is a no-op; anything
+    // else is a proposal. The client transform stripBhTitleMarker still
+    // scrubs it defensively before render.
     if (event.kind === 'assistant_text') {
       const text = (event.payload as { text?: string }).text ?? '';
-      const m = text.match(/<<bh-title>>([\s\S]*?)<\/bh-title>>/);
+      const m = text.match(/<!--\s*bh-title:\s*([\s\S]*?)\s*-->/);
       if (!m) return null;
       const candidate = m[1].trim();
       if (!candidate || /^keep$/i.test(candidate)) return null;
