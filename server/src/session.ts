@@ -476,6 +476,11 @@ export class SessionStore {
    *   - last_event_at within `withinSeconds` (a `/clear` immediately follows
    *     real activity — a panel idle for hours in the same cwd is much more
    *     likely a different terminal that's still around)
+   *   - last_event_at OLDER than `minIdleSeconds` (a panel that emitted an
+   *     event in the last beat is probably an actively-responding session
+   *     in another terminal — the prior session being cleared stopped
+   *     emitting events at least a moment before the new SessionStart
+   *     fired). Defaults to 0 (no floor) when the caller doesn't set it.
    *
    * Returns the single best candidate (most recent last_event_at) or null. */
   findSupersedablePanel(opts: {
@@ -483,8 +488,10 @@ export class SessionStore {
     excludeId: string;
     now: number;
     withinSeconds: number;
+    minIdleSeconds?: number;
   }): Panel | null {
     const floor = opts.now - opts.withinSeconds;
+    const ceil = opts.now - (opts.minIdleSeconds ?? 0);
     let best: Panel | null = null;
     for (const p of this.panels.values()) {
       if (p.kind !== 'parent') continue;
@@ -494,6 +501,7 @@ export class SessionStore {
       if (!p.cwd) continue;
       if (encodeCwdToProjectDir(p.cwd) !== opts.encodedCwdDir) continue;
       if (p.last_event_at < floor) continue;
+      if (p.last_event_at > ceil) continue;
       if (!best || p.last_event_at > best.last_event_at) best = p;
     }
     return best;

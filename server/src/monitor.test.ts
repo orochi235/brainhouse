@@ -228,15 +228,17 @@ describe('TranscriptMonitor', () => {
     const oldTranscript = `${PROJECTS}/${ENCODED_DIR}/OLD.jsonl`;
     const newTranscript = `${PROJECTS}/${ENCODED_DIR}/NEW.jsonl`;
     const recentTs = Date.now() / 1000;
-    // ISO timestamp ~ "now" so the seeded panel's last_event_at lands inside
-    // the supersede window. userTextEvent's default ts is a fixed historical
-    // string which would always fall outside.
-    const recentIso = new Date(recentTs * 1000).toISOString();
+    // Seed OLD's activity 10 seconds before the new SessionStart hook ts —
+    // inside the 5-minute recency window, but old enough to clear the
+    // SUPERSEDE_MIN_IDLE_SECONDS floor (which protects actively-responding
+    // sessions in other terminals from being wrongly superseded).
+    const oldActivityTs = recentTs - 10;
+    const oldActivityIso = new Date(oldActivityTs * 1000).toISOString();
 
     function seedOld(monitor: TranscriptMonitor): void {
       monitor.ingest({
         ...userTextEvent({ session_id: 'OLD', uuid: 'u1', cwd: CWD }),
-        ts: recentIso,
+        ts: oldActivityIso,
       } as Event);
     }
 
@@ -299,7 +301,7 @@ describe('TranscriptMonitor', () => {
       const monitor = newMonitor();
       monitor.ingest({
         ...userTextEvent({ session_id: 'OLD', uuid: 'u1', cwd: '/Users/x/work/other' }),
-        ts: recentIso,
+        ts: oldActivityIso,
       } as Event);
       monitor.applyHookEvent({
         session_id: 'NEW',
@@ -326,6 +328,28 @@ describe('TranscriptMonitor', () => {
       expect(monitor.store.panel('OLD')?.ended).toBe(false);
     });
 
+    it('skips panels whose last activity is too recent (actively responding)', () => {
+      // Regression: a /clear in another terminal in the same cwd was wrongly
+      // ending the actively-responding session that just emitted an event
+      // moments before the new SessionStart. The min-idle filter protects
+      // panels whose last_event_at is within SUPERSEDE_MIN_IDLE_SECONDS of
+      // `now` — they're mid-response, not the "prior session" being cleared.
+      const monitor = newMonitor();
+      const veryRecentIso = new Date((recentTs - 0.1) * 1000).toISOString();
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'OLD', uuid: 'u1', cwd: CWD }),
+        ts: veryRecentIso,
+      } as Event);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('OLD')?.ended).toBe(false);
+    });
+
     it('does not end already-ended panels', () => {
       const monitor = newMonitor();
       seedOld(monitor);
@@ -347,7 +371,7 @@ describe('TranscriptMonitor', () => {
       seedOld(monitor);
       monitor.ingest({
         ...userTextEvent({ session_id: 'OLD', agent_id: 'sub1', uuid: 'u2', cwd: CWD }),
-        ts: recentIso,
+        ts: oldActivityIso,
       } as Event);
       monitor.applyHookEvent({
         session_id: 'NEW',
@@ -387,7 +411,7 @@ describe('TranscriptMonitor', () => {
         seedOld(monitor);
         monitor.ingest({
           ...userTextEvent({ session_id: 'OLD', agent_id: 'sub1', uuid: 'u2', cwd: CWD }),
-          ts: recentIso,
+          ts: oldActivityIso,
         } as Event);
         monitor.applyHookEvent({
           session_id: 'NEW',

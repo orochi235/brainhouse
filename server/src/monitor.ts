@@ -52,6 +52,15 @@ const DAILY_PRUNE_MS = 24 * 60 * 60 * 1000;
  * non-ended panel in the same project dir has been idle longer than this
  * we assume it's a different terminal and leave it alone. */
 const SUPERSEDE_WITHIN_SECONDS = 5 * 60;
+/** Skip supersede candidates whose last event is *too* recent (within this
+ * many seconds of the new SessionStart). An actively-responding session
+ * in another terminal in the same cwd would otherwise be the "best"
+ * (most recent) candidate and get wrongly killed. After typing /clear,
+ * the prior session in the same terminal stopped emitting events at
+ * least a beat before the new SessionStart hook fired, so a small idle
+ * floor reliably separates "the prior session" from "an unrelated live
+ * session." */
+const SUPERSEDE_MIN_IDLE_SECONDS = 2;
 /** Delay between dim (on /clear or /compact supersede) and forced
  * minimize. The dim happens immediately via markEnded; the minimize
  * fires after this delay unless the panel is pinned at fire time. */
@@ -222,6 +231,7 @@ export class TranscriptMonitor {
       excludeId: event.session_id,
       now: event.ts,
       withinSeconds: SUPERSEDE_WITHIN_SECONDS,
+      minIdleSeconds: SUPERSEDE_MIN_IDLE_SECONDS,
     });
     if (!target) return;
     for (const d of this.store.forceStatus(target.id, 'done')) this.broadcast(d);
