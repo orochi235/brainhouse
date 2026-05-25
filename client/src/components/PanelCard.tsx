@@ -4,13 +4,14 @@ import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import trashIcon from '../assets/icons/trash.svg?raw';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
+import { getActiveDrag, setActiveDrag } from '../lib/activeDrag.ts';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
 import type { SubagentSpawn } from '../lib/pipeline-types.ts';
 import { projectLabel } from '../lib/project.ts';
 import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
 import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
-import { usePrefs } from '../lib/usePrefs.ts';
+import { usePrefs } from '../lib/usePrefs.tsx';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import { EventList } from './EventList.tsx';
@@ -298,9 +299,14 @@ export function PanelCard({
             readOnly={readOnly}
           />
         )}
-        {checklist && <ChecklistPin items={checklist} />}
+        {checklist && <ChecklistPin items={checklist} now={now} />}
         {subagentSpawns.length > 0 && (
-          <SubagentSection spawns={subagentSpawns} childPanels={subagents ?? []} />
+          <SubagentSection
+            spawns={subagentSpawns}
+            childPanels={subagents ?? []}
+            parentId={panel.id}
+            readOnly={readOnly}
+          />
         )}
         <div
           className="panel-body"
@@ -699,6 +705,16 @@ function PanelToolPalette({
           <>
             <ToolChip
               className="panel-tool-debug"
+              title="Debug: wipe this session's in-memory + persisted state and rebuild it by re-reading the JSONL (cascades to subagents)"
+              onClick={(e) => {
+                e.stopPropagation();
+                void trpc.debug.rebuildPanel.mutate({ panelId: panel.id });
+              }}
+            >
+              ↻
+            </ToolChip>
+            <ToolChip
+              className="panel-tool-debug"
               title="Debug: spawn a mock subagent in this session"
               onClick={(e) => {
                 e.stopPropagation();
@@ -775,9 +791,37 @@ function PanelToolPalette({
   );
 }
 
-function ChecklistPin({ items }: { items: ChecklistItem[] }) {
+const CHECKLIST_ALL_DONE_LINGER_S = 5;
+
+function ChecklistPin({ items, now }: { items: ChecklistItem[]; now: number }) {
   const done = items.filter((i) => i.done).length;
   const pct = items.length === 0 ? 0 : (done / items.length) * 100;
+  // Sort: open items first (in their original order), then completed items
+  // at the bottom. Within "open" we preserve list order; within "done" we
+  // sort by completedAt ascending so the most-recently-finished sits at
+  // the very bottom of the list (visually closest to the next open item).
+  const withIndex = items.map((it, i) => {
+    const completedSeconds =
+      it.completedAt && it.done ? completedAgo(it.completedAt, now) : null;
+    const elapsedSeconds = computeElapsed(it, now);
+    return { it, i, completedSeconds, elapsedSeconds };
+  });
+  const open = withIndex.filter(({ it }) => !it.done);
+  const finished = withIndex
+    .filter(({ it }) => it.done)
+    .sort((a, b) => (a.completedSeconds ?? 0) - (b.completedSeconds ?? 0));
+  const ordered = [...open, ...finished];
+  // Drop the whole list once it's been fully done for a few seconds so the
+  // pin stays focused on active work. We measure linger from the oldest
+  // (i.e. last-completed in display order is at the bottom; oldest is at
+  // the top of `finished`).
+  if (open.length === 0 && finished.length > 0) {
+    const lastCompletedAgo = finished[finished.length - 1]?.completedSeconds ?? null;
+    if (lastCompletedAgo !== null && lastCompletedAgo >= CHECKLIST_ALL_DONE_LINGER_S) {
+      return null;
+    }
+  }
+  if (ordered.length === 0) return null;
   return (
     <div className="panel-pinned">
       <div className="checklist-summary">
@@ -795,19 +839,59 @@ function ChecklistPin({ items }: { items: ChecklistItem[] }) {
         <div className="checklist-progress-fill" style={{ width: `${pct}%` }} />
       </div>
       <ul className="checklist">
-        {items.map((it, i) => {
+        {ordered.map(({ it, i, elapsedSeconds }) => {
           const state = it.done ? 'done' : it.inProgress ? 'in-progress' : undefined;
           const glyph = it.done ? '✓' : it.inProgress ? '◐' : '○';
           return (
             <li key={`${i}-${it.text}`} className={state}>
               <span className={classNames('check', state)}>{glyph}</span>
               <span className="label">{it.text}</span>
+              {elapsedSeconds !== null && (
+                <span
+                  className="checklist-elapsed"
+                  title={
+                    it.firstSeenAt
+                      ? `started ${it.firstSeenAt}${it.completedAt ? ` · done ${it.completedAt}` : ''}`
+                      : undefined
+                  }
+                >
+                  {formatIdleCoarse(elapsedSeconds)}
+                </span>
+              )}
             </li>
           );
         })}
       </ul>
     </div>
   );
+}
+
+function completedAgo(iso: string, now: number): number | null {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const dt = now - ms / 1000;
+  return dt < 0 ? 0 : dt;
+}
+
+/** Per-item elapsed time. For done items: completedAt − firstSeenAt.
+ * For in-progress items: now − firstSeenAt. Pending items return null
+ * (no useful duration to show yet). */
+function computeElapsed(it: ChecklistItem, now: number): number | null {
+  if (!it.firstSeenAt) return null;
+  const start = Date.parse(it.firstSeenAt);
+  if (!Number.isFinite(start)) return null;
+  let end: number;
+  if (it.done && it.completedAt) {
+    const completedMs = Date.parse(it.completedAt);
+    if (!Number.isFinite(completedMs)) return null;
+    end = completedMs / 1000;
+  } else if (it.inProgress) {
+    end = now;
+  } else {
+    return null;
+  }
+  const dt = end - start / 1000;
+  return dt < 0 ? 0 : dt;
 }
 
 /**
@@ -820,9 +904,13 @@ function ChecklistPin({ items }: { items: ChecklistItem[] }) {
 function SubagentSection({
   spawns,
   childPanels,
+  parentId,
+  readOnly,
 }: {
   spawns: SubagentSpawn[];
   childPanels: PanelState[];
+  parentId: string;
+  readOnly?: boolean;
 }) {
   const remaining = [...childPanels];
   // Match spawns to live child panels in event order (so the first spawn
@@ -852,26 +940,102 @@ function SubagentSection({
       </div>
       <ul className="subagent-list">
         {rows.map(({ spawn, child }) => (
-          <SubagentRow key={spawn.toolUseId} spawn={spawn} child={child ?? null} />
+          <SubagentRow
+            key={spawn.toolUseId}
+            spawn={spawn}
+            child={child ?? null}
+            parentId={parentId}
+            readOnly={readOnly}
+          />
         ))}
       </ul>
     </div>
   );
 }
 
-function SubagentRow({ spawn, child }: { spawn: SubagentSpawn; child: PanelState | null }) {
+function SubagentRow({
+  spawn,
+  child,
+  parentId,
+  readOnly,
+}: {
+  spawn: SubagentSpawn;
+  child: PanelState | null;
+  parentId: string;
+  readOnly?: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
   const status = effectiveStatus(spawn, child);
   const glyph = status === 'done' ? '✓' : status === 'failed' ? '✗' : '◐';
-  const onClick = child ? () => focusPanel(child.id) : undefined;
+  // Click → promote the subagent onto the grid. Shift-click → jump to the
+  // existing panel without changing layout. We always dispatch the
+  // (parentId, description, agentType) tuple alongside any known child id so
+  // App.tsx can resolve the panel even when layout filtering kept it out of
+  // `subagents`.
+  const onClick = readOnly
+    ? undefined
+    : (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (e.shiftKey && child) {
+          focusPanel(child.id);
+          return;
+        }
+        window.dispatchEvent(
+          new CustomEvent('brainhouse:promote-subagent', {
+            detail: {
+              id: child?.id,
+              parentId,
+              description: spawn.description,
+              agentType: spawn.agentType,
+            },
+          }),
+        );
+      };
   const childPct = useMemo(() => childProgressPercent(child), [child]);
+  // Drag-to-promote is only meaningful when we have a real child panel
+  // and we're not in replay (readOnly) mode — the drop handler in
+  // App.tsx fires a tRPC mutation that would fail in replay.
+  const canDrag = !!child && !readOnly;
   return (
-    <li className={classNames('subagent-row', status, child && 'has-child')}>
+    <li
+      className={classNames('subagent-row', status, child && 'has-child')}
+      draggable={canDrag && armed}
+      onDragStart={
+        canDrag && child
+          ? (e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/brainhouse-panel', child.id);
+              e.dataTransfer.setData('text/brainhouse-panel-source', 'nested');
+              setActiveDrag({
+                id: child.id,
+                from: 'nested',
+                parentId,
+                isBrokenOut: false,
+              });
+              (e.currentTarget as HTMLElement).classList.add('dragging');
+            }
+          : undefined
+      }
+      onDragEnd={(e) => {
+        (e.currentTarget as HTMLElement).classList.remove('dragging');
+        setActiveDrag(null);
+        setArmed(false);
+      }}
+      onMouseDown={() => {
+        if (canDrag) setArmed(true);
+      }}
+      onMouseUp={() => setArmed(false)}
+    >
       <button
         type="button"
         className="subagent-row-button"
         onClick={onClick}
         disabled={!onClick}
-        title={child ? `jump to ${child.title}` : 'subagent panel not visible yet'}
+        title={
+          readOnly
+            ? `view ${child?.title ?? spawn.description}`
+            : `promote to the grid${child ? ' (shift-click to jump)' : ''}`
+        }
       >
         <span className={classNames('check', status)}>{glyph}</span>
         <span className="label">{spawn.description}</span>

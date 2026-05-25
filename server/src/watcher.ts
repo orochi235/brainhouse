@@ -111,6 +111,29 @@ export class TranscriptWatcher {
     await new Promise<void>((resolve) => watcher.once('ready', () => resolve()));
   }
 
+  /** Forget the persisted offset for a path and re-process it from byte 0.
+   * Used by the dev "rebuild from log" affordance: after the caller wipes
+   * the panel's in-memory + persisted state, this replays the JSONL so
+   * the same events flow back through `monitor.ingest`. No-op when the
+   * path doesn't classify as a transcript or doesn't exist.
+   *
+   * Serialized via the same `processing` chain chokidar uses, so a
+   * concurrent change-event for the same file can't interleave: either
+   * our reset+replay runs first and any subsequent chokidar event sees
+   * the offset back at end-of-file, or chokidar's call runs first and
+   * ours sees the up-to-date offset before resetting it. */
+  async rereadFromStart(absPath: string): Promise<void> {
+    if (!classifyPath(absPath)) return;
+    if (!existsSync(absPath)) return;
+    const run = async () => {
+      this.offsets.delete(absPath);
+      this.store?.deleteBootstrapOffset(absPath);
+      await this.processPath(absPath);
+    };
+    this.processing = this.processing.then(run).catch(() => undefined);
+    await this.processing;
+  }
+
   async stop(): Promise<void> {
     if (this.chokidarWatcher) {
       await this.chokidarWatcher.close();
@@ -123,14 +146,23 @@ export class TranscriptWatcher {
     const cutoff = Date.now() / 1000 - this.bootstrapAgeSeconds;
     for (const root of this.roots) {
       if (!existsSync(root)) continue;
-      for (const file of await this.walk(root)) {
-        if (!classifyPath(file)) continue;
-        // Two skip rules:
-        //   - file hasn't changed since the last offset we persisted
-        //     (cheap: stat mtime < (last_seen_at - epsilon))
-        //   - we have no offset AND the file's mtime is older than the
-        //     bootstrapAgeSeconds cutoff (don't replay ancient transcripts
-        //     from disk just because we noticed them this time)
+      // Two passes: parents first so we know which session_ids are
+      // "live" enough to bootstrap. Then subagents — always processed
+      // when their parent session is live, regardless of mtime.
+      // Otherwise a parent that's still being appended to bootstraps,
+      // but its already-completed subagent transcripts (older than
+      // bootstrapAgeSeconds) get silently dropped and never re-arrive
+      // since chokidar only fires on further writes.
+      const files = await this.walk(root);
+      const liveSessions = new Set<string>();
+      const subagentFiles: string[] = [];
+      for (const file of files) {
+        const info = classifyPath(file);
+        if (!info) continue;
+        if (info.agent_id !== null) {
+          subagentFiles.push(file);
+          continue;
+        }
         let mtime: number;
         try {
           mtime = statSync(file).mtimeMs / 1000;
@@ -139,6 +171,24 @@ export class TranscriptWatcher {
         }
         const hasOffset = this.offsets.has(file);
         if (!hasOffset && mtime < cutoff) continue;
+        liveSessions.add(info.session_id);
+        await this.processPath(file);
+      }
+      for (const file of subagentFiles) {
+        const info = classifyPath(file);
+        if (!info) continue;
+        const hasOffset = this.offsets.has(file);
+        if (!hasOffset && !liveSessions.has(info.session_id)) {
+          // Parent session wasn't bootstrapped — skip its subagents too,
+          // matching the old behavior (don't resurrect ancient sessions).
+          let mtime: number;
+          try {
+            mtime = statSync(file).mtimeMs / 1000;
+          } catch {
+            continue;
+          }
+          if (mtime < cutoff) continue;
+        }
         await this.processPath(file);
       }
     }
@@ -197,13 +247,25 @@ export class TranscriptWatcher {
     } catch {
       return;
     }
+    // Use the meta.json's mtime as the synthetic event's ts so a brand-new
+    // subagent panel seeded by this event starts with a realistic
+    // last_event_at (subagent creation time) rather than wall-clock-now.
+    // Without this, bootstrap-replaying an old subagent locks its
+    // "last activity" timestamp to today and the +X idle timer always
+    // reads 0 regardless of how stale the transcript actually is.
+    let mtimeIso = '';
+    try {
+      mtimeIso = new Date(statSync(p).mtimeMs).toISOString();
+    } catch {
+      // file gone — leave empty so apply() falls back to clock-now
+    }
     this.onEvent(
       {
         session_id: info.session_id,
         agent_id: info.agent_id,
         uuid: `${info.agent_id}:meta`,
         parent_uuid: null,
-        ts: '',
+        ts: mtimeIso,
         cwd: null,
         kind: 'meta',
         payload: { record_type: 'subagent-meta', raw },

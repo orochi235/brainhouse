@@ -8,10 +8,12 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
 import type { Event } from './parser.js';
-import { type Delta, SessionStore } from './session.js';
+import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
 import { readPanelTheme } from './theme.js';
 import { TranscriptWatcher } from './watcher.js';
@@ -71,8 +73,9 @@ export class TranscriptMonitor {
    * human-readable account name on each ingest. */
   private readonly accountLabels: Map<string, string>;
   /** Held for setRoots(), which constructs a fresh watcher and needs the
-   * same persistence handle. */
-  private readonly persistStore: import('./store.js').Store | null;
+   * same persistence handle. Public so debug instrumentation can dump
+   * the bootstrap_offsets table without going through SessionStore. */
+  readonly persistStore: import('./store.js').Store | null;
 
   constructor(opts: MonitorOptions) {
     this.persistStore = opts.store ?? null;
@@ -123,6 +126,11 @@ export class TranscriptMonitor {
       if (dto.cwd && !dto.theme) void this.loadThemeFor(dto.id, dto.cwd);
     }
     await this.watcher.start({ watch });
+    // Bootstrap-time subagent replays produce panels with no SubagentStop
+    // hook to drive a real end. Sweep any whose last event is older than
+    // the idle window and mark them ended so the dock doesn't fill with
+    // phantom "live" rows from prior days.
+    for (const d of this.store.endStaleSubagents(this.store.idleSeconds)) this.broadcast(d);
     if (this.hookWatcher) await this.hookWatcher.start();
     this.startTick();
     this.startPruneLoop();
@@ -203,7 +211,9 @@ export class TranscriptMonitor {
     // post-clear panel after the conversation it's replacing. /compact
     // keeps the conversation so its title legitimately carries forward.
     if (source === 'clear') {
-      this.store.armClearTitleSuppression(event.session_id);
+      for (const d of this.store.armClearTitleSuppression(event.session_id)) {
+        this.broadcast(d);
+      }
     }
     const encodedCwdDir = path.basename(path.dirname(event.transcript_path));
     if (!encodedCwdDir) return;
@@ -219,7 +229,7 @@ export class TranscriptMonitor {
       this.broadcast(d);
     }
     if (this.autoMinimizeOnClear) this.scheduleSupersedeMini(target.id);
-    for (const sub of this.store.liveSubagentsOf(target.id)) {
+    for (const sub of this.store.unendedSubagentsOf(target.id)) {
       for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
       for (const d of this.store.markEnded(sub.id, 'hook_session_start_supersede')) {
         this.broadcast(d);
@@ -259,7 +269,11 @@ export class TranscriptMonitor {
       return;
     }
     if (event.kind === 'subagent_stop') {
-      for (const sub of this.store.liveSubagentsOf(sid)) {
+      // Use `unendedSubagentsOf` (not `liveSubagentsOf`): a subagent that
+      // already idle-transitioned to `status: 'done'` still needs its
+      // `ended` flag flipped so the parent's subagent-row pin list shows
+      // the ✓ glyph instead of the spinning ◐.
+      for (const sub of this.store.unendedSubagentsOf(sid)) {
         for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
         // Subagents finish for real — we trust SubagentStop as an explicit
         // end signal. Dimming flips on via `ended`.
@@ -294,7 +308,7 @@ export class TranscriptMonitor {
       // session_end is the whole-session terminator.
       for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
       for (const d of this.store.markEnded(sid, 'hook_session_end')) this.broadcast(d);
-      for (const sub of this.store.liveSubagentsOf(sid)) {
+      for (const sub of this.store.unendedSubagentsOf(sid)) {
         for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
         for (const d of this.store.markEnded(sub.id, 'hook_session_end')) this.broadcast(d);
       }
@@ -332,6 +346,75 @@ export class TranscriptMonitor {
   ingest(event: Event, sourceRoot?: string): void {
     const accountLabel = sourceRoot ? (this.accountLabels.get(sourceRoot) ?? null) : null;
     for (const delta of this.store.apply(event, { accountLabel })) this.broadcast(delta);
+  }
+
+  /** Dev affordance: wipe a panel's in-memory + persisted state, then
+   * re-read its JSONL from byte 0 so it reconstructs from the log under
+   * the current set of transforms / derivation rules. Cascades to all
+   * subagent panels parented to the target (and to subagent JSONLs on
+   * disk that don't have a panel yet). Returns the set of file paths
+   * that were queued for re-read. */
+  async rebuildPanel(panelId: string): Promise<string[]> {
+    const parent = this.store.panel(panelId);
+    if (!parent) return [];
+    if (parent.kind !== 'parent') {
+      // Rebuild only makes sense from the parent — cascading from a
+      // subagent would leave the parent half-rebuilt. Promote to the
+      // owning parent when called on a subagent.
+      const owner = parent.parent_panel_id ? this.store.panel(parent.parent_panel_id) : null;
+      if (owner) return this.rebuildPanel(owner.id);
+      return [];
+    }
+    const cwd = parent.cwd;
+    // Snapshot child ids before we start mutating.
+    const subagents = this.store.allSubagentsOf(panelId);
+    // Resolve the file path that owns the parent panel. Try each root.
+    const filesToReread: string[] = [];
+    if (cwd) {
+      const encoded = encodeCwdToProjectDir(cwd);
+      for (const root of this.watcher.roots) {
+        const candidate = path.join(root, encoded, `${panelId}.jsonl`);
+        if (existsSync(candidate)) {
+          filesToReread.push(candidate);
+          // Discover every subagent file on disk under the same session
+          // dir, even ones we don't have an in-memory panel for yet.
+          const subagentDir = path.join(root, encoded, panelId, 'subagents');
+          if (existsSync(subagentDir)) {
+            try {
+              for (const entry of await readdir(subagentDir)) {
+                if (entry.endsWith('.jsonl') || entry.endsWith('.meta.json')) {
+                  filesToReread.push(path.join(subagentDir, entry));
+                }
+              }
+            } catch {
+              // unreadable dir; skip
+            }
+          }
+          break;
+        }
+      }
+    }
+    // Refuse to tear down if we can't find any JSONL to rebuild from —
+    // otherwise the panel just disappears with no way to recover short
+    // of a server restart.
+    if (filesToReread.length === 0) return [];
+    // Tear down in-memory + persisted state for the parent and every
+    // child. `store.remove` broadcasts a `panel_remove` so clients
+    // unmount immediately; `purgePanel` also wipes events_index /
+    // session_summary / intentions.
+    const tearDown = (id: string) => {
+      for (const d of this.store.remove(id)) this.broadcast(d);
+      this.persistStore?.purgePanel(id);
+    };
+    for (const sub of subagents) tearDown(sub.id);
+    tearDown(panelId);
+    // Re-read every queued file. processPath is async; the watcher
+    // serializes via its internal `processing` chain. We `await` each
+    // call so the caller knows when the rebuild has fully replayed.
+    for (const file of filesToReread) {
+      await this.watcher.rereadFromStart(file);
+    }
+    return filesToReread;
   }
 
   private broadcast(delta: Delta): void {

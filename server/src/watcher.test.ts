@@ -205,6 +205,47 @@ describe('TranscriptWatcher', () => {
     ]);
   });
 
+  it('bootstrap replays stale subagent files when their parent session is live', async () => {
+    // Repro for: parent session still being appended to, but its earlier
+    // subagent transcripts (already completed, mtime > bootstrap cutoff)
+    // got silently dropped — leaving phantom rows in the UI with no panel.
+    const proj = path.join(dir, 'proj');
+    const sessDir = path.join(proj, 'sess-1');
+    const subDir = path.join(sessDir, 'subagents');
+    mkdirSync(subDir, { recursive: true });
+    const parent = path.join(proj, 'sess-1.jsonl');
+    const staleSub = path.join(subDir, 'agent-old.jsonl');
+    const freshSub = path.join(subDir, 'agent-new.jsonl');
+    writeFileSync(parent, `${JSON.stringify(record('u1', 'parent', 'sess-1'))}\n`);
+    writeFileSync(staleSub, `${JSON.stringify(record('u2', 'stale sub', 'sess-1'))}\n`);
+    writeFileSync(freshSub, `${JSON.stringify(record('u3', 'fresh sub', 'sess-1'))}\n`);
+    const oldSeconds = (Date.now() - 60 * 60 * 1000) / 1000;
+    utimesSync(staleSub, oldSeconds, oldSeconds);
+    const w = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 10 * 60 });
+    await w.bootstrap();
+    const texts = events.flatMap((e) =>
+      e.kind === 'assistant_text' && typeof e.payload.text === 'string' ? [e.payload.text] : [],
+    );
+    expect(texts.sort()).toEqual(['fresh sub', 'parent', 'stale sub']);
+  });
+
+  it('bootstrap still skips stale subagents whose parent session is also stale', async () => {
+    const proj = path.join(dir, 'proj');
+    const sessDir = path.join(proj, 'sess-1');
+    const subDir = path.join(sessDir, 'subagents');
+    mkdirSync(subDir, { recursive: true });
+    const parent = path.join(proj, 'sess-1.jsonl');
+    const sub = path.join(subDir, 'agent-old.jsonl');
+    writeFileSync(parent, `${JSON.stringify(record('u1', 'parent', 'sess-1'))}\n`);
+    writeFileSync(sub, `${JSON.stringify(record('u2', 'sub', 'sess-1'))}\n`);
+    const oldSeconds = (Date.now() - 60 * 60 * 1000) / 1000;
+    utimesSync(parent, oldSeconds, oldSeconds);
+    utimesSync(sub, oldSeconds, oldSeconds);
+    const w = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 10 * 60 });
+    await w.bootstrap();
+    expect(events).toEqual([]);
+  });
+
   it('unrelated file is ignored', async () => {
     const proj = path.join(dir, 'proj');
     mkdirSync(proj, { recursive: true });
@@ -322,6 +363,49 @@ describe('TranscriptWatcher', () => {
         true,
       );
       store.close();
+    });
+  });
+
+  describe('rereadFromStart', () => {
+    it('replays the file from byte 0 after wiping the persisted offset', async () => {
+      const store = Store.open(':memory:');
+      const proj = path.join(dir, 'proj');
+      mkdirSync(proj, { recursive: true });
+      const f = path.join(proj, 'sess-1.jsonl');
+      writeFileSync(
+        f,
+        `${[0, 1].map((i) => JSON.stringify(record(`u${i}`, `hi ${i}`, 'sess-1'))).join('\n')}\n`,
+      );
+      const w = new TranscriptWatcher([dir], sink, { bootstrapAgeSeconds: 10_000, store });
+      await w.start({ watch: false });
+      expect(events.length).toBe(2);
+      // After bootstrap, the offset is at end-of-file — a re-process is a
+      // no-op.
+      events.length = 0;
+      await w.processPath(f);
+      expect(events.length).toBe(0);
+      // rereadFromStart wipes the offset (in-memory + persisted) and
+      // replays both lines.
+      await w.rereadFromStart(f);
+      expect(events.map((e) => (e.kind === 'assistant_text' ? e.payload.text : null))).toEqual([
+        'hi 0',
+        'hi 1',
+      ]);
+      // Persisted offset row was cleared and then re-set by the replay.
+      // After the replay we expect a fresh offset > 0 (end of file again).
+      const offsets = store.allBootstrapOffsets();
+      const entry = offsets.find(([p]) => p === f);
+      expect(entry?.[1]).toBeGreaterThan(0);
+      store.close();
+    });
+
+    it('is a no-op for unclassified or missing paths', async () => {
+      const w = new TranscriptWatcher([dir], sink);
+      // Doesn't classify as a transcript.
+      await w.rereadFromStart(path.join(dir, 'notes.txt'));
+      // Classifies, but file doesn't exist.
+      await w.rereadFromStart(path.join(dir, 'proj', 'ghost.jsonl'));
+      expect(events).toEqual([]);
     });
   });
 });

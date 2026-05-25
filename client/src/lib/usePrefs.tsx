@@ -1,14 +1,32 @@
 /**
- * Tiny client-side prefs cache. Fetches once on mount via tRPC, holds the
- * result, exposes a `refetch()` so a successful Save in the editor can pull
- * the fresh value back into the rest of the app.
+ * Client-side prefs cache. A single `PrefsProvider` at the app root
+ * fetches once via tRPC and shares the result through context.
+ * `usePrefs()` reads from that context — so every panel sees the
+ * same value, and a refetch (triggered by the editor on Save) updates
+ * everyone at once.
  *
- * We deliberately don't subscribe to prefs changes from the server — the
- * editor is the only writer right now, and it triggers a refetch on save.
- * If we add other writers later, switch this to a subscription.
+ * Previously each `usePrefs()` call mounted its own state and fired
+ * its own fetch. With N panels that meant N independent races against
+ * a single render — panels that hadn't completed their fetch yet
+ * (or whose fetch failed) silently used DEFAULT_PREFS, which is why
+ * the `prefs.debug.enabled` flag would intermittently disappear from
+ * a panel's tool palette.
+ *
+ * We deliberately don't subscribe to prefs changes from the server —
+ * the editor is the only writer right now, and it triggers a refetch
+ * on save. If we add other writers later, switch this to a
+ * subscription.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { trpc } from '../trpc.ts';
 
 export interface ClientPrefs {
@@ -93,7 +111,14 @@ const DEFAULT_PREFS: ClientPrefs = {
   debug: { enabled: false },
 };
 
-export function usePrefs() {
+interface PrefsContextValue {
+  prefs: ClientPrefs;
+  refetch: () => Promise<void>;
+}
+
+const Ctx = createContext<PrefsContextValue | null>(null);
+
+export function PrefsProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<ClientPrefs>(DEFAULT_PREFS);
 
   const refetch = useCallback(async () => {
@@ -109,5 +134,16 @@ export function usePrefs() {
     void refetch();
   }, [refetch]);
 
-  return { prefs, refetch };
+  const value = useMemo<PrefsContextValue>(() => ({ prefs, refetch }), [prefs, refetch]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function usePrefs(): PrefsContextValue {
+  const ctx = useContext(Ctx);
+  // Defensive fallback: if a component renders outside the provider
+  // (e.g. a Storybook story, a test, or a misplaced consumer), serve
+  // defaults rather than crashing. This matches the prior per-hook
+  // behavior on first render so callers don't need null checks.
+  if (!ctx) return { prefs: DEFAULT_PREFS, refetch: async () => undefined };
+  return ctx;
 }

@@ -89,6 +89,7 @@ export interface PanelRow {
     | 'idle_timeout'
     | 'server_close'
     | 'progress_complete'
+    | 'bootstrap_stale'
     | null;
   updated_at: number;
 }
@@ -136,6 +137,7 @@ export interface SessionSummaryRow {
     | 'idle_timeout'
     | 'server_close'
     | 'progress_complete'
+    | 'bootstrap_stale'
     | 'never';
   event_count: number;
   tool_call_count: number;
@@ -408,6 +410,18 @@ export class Store {
   }
 
   deletePanel(id: string): void {
+    this.db.prepare('DELETE FROM panels WHERE id = ?').run(id);
+  }
+
+  /** Wipe every persisted trace of a panel: events_index rows, session
+   * summary, intentions, and the panels row. Used by the dev "rebuild
+   * from log" affordance so the subsequent re-bootstrap reconstructs
+   * the panel from scratch. Caller is responsible for also clearing
+   * any matching `bootstrap_offsets` rows. */
+  purgePanel(id: string): void {
+    this.db.prepare('DELETE FROM events_index WHERE panel_id = ?').run(id);
+    this.db.prepare('DELETE FROM session_summary WHERE session_id = ?').run(id);
+    this.db.prepare('DELETE FROM intentions WHERE panel_id = ?').run(id);
     this.db.prepare('DELETE FROM panels WHERE id = ?').run(id);
   }
 

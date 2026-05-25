@@ -2,6 +2,7 @@ import classNames from 'classnames';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { ConnTooltip } from './components/ConnTooltip.tsx';
+import { DebugTile } from './components/DebugTile.tsx';
 import { FlowsModal } from './components/FlowsModal.tsx';
 import { HoverPopover } from './components/HoverPopover.tsx';
 import { PanelCard } from './components/PanelCard.tsx';
@@ -9,6 +10,7 @@ import { PrefsModal } from './components/PrefsModal.tsx';
 import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
+import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { LightboxProvider, useLightbox } from './lib/lightbox.tsx';
@@ -22,7 +24,7 @@ import {
 import { useTheme } from './lib/preferences.ts';
 import { clearScrollPosition } from './lib/scrollMemory.ts';
 import { useIntentions } from './lib/useIntentions.ts';
-import { usePrefs } from './lib/usePrefs.ts';
+import { PrefsProvider, usePrefs } from './lib/usePrefs.tsx';
 import { ReplayView, type ReplayInlineSource, type ReplaySource } from './ReplayView.tsx';
 import { trpc } from './trpc.ts';
 import { type PanelState, useDeltaStream } from './useDeltaStream.ts';
@@ -129,8 +131,9 @@ function BrandLabel() {
 
 export function App() {
   const replay = useReplayEntry();
-  if (replay) return <ReplayView source={replay} />;
-  return <AppMain />;
+  return (
+    <PrefsProvider>{replay ? <ReplayView source={replay} /> : <AppMain />}</PrefsProvider>
+  );
 }
 
 /** Read `?replay=<path>` once at mount and watch for drag-dropped
@@ -180,6 +183,12 @@ function useReplayEntry(): ReplaySource | ReplayInlineSource | null {
 }
 
 function AppMain() {
+  const debugMode = new URLSearchParams(window.location.search).get('debug') === '1';
+  useEffect(() => {
+    if (!debugMode) return;
+    document.body.setAttribute('data-debug', '1');
+    return () => document.body.removeAttribute('data-debug');
+  }, [debugMode]);
   const { status, panels } = useDeltaStream();
   const [theme, setTheme] = useTheme();
   const { prefs, refetch: refetchPrefs } = usePrefs();
@@ -254,6 +263,43 @@ function AppMain() {
     initial: seeded.dismissal,
     persist: (id, patch) => persistIntention(id, patch),
   });
+
+  // Click on a subagent row dispatches this event; we mirror the
+  // drop-from-nested branch of the grid drop handler so the affordance has
+  // identical semantics to drag-to-promote. The detail can carry either a
+  // resolved panel id, or a (parentId, description, agentType) tuple we
+  // resolve against the full panels map — that fallback survives layout
+  // filtering (clientMini / hidden) excluding the child from `subagents`.
+  useEffect(() => {
+    const onPromote = (e: Event) => {
+      const detail = (
+        e as CustomEvent<{
+          id?: string;
+          parentId?: string;
+          description?: string;
+          agentType?: string | null;
+        }>
+      ).detail;
+      let id = detail?.id ?? null;
+      if (!id && detail?.parentId && detail?.description !== undefined) {
+        for (const p of panels.values()) {
+          if (p.kind !== 'subagent') continue;
+          if (p.parent_panel_id !== detail.parentId) continue;
+          if (p.task_description !== detail.description) continue;
+          if (detail.agentType != null && p.agent_type !== detail.agentType) continue;
+          id = p.id;
+          break;
+        }
+      }
+      if (!id) return;
+      const srcPanel = panels.get(id);
+      if (!srcPanel) return;
+      if (!brokenOut.has(id)) toggleBrokenOut(id);
+      if (isClientMini(srcPanel)) restoreLocal(id);
+    };
+    window.addEventListener('brainhouse:promote-subagent', onPromote);
+    return () => window.removeEventListener('brainhouse:promote-subagent', onPromote);
+  }, [panels, brokenOut, toggleBrokenOut, isClientMini, restoreLocal]);
 
   useEffect(() => {
     document.body.classList.toggle('imessage', imessage);
@@ -389,7 +435,10 @@ function AppMain() {
   // total slot count to the layout hook so a 4-panel grid with one wide panel
   // becomes a 5-slot tile (still picks a nice integer cols/rows).
   const wideCount = orderedGridPanels.reduce((n, p) => n + (wide.has(p.id) ? 1 : 0), 0);
-  const slots = orderedGridPanels.length + wideCount;
+  // Debug mode adds an extra grid-slot for the DebugTile; include it in
+  // the layout count so the grid sizes its rows for n+1 items instead of
+  // overflowing into a 0-height auto-row.
+  const slots = orderedGridPanels.length + wideCount + (debugMode ? 1 : 0);
   const { ref: gridRef, cols, rows } = useGridLayout(slots);
   const gridStyle = {
     gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
@@ -553,6 +602,21 @@ function AppMain() {
           {insertGhost === null && orderedGridPanels.length > 0 && (
             <div className="grid-slot insert-ghost-append" aria-hidden="true" />
           )}
+          {debugMode && (
+            <div className="grid-slot debug-tile-slot">
+              <DebugTile
+                client={{
+                  allPanels: panels,
+                  gridIds: orderedGridPanels.map((p) => p.id),
+                  dockIds: trayPanels.map((p) => p.id),
+                  isHidden,
+                  isClientMini,
+                  isPinned: (id) => pinned.has(id),
+                  isBrokenOut: (id) => brokenOut.has(id),
+                }}
+              />
+            </div>
+          )}
           {orderedGridPanels.length === 0 && trayPanels.length === 0 && status === 'live' && (
             <p className="empty">no sessions yet — try `+ mock session`</p>
           )}
@@ -696,18 +760,18 @@ function GridSlot({
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/brainhouse-panel', panel.id);
         e.dataTransfer.setData('text/brainhouse-panel-source', 'grid');
-        activeDrag = {
+        setActiveDrag({
           id: panel.id,
           from: 'grid',
           parentId: panel.kind === 'subagent' ? panel.parent_panel_id : null,
           isBrokenOut: panel.kind === 'subagent',
-        };
+        });
         (e.currentTarget as HTMLElement).classList.add('dragging');
       }}
       onDragEnd={(rawE) => {
         const e = rawE as unknown as React.DragEvent<HTMLDivElement>;
         (e.currentTarget as HTMLElement).classList.remove('dragging');
-        activeDrag = null;
+        setActiveDrag(null);
         setArmed(false);
       }}
       onDragOver={(e) => {
@@ -716,23 +780,24 @@ function GridSlot({
         // active drag. If not, let the event bubble to .session-grid which
         // handles the "anywhere on the grid" cases (break-out, restore).
         const el = e.currentTarget as HTMLElement;
-        if (!activeDrag) return;
-        if (activeDrag.from === 'nested') {
+        const drag = getActiveDrag();
+        if (!drag) return;
+        if (drag.from === 'nested') {
           // Nested-tray drag: drops land on the grid background, never on
           // an existing slot. Let bubble.
           return;
         }
-        if (activeDrag.from === 'grid' && activeDrag.isBrokenOut) {
+        if (drag.from === 'grid' && drag.isBrokenOut) {
           // Broken-out subagent: the only valid grid-slot drop is its own
           // parent (re-dock). Drops on other slots fall through.
-          if (panel.id !== activeDrag.parentId) return;
+          if (panel.id !== drag.parentId) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
           el.classList.add('drop-target', 'redock-target');
           return;
         }
         // Regular grid panel: reorder against any other slot.
-        if (activeDrag.id === panel.id) return; // can't drop on self
+        if (drag.id === panel.id) return; // can't drop on self
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         el.classList.add('drop-target');
@@ -748,11 +813,12 @@ function GridSlot({
         el.classList.remove('redock-target');
         // Only consume the drop when we actually handle it; otherwise let
         // it bubble to .session-grid.
-        if (!activeDrag) return;
+        const drag = getActiveDrag();
+        if (!drag) return;
         const src = e.dataTransfer.getData('text/brainhouse-panel');
         if (!src) return;
-        if (activeDrag.from === 'grid' && activeDrag.isBrokenOut) {
-          if (panel.id !== activeDrag.parentId) return;
+        if (drag.from === 'grid' && drag.isBrokenOut) {
+          if (panel.id !== drag.parentId) return;
           const srcPanel = panels.get(src);
           if (!srcPanel) return;
           e.preventDefault();
@@ -760,7 +826,7 @@ function GridSlot({
           onToggleBrokenOutSub(srcPanel);
           return;
         }
-        if (activeDrag.from === 'grid' && !activeDrag.isBrokenOut) {
+        if (drag.from === 'grid' && !drag.isBrokenOut) {
           if (src === panel.id) return;
           e.preventDefault();
           e.stopPropagation();
@@ -856,7 +922,7 @@ function PanelWithSubagents({
         parentTitle={parentTitle}
         account={account}
         accountColor={accountColor}
-        subagents={subagents}
+        subagents={[...subagents, ...placeholders]}
       />
       {(live.length > 0 || rest.length > 0 || placeholders.length > 0) && (
         <div className="panel-subagents">
@@ -915,17 +981,17 @@ function NestedSubagentSlot({
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/brainhouse-panel', panel.id);
         e.dataTransfer.setData('text/brainhouse-panel-source', 'nested');
-        activeDrag = {
+        setActiveDrag({
           id: panel.id,
           from: 'nested',
           parentId: panel.parent_panel_id,
           isBrokenOut: false,
-        };
+        });
         (e.currentTarget as HTMLElement).classList.add('dragging');
       }}
       onDragEnd={(e) => {
         (e.currentTarget as HTMLElement).classList.remove('dragging');
-        activeDrag = null;
+        setActiveDrag(null);
         setArmed(false);
       }}
     >
@@ -1024,18 +1090,6 @@ function onGridDragOver(e: React.DragEvent) {
   e.dataTransfer.dropEffect = 'move';
 }
 
-/** Module-level snapshot of the currently-active drag. Set on dragstart,
- * cleared on dragend. Used by dragover handlers, which can read the
- * dataTransfer's `types` list but NOT its values — the HTML5 drag spec
- * intentionally hides values until drop to thwart cross-origin sniffing.
- * Knowing the source panel's identity during dragover lets us validate
- * drop targets (e.g., only the source's parent is a valid re-dock target). */
-let activeDrag: {
-  id: string;
-  from: 'grid' | 'nested';
-  parentId: string | null;
-  isBrokenOut: boolean;
-} | null = null;
 
 function ScenariosButton() {
   const lightbox = useLightbox();
@@ -1097,7 +1151,7 @@ function PrefsButton({
   prefs,
   onSaved,
 }: {
-  prefs: import('./lib/usePrefs.ts').ClientPrefs;
+  prefs: import('./lib/usePrefs.tsx').ClientPrefs;
   onSaved?: () => void;
 }) {
   const lightbox = useLightbox();

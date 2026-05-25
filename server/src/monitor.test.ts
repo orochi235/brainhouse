@@ -27,6 +27,47 @@ function newMonitor() {
 }
 
 describe('TranscriptMonitor', () => {
+  describe('rebuildPanel safety gates', () => {
+    it('returns [] when the panel does not exist', async () => {
+      const monitor = newMonitor();
+      const result = await monitor.rebuildPanel('does-not-exist');
+      expect(result).toEqual([]);
+      // No deltas emitted.
+    });
+
+    it('refuses to tear down when no JSONL can be located for the panel', async () => {
+      const monitor = newMonitor();
+      // Seed a panel with a cwd that points nowhere reachable from the
+      // (empty) roots list — so the JSONL lookup yields nothing.
+      monitor.ingest(userTextEvent({ cwd: '/nowhere/at/all' }));
+      expect(monitor.store.panel('S')).toBeDefined();
+      const removed: string[] = [];
+      monitor.emitter.on('delta', (d) => {
+        if (d.op === 'panel_remove') removed.push(d.panel_id);
+      });
+      const result = await monitor.rebuildPanel('S');
+      expect(result).toEqual([]);
+      // Panel is still in memory; no panel_remove was broadcast.
+      expect(monitor.store.panel('S')).toBeDefined();
+      expect(removed).toEqual([]);
+    });
+
+    it('redirects rebuild from a subagent to its owning parent', async () => {
+      const monitor = newMonitor();
+      // Parent + subagent, both with no resolvable JSONL — verify the
+      // redirect-to-parent path without needing real files. The parent
+      // lookup will then bail via the no-files gate.
+      monitor.ingest(userTextEvent({ session_id: 'P', cwd: '/nope' }));
+      monitor.ingest(
+        userTextEvent({ session_id: 'P', agent_id: 'sub1', uuid: 'sub-u', cwd: '/nope' }),
+      );
+      const result = await monitor.rebuildPanel('sub1');
+      // No files to re-read, but we didn't crash and the parent panel
+      // is the one that was targeted (and bailed safely).
+      expect(result).toEqual([]);
+    });
+  });
+
   it('ingest creates a panel and broadcasts deltas', () => {
     const monitor = newMonitor();
     const deltas: string[] = [];

@@ -16,6 +16,7 @@ import { type EventEmitter, on } from 'node:events';
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
+import { collectDebugState } from './debugState.js';
 import { aggregateFlows } from './flows.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
@@ -214,6 +215,16 @@ export const appRouter = t.router({
         return { sessionId };
       }),
     }),
+    /** Wipe a panel's in-memory + persisted state and re-read its JSONL
+     * from byte 0 so the current set of transforms / derivation rules
+     * gets re-applied. Cascades to subagents (and to subagent JSONLs
+     * on disk that don't have a panel yet). Dev-only affordance. */
+    rebuildPanel: t.procedure
+      .input(z.object({ panelId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const files = await ctx.monitor.rebuildPanel(input.panelId);
+        return { panelId: input.panelId, filesRereadCount: files.length };
+      }),
     spawnSubagentIn: t.procedure
       .input(
         z.object({
@@ -269,6 +280,13 @@ export const appRouter = t.router({
         return { title: proposed };
       }),
   }),
+
+  /** Unfiltered dump of the running model: every panel in the SessionStore
+   * map (incl. binned), file-vs-panel reconciliation per root, the
+   * bootstrap_offsets table, and current delta subscriber count. Used by
+   * the `/debug` tile to surface state independent of any rendering
+   * filters. Not part of the normal client/server contract. */
+  debugState: t.procedure.query(({ ctx }) => collectDebugState(ctx.monitor)),
 
   deltas: t.procedure.subscription(async function* ({ ctx, signal }) {
     // Initial snapshot so a fresh subscriber doesn't have to make a separate

@@ -351,8 +351,6 @@ body.loading-quiet .panel {
 }
 .panel-subagent {
   border-left: 2px solid var(--accent);
-  max-width: 280px;
-  justify-self: start;
   max-height: none;
 }
 /* Nested subagent tray: cap at 4 cards visible, scroll beyond. Each
@@ -733,7 +731,10 @@ body.loading-quiet .panel {
   right: 0;
   /* Expanded hit area extends well down + left from the visible chips
    * so "close to the palette" snaps to full opacity well before the cursor
-   * actually reaches the buttons. Kept compact upward to avoid the title bar. */
+   * actually reaches the buttons. Kept compact upward to avoid the title bar.
+   * The wrapper itself stays pointer-events:none so this invisible padding
+   * doesn't eat wheel/click events on the checklist sitting underneath —
+   * only `.tool-chips` inside opts back in. */
   padding: 0.25rem 0.5rem 6rem 8rem;
   opacity: 0;
   pointer-events: none;
@@ -742,16 +743,19 @@ body.loading-quiet .panel {
 }
 .panel:hover .panel-tool-palette {
   opacity: 0.3;
+}
+/* Only the visible chips catch pointer events; the wrapper's invisible
+ * padding area stays click-through so the checklist below remains scrollable. */
+.panel-tool-palette .tool-chips {
   pointer-events: auto;
 }
 /* Specificity-matched so it beats the 0.3 rule above when both match. */
-.panel:hover .panel-tool-palette:hover {
+.panel:hover .panel-tool-palette:has(.tool-chips:hover) {
   opacity: 1;
 }
 /* Always-on mode: palette stays at full opacity regardless of hover. */
 body.tool-palette-always .panel-tool-palette {
   opacity: 1;
-  pointer-events: auto;
 }
 /* Pref-driven badge visibility — toggled via Prefs → Display. */
 body.hide-session-time .panel-session-time {
@@ -1223,6 +1227,12 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   padding: 0;
   margin: 0;
   font-size: 0.76rem;
+  /* Cap at ~5 rows; scroll the rest in place so a long task list doesn't
+   * push the conversation body off-screen. Row height ≈ font-size *
+   * line-height + vertical padding, so 5 rows ≈ 6.5rem. */
+  max-height: 6.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .checklist li {
   display: flex;
@@ -1249,6 +1259,17 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
 .checklist li.done .label {
   text-decoration: line-through;
   opacity: 0.55;
+}
+/* Completion timestamp — sits at the end of a done row, hover for the
+ * absolute time. Dim by default so it doesn't compete with the label. */
+.checklist .checklist-completed,
+.checklist .checklist-elapsed {
+  margin-left: auto;
+  padding-left: 0.5rem;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.5;
+  flex-shrink: 0;
 }
 
 /* ---- pinned subagent list ---- */
@@ -1281,6 +1302,8 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
 }
 .subagent-row-button:hover:not(:disabled) .label {
   color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .subagent-row .check {
   font-family: ui-monospace, monospace;
@@ -1383,7 +1406,10 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
 .panel-subagent .panel-header {
   border-bottom: 0;
 }
-.panel-subagent .panel-body {
+/* Nested subagent rows are header-only — the body is hidden so the parent's
+ * tray stays compact. Broken-out subagents (without `.nested`) render full
+ * panels in the grid with body visible. */
+.panel-subagent.nested .panel-body {
   display: none;
 }
 .panel-subagent.status-live .panel-title {
@@ -3160,4 +3186,206 @@ body.replay-drop-target::after {
 @keyframes mermaid-pulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.7; }
+}
+
+/* ---- debug tile ---- */
+.debug-tile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px dashed var(--panel-border);
+  background: var(--panel-bg);
+}
+.debug-tile-slot {
+  grid-column: span 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.debug-tile-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+.debug-tile-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  font-size: 0.72rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 0.5rem 0.6rem;
+}
+.debug-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+.debug-section-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 0.25rem 0;
+  font-weight: 600;
+}
+.debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.7rem;
+}
+.debug-table th, .debug-table td {
+  text-align: left;
+  padding: 1px 6px 1px 0;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.debug-table th {
+  color: var(--muted);
+  font-weight: 500;
+  border-bottom: 1px solid var(--panel-border);
+}
+.debug-table code { font-size: 0.7rem; }
+.debug-id-list { margin: 0.25rem 0; padding-left: 1rem; }
+.debug-id-list li { font-size: 0.7rem; }
+.debug-gap-pos { color: #c44; font-weight: 600; }
+.debug-gap-neg { color: #888; }
+.debug-cell-truncate {
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.debug-toggle {
+  font-size: 0.7rem;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+  cursor: pointer;
+}
+.debug-toggle input { margin: 0; }
+.debug-flag {
+  margin-left: 0.25rem;
+  font-size: 0.7rem;
+}
+.debug-row-orphan td {
+  background: color-mix(in srgb, #c44 12%, transparent);
+}
+.debug-state-chip,
+.debug-slot-chip {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+.debug-state-chip { margin-right: 4px; }
+/* Chip backgrounds are kept dark so the bright row tint shows through as a
+ * border halo, and the foreground is forced to a light, high-contrast color
+ * so the label remains legible against any project tint behind it. */
+.debug-state-live {
+  background: #166534;
+  color: #d1fae5;
+}
+.debug-state-done {
+  background: #334155;
+  color: #e2e8f0;
+}
+.debug-state-mini {
+  background: #475569;
+  color: #f1f5f9;
+}
+.debug-slot-chip {
+  background: #1f2937;
+  color: #e5e7eb;
+  margin-right: 4px;
+}
+.debug-slot-orphan {
+  background: #7f1d1d;
+  color: #fecaca;
+}
+.debug-row.has-theme td {
+  background: var(--row-theme-bg);
+  color: var(--row-theme-fg);
+}
+/* Keep the orphan tint dominant over the theme tint so the red row keeps
+ * its warning role. */
+.debug-row.debug-row-orphan td {
+  background: color-mix(in srgb, #c44 14%, transparent);
+}
+.debug-tree-indent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.debug-tree-branch {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+}
+.debug-th-sort {
+  cursor: pointer;
+  user-select: none;
+}
+.debug-th-sort:hover { color: var(--text); }
+.debug-th-sort.is-sorted { color: var(--text); }
+.debug-kind-icon {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-right: 4px;
+  width: 1ch;
+  text-align: center;
+}
+.debug-kind-parent { color: color-mix(in srgb, var(--text) 80%, transparent); }
+.debug-kind-subagent { color: var(--muted); }
+.debug-id-cell { text-align: right; }
+.debug-copy-id {
+  background: none;
+  border: none;
+  padding: 1px 4px;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border-radius: 3px;
+  transition: background 120ms ease;
+}
+.debug-copy-id:hover {
+  background: color-mix(in srgb, var(--panel-border) 50%, transparent);
+}
+.debug-copy-id.copied {
+  background: color-mix(in srgb, #4ade80 35%, transparent);
+  color: #166534;
+}
+
+/* Debug-mode global animation kill-switch — when ?debug=1 sets data-debug
+ * on <body>, freeze every animated transition so the static state is what
+ * you actually see. The debug tile itself is excluded so its hover/scroll
+ * interactions remain responsive. */
+body[data-debug] *,
+body[data-debug] *::before,
+body[data-debug] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+body[data-debug] .debug-tile,
+body[data-debug] .debug-tile * {
+  /* Re-enable transitions inside the debug tile itself so e.g. <details>
+   * disclosure feels normal. Empty rule body intentional — the !important
+   * above is the override; this selector exists for future-proofing if we
+   * want to bring specific transitions back. */
+}
+.debug-error {
+  color: #c44;
+  padding: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.debug-tile details > summary {
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding: 2px 0;
 }

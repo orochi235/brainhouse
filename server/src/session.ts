@@ -77,6 +77,7 @@ export interface Panel {
     | 'idle_timeout'
     | 'server_close'
     | 'progress_complete'
+    | 'bootstrap_stale'
     | null;
   /** Running token counters, accumulated from `resource_usage` events.
    * `model` is the last model_id seen on a usage record (sessions can
@@ -245,7 +246,13 @@ export class SessionStore {
     if (panel.events.length > MAX_EVENTS_PER_PANEL) {
       panel.events.splice(0, Math.ceil(MAX_EVENTS_PER_PANEL * EVICT_FRACTION));
     }
-    panel.last_event_at = Math.max(panel.last_event_at, ts);
+    // Meta records are sidechannel (subagent-meta sidecars, custom-title
+    // re-emits on terminal close, etc.); they're not user-visible activity.
+    // Treating them as activity bumps last_event_at to wall-clock-now and
+    // makes the panel's idle / +X timers read 0 after a server restart.
+    if (event.kind !== 'meta') {
+      panel.last_event_at = Math.max(panel.last_event_at, ts);
+    }
     // Clear awaiting-input on any new activity (it's a transient blocker
     // flag). Do NOT clear `ended` — terminal close-out flushes, late
     // tool_result echoes, and other death-rattle writes shouldn't undo
@@ -428,9 +435,29 @@ export class SessionStore {
    * SubagentStop to find which subagent to demote — Claude Code's hook
    * payload doesn't directly identify the subagent id, so we collapse all
    * live ones under the parent. */
+  /** Every subagent panel (live, done, ended — doesn't matter) parented
+   * to the given session. Used by the dev "rebuild from log" affordance
+   * to cascade the teardown. */
+  allSubagentsOf(parentSessionId: string): Panel[] {
+    return Array.from(this.panels.values()).filter(
+      (p) => p.kind === 'subagent' && p.parent_panel_id === parentSessionId,
+    );
+  }
+
   liveSubagentsOf(parentSessionId: string): Panel[] {
     return Array.from(this.panels.values()).filter(
       (p) => p.kind === 'subagent' && p.parent_panel_id === parentSessionId && p.status === 'live',
+    );
+  }
+
+  /** Like `liveSubagentsOf` but also matches subagents whose status has
+   * idled to `done` / `mini` while they were never explicitly ended.
+   * Used by SubagentStop / session_end / supersede paths: those are
+   * authoritative end signals and should flip `ended` even on subagents
+   * that already left `status: 'live'` via the idle timer. */
+  unendedSubagentsOf(parentSessionId: string): Panel[] {
+    return Array.from(this.panels.values()).filter(
+      (p) => p.kind === 'subagent' && p.parent_panel_id === parentSessionId && !p.ended,
     );
   }
 
@@ -481,6 +508,48 @@ export class SessionStore {
       }));
   }
 
+  /** Unfiltered dump of every panel in the map (including binned) with
+   * debug-relevant fields. Used by the `/debug` tile to expose the model
+   * state independent of any rendering filters. Not part of the normal
+   * delta-stream contract — do not consume this from production UI. */
+  debugDump(): Array<{
+    id: string;
+    kind: PanelKind;
+    parent_panel_id: string | null;
+    title: string;
+    status: PanelStatus;
+    binned_at: number | null;
+    ended: boolean;
+    awaiting_input: boolean;
+    started_at: number;
+    last_event_at: number;
+    status_changed_at: number;
+    cwd: string | null;
+    account_label: string | null;
+    agent_type: string | null;
+    task_description: string | null;
+    event_count: number;
+  }> {
+    return Array.from(this.panels.values()).map((p) => ({
+      id: p.id,
+      kind: p.kind,
+      parent_panel_id: p.parent_panel_id,
+      title: p.title,
+      status: p.status,
+      binned_at: p.binned_at,
+      ended: p.ended,
+      awaiting_input: p.awaiting_input,
+      started_at: p.started_at,
+      last_event_at: p.last_event_at,
+      status_changed_at: p.status_changed_at,
+      cwd: p.cwd,
+      account_label: p.account_label,
+      agent_type: p.agent_type,
+      task_description: p.task_description,
+      event_count: p.events.length,
+    }));
+  }
+
   panel(panelId: string): Panel | undefined {
     return this.panels.get(panelId);
   }
@@ -514,10 +583,13 @@ export class SessionStore {
         ? { suppressed_title: null }
         : null,
       status: 'live',
-      // started_at is wall-clock-now so the panel "age" reflects the
-      // observation; last_event_at/status_changed_at are stamped with the
-      // event's own ts so bootstrap-replay shows the right "X ago".
-      started_at: now,
+      // started_at gets the event's ts so a bootstrap-replayed old session
+      // reflects its real age, not wall-clock-now-of-restart. The first
+      // event we see is typically a SessionStart or the first user_text,
+      // both of which sit at the head of the JSONL. last_event_at and
+      // status_changed_at also pick up the event ts so bootstrap-replay
+      // shows the right "X ago" for the idle / status-change displays.
+      started_at: eventTs,
       last_event_at: eventTs,
       status_changed_at: eventTs,
       cwd: event.cwd,
@@ -699,15 +771,38 @@ export class SessionStore {
    * `/clear`. If the panel already exists we set the marker directly;
    * otherwise we stash the id and `ensurePanel` picks it up. The new
    * session's first `custom-title` meta — which Claude Code carries
-   * over from the prior transcript — will be dropped. */
-  armClearTitleSuppression(panelId: string): void {
+   * over from the prior transcript — will be dropped.
+   *
+   * Late-arming case: when the watcher creates the new panel from JSONL
+   * before the SessionStart hook fires, the inherited custom-title meta
+   * has already been processed and `panel.title` reflects it. Detect
+   * that — title differs from the short-id placeholder — and reset it
+   * to `initialTitle` so the suppression actually takes effect. Returns
+   * a `panel_upsert` delta in that case so clients see the rename. */
+  armClearTitleSuppression(panelId: string): Delta[] {
     const panel = this.panels.get(panelId);
-    if (panel) {
-      panel.clear_title_suppression = { suppressed_title: null };
-      this.persistPanel(panel);
-      return;
+    if (!panel) {
+      this.pendingClearTitleSuppression.add(panelId);
+      return [];
     }
-    this.pendingClearTitleSuppression.add(panelId);
+    const deltas: Delta[] = [];
+    // Unwind a custom title that landed before the hook armed
+    // suppression. We can tell because `panel.title` is no longer the
+    // short-id placeholder — the only thing that would have changed it
+    // this early is a `custom-title` meta carried over from the prior
+    // session. Reset to the placeholder and seed `suppressed_title`
+    // with the unwound text so subsequent identical re-emissions are
+    // also dropped.
+    const placeholder = initialTitle(panel.id, panel.kind);
+    if (panel.title !== placeholder) {
+      panel.clear_title_suppression = { suppressed_title: panel.title };
+      panel.title = placeholder;
+      deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+    } else {
+      panel.clear_title_suppression = { suppressed_title: null };
+    }
+    this.persistPanel(panel);
+    return deltas;
   }
 
   recordHookOverhead(panelId: string, tokens: number): Delta[] {
@@ -757,6 +852,28 @@ export class SessionStore {
   /** Mark a panel as explicitly ended. Idempotent; only emits a delta when
    * the flag flips. Lifecycle status is left alone — `ended` is orthogonal
    * to live/done/mini so an ended panel still progresses to the dock. */
+  /** Post-bootstrap sweep: subagent panels whose final event is older than
+   * `maxIdleSeconds` get marked ended with `bootstrap_stale`. Replayed
+   * old transcripts have no SubagentStop hook event to drive a real end,
+   * so without this they sit in the dock as "live-but-idle" until the
+   * lifecycle removeAfter timer reaps them. Returns broadcast-ready
+   * deltas; caller owns the emit. */
+  endStaleSubagents(maxIdleSeconds: number): Delta[] {
+    const now = this.clock();
+    const deltas: Delta[] = [];
+    for (const panel of this.panels.values()) {
+      if (panel.kind !== 'subagent') continue;
+      if (panel.ended) continue;
+      if (now - panel.last_event_at <= maxIdleSeconds) continue;
+      panel.ended = true;
+      panel.ended_provenance = 'bootstrap_stale';
+      this.persistPanel(panel);
+      this.materializeSummary(panel, 'bootstrap_stale');
+      deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+    }
+    return deltas;
+  }
+
   markEnded(panelId: string, provenance: PanelEndedProvenance = 'hook_subagent_stop'): Delta[] {
     const panel = this.panels.get(panelId);
     if (!panel || panel.ended) return [];
