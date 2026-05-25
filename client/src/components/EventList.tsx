@@ -3,6 +3,7 @@ import classNames from 'classnames';
 import { useMemo } from 'react';
 import { buildEditorUrl, DEFAULT_EDITOR_TEMPLATE, resolveAbsolute } from '../lib/filenameLinks.ts';
 import { FilenameLinksProvider, useFilenameLinks } from '../lib/filenameLinksContext.tsx';
+import { diffStats, reconstructFile } from '../lib/fileSnapshot.ts';
 import { formatClockTime, formatElapsed } from '../lib/format.ts';
 import { useLightbox } from '../lib/lightbox.tsx';
 import {
@@ -13,7 +14,7 @@ import {
   type ViewItem,
 } from '../lib/pipeline.ts';
 import { iconForTool, parseBashCommandHead, shortenPath, type ToolIcon } from '../lib/tools.ts';
-import { usePrefs } from '../lib/usePrefs.ts';
+import { usePrefs } from '../lib/usePrefs.tsx';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { Markdown } from './Markdown.tsx';
 import { OpStripLightbox } from './OpStripLightbox.tsx';
@@ -147,10 +148,15 @@ function FileChangeRow({ item, startedAt }: { item: FileChangeItem; startedAt?: 
   }, {});
   // Order: Read, Edit, MultiEdit, Write — most-stateful last.
   const order = ['Read', 'Edit', 'MultiEdit', 'Write'];
-  const summary = order
+  const opSummary = order
     .filter((n) => counts[n])
     .map((n) => `${counts[n]} ${n.toLowerCase()}${counts[n] === 1 ? '' : 's'}`)
     .join(' · ');
+  const stats = useMemo(() => diffStats(reconstructFile(item.ops)), [item.ops]);
+  const summary =
+    stats.adds === 0 && stats.dels === 0
+      ? opSummary
+      : `${opSummary} · +${stats.adds} −${stats.dels}`;
   return (
     <li
       className="event event-file-change"

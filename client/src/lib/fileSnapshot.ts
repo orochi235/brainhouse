@@ -16,6 +16,7 @@
  * the full file with the op's hunk highlighted in place.
  */
 
+import { diffLines } from 'diff';
 import type { ToolItem } from './pipeline-types.ts';
 
 const CONTEXT_LINES = 3;
@@ -69,15 +70,27 @@ export function reconstructFile(ops: ToolItem[]): OpRender[] {
 
     if (name === 'MultiEdit') {
       const edits = Array.isArray(input.edits) ? input.edits : [];
-      const hunks: DiffHunk[] = [];
+      // Capture pre-text + base line so we can compute a single merged diff
+      // across all sub-edits after they're applied.
+      const hadSnapshot = snapshotIsContiguous(snapshot);
+      const preText = hadSnapshot ? snapshotText(snapshot) : '';
+      const preBase = snapshot.baseLine;
+      const fallbackHunks: DiffHunk[] = [];
       for (const e of edits) {
         if (!e || typeof e !== 'object') continue;
         const r = e as Record<string, unknown>;
         const oldStr = typeof r.old_string === 'string' ? r.old_string : '';
         const newStr = typeof r.new_string === 'string' ? r.new_string : '';
-        hunks.push(applyEditToSnapshot(snapshot, oldStr, newStr));
+        fallbackHunks.push(applyEditToSnapshot(snapshot, oldStr, newStr));
       }
-      return { kind: 'edit', hunks };
+      // If we had no usable snapshot, the per-edit hunks (in relative mode)
+      // are the best we can do.
+      if (!hadSnapshot) return { kind: 'edit', hunks: fallbackHunks };
+      const postText = snapshotText(snapshot);
+      const merged = splitDiffIntoHunks(preText, postText, preBase, preBase);
+      // If the merger produced nothing (e.g. all edits failed to locate),
+      // fall back to per-edit hunks.
+      return { kind: 'edit', hunks: merged.length > 0 ? merged : fallbackHunks };
     }
 
     if (name === 'Write') {
@@ -200,6 +213,140 @@ function snapshotIsContiguous(snapshot: { baseLine: number; lines: string[] }): 
 
 function snapshotText(snapshot: { baseLine: number; lines: string[] }): string {
   return snapshot.lines.join('\n');
+}
+
+/** Diff `oldText` vs `newText` and split the result into one hunk per
+ * change region. Regions are separated by runs of unchanged lines longer
+ * than `2 * contextLines` (so adjacent edits naturally merge). Each
+ * emitted hunk's oldText/newText already include up to `contextLines`
+ * lines of surrounding unchanged context — DiffTable will re-diff them
+ * to render with proper alignment.
+ *
+ * Returns `[]` if the two texts are identical.
+ */
+function splitDiffIntoHunks(
+  oldText: string,
+  newText: string,
+  oldStartLine: number,
+  newStartLine: number,
+  contextLines: number = CONTEXT_LINES,
+): DiffHunk[] {
+  if (oldText === newText) return [];
+  const parts = diffLines(oldText, newText);
+  type Op =
+    | { t: 'eq'; line: string; oldN: number; newN: number }
+    | { t: 'del'; line: string; oldN: number }
+    | { t: 'add'; line: string; newN: number };
+  const ops: Op[] = [];
+  let oldN = oldStartLine;
+  let newN = newStartLine;
+  for (const p of parts) {
+    const lines = splitNoTrailing(p.value);
+    if (p.added) for (const l of lines) ops.push({ t: 'add', line: l, newN: newN++ });
+    else if (p.removed) for (const l of lines) ops.push({ t: 'del', line: l, oldN: oldN++ });
+    else for (const l of lines) ops.push({ t: 'eq', line: l, oldN: oldN++, newN: newN++ });
+  }
+
+  const hunks: DiffHunk[] = [];
+  let i = 0;
+  while (i < ops.length) {
+    if (ops[i]!.t === 'eq') {
+      i++;
+      continue;
+    }
+    // Walk forward, swallowing eq runs of size <= 2*contextLines.
+    let j = i + 1;
+    let lastChange = i;
+    while (j < ops.length) {
+      if (ops[j]!.t !== 'eq') {
+        lastChange = j;
+        j++;
+        continue;
+      }
+      let k = j;
+      while (k < ops.length && ops[k]!.t === 'eq') k++;
+      const gap = k - j;
+      if (gap > contextLines * 2 || k === ops.length) break;
+      j = k;
+    }
+    // Region of changes is [i, lastChange+1). Add up to `contextLines`
+    // of equal lines on either side.
+    const regionStart = Math.max(0, i - contextLines);
+    let cbCount = 0;
+    let cbCursor = i;
+    while (cbCursor > regionStart && ops[cbCursor - 1]!.t === 'eq' && cbCount < contextLines) {
+      cbCursor--;
+      cbCount++;
+    }
+    let caCursor = lastChange + 1;
+    let caCount = 0;
+    while (caCursor < ops.length && ops[caCursor]!.t === 'eq' && caCount < contextLines) {
+      caCursor++;
+      caCount++;
+    }
+
+    const sliceForOld: string[] = [];
+    const sliceForNew: string[] = [];
+    let firstOldN: number | null = null;
+    let firstNewN: number | null = null;
+    for (let p2 = cbCursor; p2 < caCursor; p2++) {
+      const op = ops[p2]!;
+      if (op.t === 'eq') {
+        sliceForOld.push(op.line);
+        sliceForNew.push(op.line);
+        if (firstOldN === null) firstOldN = op.oldN;
+        if (firstNewN === null) firstNewN = op.newN;
+      } else if (op.t === 'del') {
+        sliceForOld.push(op.line);
+        if (firstOldN === null) firstOldN = op.oldN;
+      } else {
+        sliceForNew.push(op.line);
+        if (firstNewN === null) firstNewN = op.newN;
+      }
+    }
+    hunks.push({
+      oldText: sliceForOld.join('\n'),
+      newText: sliceForNew.join('\n'),
+      oldStart: firstOldN ?? oldStartLine,
+      newStart: firstNewN ?? newStartLine,
+      lineMode: 'absolute',
+      contextBefore: [],
+      contextAfter: [],
+    });
+
+    i = caCursor;
+  }
+  return hunks;
+}
+
+/** Total added / removed lines across all renders of an op sequence.
+ * Counts lines on the +/- sides of each hunk — for `kind: 'edit'` and
+ * `kind: 'write'` (with `isFullReplace: true`) we run `diffLines` on
+ * each hunk's old/new text to avoid double-counting lines that are
+ * equal but inside a "change" hunk. Read ops contribute nothing. */
+export function diffStats(renders: OpRender[]): { adds: number; dels: number } {
+  let adds = 0;
+  let dels = 0;
+  for (const r of renders) {
+    if (r.kind === 'read' || r.kind === 'unknown') continue;
+    for (const h of r.hunks) {
+      const parts = diffLines(h.oldText, h.newText);
+      for (const p of parts) {
+        if (!p.added && !p.removed) continue;
+        const lines = splitNoTrailing(p.value).length;
+        if (p.added) adds += lines;
+        else if (p.removed) dels += lines;
+      }
+    }
+  }
+  return { adds, dels };
+}
+
+function splitNoTrailing(s: string): string[] {
+  if (s === '') return [];
+  const lines = s.split('\n');
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines;
 }
 
 function countLines(content: string): number {

@@ -8,17 +8,12 @@
  * context all live in `lib/fileSnapshot.ts`. Diff rendering itself lives
  * in `<DiffTable>`. This module is purely the per-op header + dispatch.
  */
-import type { FileChangeItem } from '../lib/pipeline.ts';
+
 import type { OpRender } from '../lib/fileSnapshot.ts';
+import type { FileChangeItem } from '../lib/pipeline.ts';
 import { DiffTable } from './DiffTable.tsx';
 
-export function OpView({
-  op,
-  render,
-}: {
-  op: FileChangeItem['ops'][number];
-  render: OpRender;
-}) {
+export function OpView({ op, render }: { op: FileChangeItem['ops'][number]; render: OpRender }) {
   const name = op.use?.name ?? '?';
 
   if (render.kind === 'read') {
@@ -30,7 +25,13 @@ export function OpView({
   }
 
   if (render.kind === 'edit') {
-    const label = name === 'MultiEdit' ? `MultiEdit · ${render.hunks.length} edits` : 'Edit';
+    const subCount =
+      name === 'MultiEdit'
+        ? Array.isArray((op.use?.input as { edits?: unknown[] } | undefined)?.edits)
+          ? ((op.use?.input as { edits?: unknown[] }).edits as unknown[]).length
+          : render.hunks.length
+        : 0;
+    const label = name === 'MultiEdit' ? `MultiEdit · ${subCount} edits` : 'Edit';
     return (
       <section className="file-change-hunk">
         <header>{label}</header>

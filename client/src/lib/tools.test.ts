@@ -77,11 +77,10 @@ describe('summarizeTool', () => {
     expect(out).toBe('ls');
   });
 
-  it('Bash truncates very long commands', () => {
+  it('Bash returns the full command — CSS handles visual overflow', () => {
     const long = 'a'.repeat(200);
     const out = summarizeTool({ name: 'Bash', input: { command: long } }, null);
-    expect(out.length).toBeLessThanOrEqual(70);
-    expect(out.endsWith('…')).toBe(true);
+    expect(out).toBe(long);
   });
 
   it('Read includes shortened path', () => {

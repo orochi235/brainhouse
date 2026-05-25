@@ -180,10 +180,6 @@ export function shortenPath(p: unknown): string {
   return `.../${parts.slice(-2).join('/')}`;
 }
 
-function truncate(s: string, n: number): string {
-  return s.length <= n ? s : `${s.slice(0, n - 1)}…`;
-}
-
 export function summarizeTool(
   use: { name?: string; input?: unknown },
   result: ToolResultPayload | null,
@@ -191,9 +187,14 @@ export function summarizeTool(
   const name = use.name ?? 'tool';
   const input = (use.input ?? {}) as ToolUseInput;
   let label: string;
+  // Data-layer text is the full, un-truncated label. The `.tool-label`
+  // CSS handles visual overflow with ellipsis, so a wide panel shows
+  // more of the command/URL/description than a narrow one — instead of
+  // every capsule getting cut at a fixed char count regardless of
+  // available space.
   if (name === 'Bash') {
     const cmd = (input.command ?? '').split('\n')[0] ?? '';
-    label = cmd ? truncate(cmd, 70) : 'bash';
+    label = cmd || 'bash';
   } else if (name === 'Read' || name === 'Edit' || name === 'Write') {
     label = `${name} ${shortenPath(input.file_path)}`;
   } else if (name === 'Grep') {
@@ -202,14 +203,14 @@ export function summarizeTool(
   } else if (name === 'Glob') {
     label = `Glob ${input.pattern ?? ''}`;
   } else if (name === 'WebFetch' || name === 'WebSearch') {
-    label = `${name}: ${truncate(input.url ?? input.query ?? '', 50)}`;
+    label = `${name}: ${input.url ?? input.query ?? ''}`;
   } else if (name === 'Task') {
     const t = input.subagent_type ?? 'agent';
     const d = input.description ?? '';
-    label = `Task: ${t}${d ? ` — ${truncate(d, 50)}` : ''}`;
+    label = `Task: ${t}${d ? ` — ${d}` : ''}`;
   } else {
     const firstVal = Object.values(input)[0];
-    label = name + (firstVal !== undefined ? `: ${truncate(String(firstVal), 50)}` : '');
+    label = name + (firstVal !== undefined ? `: ${String(firstVal)}` : '');
   }
   if (!result) return label;
   if (result.is_error) return `${label}  · error`;

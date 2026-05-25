@@ -49,7 +49,7 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
             icon.text
           )}
         </span>
-        <span className="tool-label">
+        <span className="tool-label" title={label}>
           <LinkifyText text={label} />
         </span>
         <span className={`tool-status status-${status}`} aria-label={status}>

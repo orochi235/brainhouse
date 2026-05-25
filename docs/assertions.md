@@ -184,6 +184,21 @@ UI/server is meant to uphold. New entries go at the bottom.
   (`editor.urlTemplate`) with `{path}`, `{line}`, `{col}` placeholders;
   an empty template disables the feature.
 
+- A coalesced file-change row (multiple Read/Edit/MultiEdit/Write ops on
+  the same path) shows an inline `+N −M` summary after the op-count
+  breakdown (e.g. `1 read · 2 edits · +12 −4`). Counts come from
+  `diffStats(reconstructFile(ops))` — per-hunk `diffLines` totals — so
+  unchanged lines inside an edited region don't inflate the numbers.
+  Read-only sequences omit the `+/−` (both zero).
+
+- Within a single `MultiEdit` tool call, sub-edits that fall within
+  `2 × CONTEXT_LINES` of each other collapse into one visual diff hunk
+  in the lightbox. Sub-edits separated by a wider unchanged gap stay as
+  separate hunks. Implemented by diffing the pre-MultiEdit snapshot
+  against the post-MultiEdit snapshot (`splitDiffIntoHunks` in
+  `fileSnapshot.ts`), so adjacency is measured in real line distance,
+  not sub-edit ordering.
+
 - The op-strip lightbox (compact one-liner between bubbles) supports two
   view modes via a header toggle: **conversation** (default — sub-items
   in original order) and **file** (file-changes regrouped by path, each

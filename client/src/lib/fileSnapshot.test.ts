@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reconstructFile } from './fileSnapshot.ts';
+import { diffStats, reconstructFile } from './fileSnapshot.ts';
 import type { ToolItem } from './pipeline-types.ts';
 
 let uid = 0;
@@ -48,22 +48,45 @@ describe('reconstructFile', () => {
     expect(r[1].hunks[0]!.oldStart).toBe(101);
   });
 
-  it('sequential MultiEdit edits each operate on the running snapshot', () => {
+  it('sequential MultiEdit edits within context distance merge into one hunk', () => {
     const ops = [
       op('Read', { file_path: '/x' }, catN(1, ['a', 'b', 'c', 'd', 'e'])),
       op('MultiEdit', {
         file_path: '/x',
         edits: [
           { old_string: 'b', new_string: 'B1\nB2' }, // grows by 1 line
-          { old_string: 'd', new_string: 'D' }, // now at line 5 due to growth
+          { old_string: 'd', new_string: 'D' }, // adjacent (1 unchanged line between)
+        ],
+      }),
+    ];
+    const r = reconstructFile(ops);
+    if (r[1]?.kind !== 'edit') throw new Error('expected edit');
+    // Both sub-edits fall inside one merged hunk since the gap is < 2*CONTEXT_LINES.
+    expect(r[1].hunks).toHaveLength(1);
+    const h = r[1].hunks[0]!;
+    expect(h.lineMode).toBe('absolute');
+    expect(h.oldText).toContain('b');
+    expect(h.oldText).toContain('d');
+    expect(h.newText).toContain('B1');
+    expect(h.newText).toContain('D');
+  });
+
+  it('sequential MultiEdit edits separated by a wide unchanged gap split into multiple hunks', () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 20; i++) lines.push(`L${i}`);
+    const ops = [
+      op('Read', { file_path: '/x' }, catN(1, lines)),
+      op('MultiEdit', {
+        file_path: '/x',
+        edits: [
+          { old_string: 'L1', new_string: 'X1' },
+          { old_string: 'L18', new_string: 'X18' },
         ],
       }),
     ];
     const r = reconstructFile(ops);
     if (r[1]?.kind !== 'edit') throw new Error('expected edit');
     expect(r[1].hunks).toHaveLength(2);
-    expect(r[1].hunks[0]!.oldStart).toBe(2);
-    expect(r[1].hunks[1]!.oldStart).toBe(5); // shifted by the previous edit
   });
 
   it('Edit without a preceding Read falls back to relative numbering', () => {
@@ -84,6 +107,23 @@ describe('reconstructFile', () => {
     expect(r[1].isFullReplace).toBe(true);
     expect(r[1].hunks[0]!.oldText).toBe('old1\nold2');
     expect(r[1].hunks[0]!.newText).toBe('new1\nnew2');
+  });
+
+  it('diffStats counts added and removed lines across hunks', () => {
+    const ops = [
+      op('Read', { file_path: '/x' }, catN(1, ['a', 'b', 'c'])),
+      op('Edit', { file_path: '/x', old_string: 'b', new_string: 'B1\nB2' }),
+    ];
+    const stats = diffStats(reconstructFile(ops));
+    expect(stats.adds).toBe(2);
+    expect(stats.dels).toBe(1);
+  });
+
+  it('diffStats ignores Read ops', () => {
+    const stats = diffStats(
+      reconstructFile([op('Read', { file_path: '/x' }, catN(1, ['a', 'b']))]),
+    );
+    expect(stats).toEqual({ adds: 0, dels: 0 });
   });
 
   it('Write without prior content is an all-add (relative mode)', () => {

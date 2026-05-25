@@ -86,6 +86,21 @@ export interface ChecklistItem {
   /** TodoWrite-sourced item currently in_progress. Rendered with a
    * distinct glyph + accent (no strikethrough, not yet done). */
   inProgress?: boolean;
+  /** TaskCreate-sourced item id — preserved so subsequent
+   * `TaskUpdate` patches (which reference items by `taskId`) can find
+   * the right row. Absent on TodoWrite / scanChecklist items, which
+   * don't carry stable ids. */
+  id?: string;
+  /** ISO timestamp of the event that flipped this item to `done`.
+   * Set when a `TaskUpdate` (or a TodoWrite full-list replace) first
+   * marks the item completed; preserved across subsequent updates so
+   * the displayed timestamp is the original completion moment, not
+   * the most recent edit. */
+  completedAt?: string;
+  /** ISO timestamp of the event that first introduced this item — a
+   * `TaskCreate`, or the TodoWrite write that first surfaced it. Used
+   * to display per-item elapsed time. Preserved across edits. */
+  firstSeenAt?: string;
 }
 
 /** One spawned subagent the parent panel saw via a `Task` tool_use.

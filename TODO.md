@@ -3,15 +3,18 @@
 ## Coalesce file ops — richer diff rendering
 Basic coalescing already lands (`coalesceFileOps()` in `pipeline.ts`
 groups Read/Edit/Write/MultiEdit runs on the same path into a
-`file-change` row). What's missing:
+`file-change` row). LCS-based split-pane diff rendering is in
+(`DiffTable.tsx` via the `diff` package), inline `+N −M` shows on the
+file-change row (`diffStats()` in `fileSnapshot.ts`), and MultiEdit
+sub-edits within `2 × CONTEXT_LINES` of each other now merge into one
+hunk (split only when the unchanged gap is wide enough to warrant it).
 
-- Inline `+N -M` summary on the file-change row (currently just "N
-  operations · 2 Edit, 1 Write")
-- A real LCS-based diff renderer in `FileChangeLightbox.tsx` instead of
-  the current naive "before lines, then after lines" stack. The `diff`
-  package is the obvious dep.
-- Smarter handling of MultiEdit: collapse multiple sub-edits into one
-  visual hunk where the regions are adjacent.
+Open follow-ups:
+- Extend the same merging to consecutive *separate* Edit ops on the
+  same file (today each Edit still renders as its own hunk in the
+  lightbox; only the within-one-MultiEdit case is merged).
+- Per-op `+N −M` chips in the lightbox header (currently only the
+  per-file total shows; per-op gives finer-grained diff readability).
 
 ## Session names: more signals
 Heuristic re-title from later substantive `user_text` events + an

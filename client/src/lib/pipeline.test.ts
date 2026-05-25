@@ -345,9 +345,15 @@ describe('preprocessEvents', () => {
       }),
     ]);
     expect(checklist).toEqual([
-      { done: true, text: 'one', inProgress: false },
-      { done: false, text: 'two', inProgress: true },
-      { done: false, text: 'three', inProgress: false },
+      {
+        done: true,
+        text: 'one',
+        inProgress: false,
+        completedAt: '2026-05-19T00:00:00Z',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+      { done: false, text: 'two', inProgress: true, firstSeenAt: '2026-05-19T00:00:00Z' },
+      { done: false, text: 'three', inProgress: false, firstSeenAt: '2026-05-19T00:00:00Z' },
     ]);
     // No tool capsule for the TodoWrite call.
     expect(items.find((i) => i.type === 'tool')).toBeUndefined();
@@ -364,8 +370,138 @@ describe('preprocessEvents', () => {
       }),
     ]);
     expect(checklist).toEqual([
-      { done: true, text: 'a', inProgress: false },
-      { done: false, text: 'b', inProgress: true },
+      {
+        done: true,
+        text: 'a',
+        inProgress: false,
+        completedAt: '2026-05-19T00:00:00Z',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+      { done: false, text: 'b', inProgress: true, firstSeenAt: '2026-05-19T00:00:00Z' },
+    ]);
+  });
+
+  it('TaskCreate appends one item per call with auto-assigned sequential ids', () => {
+    const { items, checklist } = preprocessEvents([
+      toolUse('t1', 'TaskCreate', { subject: 'one', activeForm: 'doing one' }),
+      toolUse('t2', 'TaskCreate', { subject: 'two', activeForm: 'doing two' }),
+      toolUse('t3', 'TaskCreate', { subject: 'three', activeForm: 'doing three' }),
+    ]);
+    expect(checklist).toEqual([
+      {
+        done: false,
+        text: 'one',
+        inProgress: false,
+        id: '1',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+      {
+        done: false,
+        text: 'two',
+        inProgress: false,
+        id: '2',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+      {
+        done: false,
+        text: 'three',
+        inProgress: false,
+        id: '3',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+    ]);
+    // No tool capsules rendered for any of the TaskCreate calls.
+    expect(items.find((i) => i.type === 'tool')).toBeUndefined();
+  });
+
+  it('TaskUpdate patches the matching item by taskId', () => {
+    const { checklist } = preprocessEvents([
+      toolUse('t1', 'TaskCreate', { subject: 'one' }),
+      toolUse('t2', 'TaskCreate', { subject: 'two' }),
+      toolUse('t3', 'TaskUpdate', { taskId: '1', status: 'in_progress' }),
+      toolUse('t4', 'TaskUpdate', { taskId: '2', status: 'completed' }),
+    ]);
+    expect(checklist).toEqual([
+      {
+        done: false,
+        text: 'one',
+        inProgress: true,
+        id: '1',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+      {
+        done: true,
+        text: 'two',
+        inProgress: false,
+        id: '2',
+        completedAt: '2026-05-19T00:00:00Z',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('TaskUpdate is a no-op when taskId does not match', () => {
+    const { checklist } = preprocessEvents([
+      toolUse('t1', 'TaskCreate', { subject: 'one' }),
+      toolUse('t2', 'TaskUpdate', { taskId: '99', status: 'completed' }),
+    ]);
+    expect(checklist).toEqual([
+      {
+        done: false,
+        text: 'one',
+        inProgress: false,
+        id: '1',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('TaskUpdate can also rewrite the item text via subject', () => {
+    const { checklist } = preprocessEvents([
+      toolUse('t1', 'TaskCreate', { subject: 'original' }),
+      toolUse('t2', 'TaskUpdate', { taskId: '1', subject: 'renamed', status: 'completed' }),
+    ]);
+    expect(checklist).toEqual([
+      {
+        done: true,
+        text: 'renamed',
+        inProgress: false,
+        id: '1',
+        completedAt: '2026-05-19T00:00:00Z',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('TaskUpdate stamps completedAt only on the first done transition', () => {
+    const { checklist } = preprocessEvents([
+      toolUse('t1', 'TaskCreate', { subject: 'one' }),
+      ev(
+        'tool_use',
+        { tool_use_id: 't2', name: 'TaskUpdate', input: { taskId: '1', status: 'completed' } },
+        '2026-05-19T00:00:00Z',
+      ),
+      // A later update that *also* says completed should NOT overwrite the
+      // original stamp (e.g. a rename pass).
+      ev(
+        'tool_use',
+        {
+          tool_use_id: 't3',
+          name: 'TaskUpdate',
+          input: { taskId: '1', subject: 'one renamed', status: 'completed' },
+        },
+        '2026-05-19T00:05:00Z',
+      ),
+    ]);
+    expect(checklist).toEqual([
+      {
+        done: true,
+        text: 'one renamed',
+        inProgress: false,
+        id: '1',
+        completedAt: '2026-05-19T00:00:00Z',
+        firstSeenAt: '2026-05-19T00:00:00Z',
+      },
     ]);
   });
 
