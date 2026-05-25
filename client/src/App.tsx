@@ -25,6 +25,8 @@ import { useTheme } from './lib/preferences.ts';
 import { clearScrollPosition } from './lib/scrollMemory.ts';
 import { useIntentions } from './lib/useIntentions.ts';
 import { PrefsProvider, usePrefs } from './lib/usePrefs.tsx';
+import { worktreeColor } from './lib/worktree.ts';
+import { groupByWorktreeKey, interleaveWorktreeSeparators } from './lib/worktreeGrouping.ts';
 import { ReplayView, type ReplayInlineSource, type ReplaySource } from './ReplayView.tsx';
 import { trpc } from './trpc.ts';
 import { type PanelState, useDeltaStream } from './useDeltaStream.ts';
@@ -405,9 +407,17 @@ function AppMain() {
     gridPanels.map((p) => p.id),
     order,
   );
-  const orderedGridPanels = orderedGridIds
+  const baseOrderedGridPanels = orderedGridIds
     .map((id) => gridPanels.find((p) => p.id === id))
     .filter((p): p is PanelState => p !== undefined);
+  // Group-by-worktree (prefs.workspace.groupByWorktree): stable-sort the
+  // grid order so panels sharing a worktree key cluster together. Within
+  // a group, the user's original ordering is preserved; "no worktree"
+  // panels sink to the end. Visual separators are inserted at render
+  // time below (see `gridRenderItems`).
+  const orderedGridPanels = prefs.workspace.groupByWorktree
+    ? groupByWorktreeKey(baseOrderedGridPanels)
+    : baseOrderedGridPanels;
 
   // First-load auto-restore: if the snapshot lands with an empty grid but
   // there are live sessions sitting in the dock (e.g. all active panels
@@ -567,37 +577,51 @@ function AppMain() {
           }}
         >
           <AnimatePresence initial={false}>
-            {orderedGridPanels.map((p) => (
-              <GridSlot
-                key={p.id}
-                panel={p}
-                insertBefore={insertGhost === p.id}
-                subagents={subsByParent.get(p.id) ?? []}
-                placeholders={placeholdersByParent.get(p.id) ?? []}
-                panels={panels}
-                wide={wide.has(p.id)}
-                pinned={pinned.has(p.id)}
-                account={accountFor(p)}
-                accountColor={accountColorFor(p)}
-                accountFor={accountFor}
-                accountColorFor={accountColorFor}
-                onToggleWide={() => toggleWide(p.id)}
-                onTogglePin={() => togglePin(p.id)}
-                onTogglePinSub={(s) => togglePin(s.id)}
-                isPinnedSub={(s) => pinned.has(s.id)}
-                onHide={() => dismiss(p)}
-                onHideSub={(s) => dismiss(s)}
-                brokenOutSubs={brokenOut}
-                onToggleBrokenOutSub={(s) => toggleBrokenOut(s.id)}
-                onReorder={(srcId) =>
-                  moveBefore(
-                    srcId,
-                    p.id,
-                    orderedGridPanels.map((g) => g.id),
-                  )
-                }
-              />
-            ))}
+            {interleaveWorktreeSeparators(
+              orderedGridPanels,
+              prefs.workspace.groupByWorktree,
+            ).map((item) =>
+              item.kind === 'separator' ? (
+                <div
+                  key={`sep:${item.key}`}
+                  className="worktree-group-separator"
+                  style={{ ['--panel-worktree-color' as string]: worktreeColor(item.key) }}
+                >
+                  <span className="worktree-group-separator-swatch" aria-hidden="true" />
+                  <span className="worktree-group-separator-label">{item.label}</span>
+                </div>
+              ) : (
+                <GridSlot
+                  key={item.panel.id}
+                  panel={item.panel}
+                  insertBefore={insertGhost === item.panel.id}
+                  subagents={subsByParent.get(item.panel.id) ?? []}
+                  placeholders={placeholdersByParent.get(item.panel.id) ?? []}
+                  panels={panels}
+                  wide={wide.has(item.panel.id)}
+                  pinned={pinned.has(item.panel.id)}
+                  account={accountFor(item.panel)}
+                  accountColor={accountColorFor(item.panel)}
+                  accountFor={accountFor}
+                  accountColorFor={accountColorFor}
+                  onToggleWide={() => toggleWide(item.panel.id)}
+                  onTogglePin={() => togglePin(item.panel.id)}
+                  onTogglePinSub={(s) => togglePin(s.id)}
+                  isPinnedSub={(s) => pinned.has(s.id)}
+                  onHide={() => dismiss(item.panel)}
+                  onHideSub={(s) => dismiss(s)}
+                  brokenOutSubs={brokenOut}
+                  onToggleBrokenOutSub={(s) => toggleBrokenOut(s.id)}
+                  onReorder={(srcId) =>
+                    moveBefore(
+                      srcId,
+                      item.panel.id,
+                      orderedGridPanels.map((g) => g.id),
+                    )
+                  }
+                />
+              ),
+            )}
           </AnimatePresence>
           {insertGhost === null && orderedGridPanels.length > 0 && (
             <div className="grid-slot insert-ghost-append" aria-hidden="true" />

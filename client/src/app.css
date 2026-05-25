@@ -1096,6 +1096,32 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   background: var(--panel-worktree-color, var(--accent));
   flex-shrink: 0;
 }
+/* Full-width separator inserted between worktree groups when
+ * `prefs.workspace.groupByWorktree` is on. Spans every grid column so
+ * the next panel starts a fresh row, and carries a swatch + label tinted
+ * with the worktree's deterministic color. */
+.worktree-group-separator {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--panel-worktree-color, var(--accent)) 75%, var(--fg));
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-worktree-color) 30%, transparent);
+}
+.worktree-group-separator-swatch {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--panel-worktree-color);
+  flex-shrink: 0;
+}
+.worktree-group-separator-label {
+  text-transform: uppercase;
+  font-weight: 500;
+}
 .panel-status.live {
   color: var(--live);
 }

@@ -503,6 +503,11 @@ function WorkspaceSection({ draft, setDraft }: SectionProps) {
         checked={draft.workspace.autoMinimizeOnClear}
         onChange={(v) => set({ autoMinimizeOnClear: v })}
       />
+      <CheckboxField
+        label="Group panels by worktree"
+        checked={draft.workspace.groupByWorktree}
+        onChange={(v) => set({ groupByWorktree: v })}
+      />
     </Section>
   );
 }

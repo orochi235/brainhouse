@@ -101,6 +101,11 @@ export const WorkspaceSchema = z.object({
    * false to keep cleared sessions visible in the grid until the regular
    * lifecycle ticks them down. */
   autoMinimizeOnClear: z.boolean().default(true),
+  /** When true, the grid sorts panels so that panels sharing a worktree
+   * land adjacent (and a labeled separator row precedes each group). Off
+   * by default — useful when many in-flight worktrees blur the at-a-
+   * glance scan, but otherwise interferes with manual layout. */
+  groupByWorktree: z.boolean().default(false),
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
