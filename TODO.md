@@ -1,5 +1,38 @@
 # brainhouse — project todos
 
+## [HIGH] Auto-title marker is a visible seam in non-markdown renderers
+
+The inline `<!-- bh-title: ... -->` marker the auto-title hook asks
+the model to emit is invisible in browser/markdown contexts (its
+whole design conceit) but renders literally in CLI output, where
+brainhouse's pitch of "seamless instrumentation" springs a leak.
+
+The marker has to live on the wire for the server to parse it from
+JSONL. Stripping it server-side before display only helps
+brainhouse's own UI; it does nothing for the user's `claude` CLI
+session printing the response text.
+
+Options worth considering:
+1. **Move auto-title back to a Stop hook** that runs `claude -p`
+   on a longer cadence. Invisible to all renderers but expensive
+   (~50k tokens per invocation due to harness boot — the cost was
+   why we moved to inline).
+2. **Sentinel tool_use the server intercepts**. Have the model
+   call a no-op `BhSetTitle` tool with the title in `input`. CLI
+   still renders tool capsules though, so this trades a comment
+   leak for a tool-call leak — arguably worse.
+3. **Out-of-band server-side titler**: server reads
+   assistant_text + last_prompt periodically, runs its own
+   small-model summarization without involving the in-band turn.
+   Adds infra (cheap LLM client, queue) but is the only truly
+   seamless option.
+4. **Live with it**. Marker is short, fires only every Nth turn.
+   The leak is small; weigh against build cost of #3.
+
+If brainhouse positions itself as seamless, a visible side channel
+is the wrong default. Lean toward #3 (or a cheap local variant —
+e.g. a Haiku call) when there's time.
+
 ## Project widgets
 
 Scaffolding landed: one card per observed repo, auto-derived from the

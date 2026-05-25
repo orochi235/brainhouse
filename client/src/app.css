@@ -3314,6 +3314,20 @@ body.replay-drop-target::after {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Title column: takes whatever leftover space the table has after the
+ * fixed-width columns claim theirs. Bigger min ensures it's roomy even
+ * on narrow grids; max stays unbounded so a wide table gives titles
+ * more room. */
+.debug-cell-title {
+  width: 100%;
+  min-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.debug-muted {
+  color: var(--muted);
+}
 .debug-toggle {
   font-size: 0.7rem;
   color: var(--muted);
@@ -3630,10 +3644,14 @@ body.imessage .event-thought-agent {
  * a layered drop-shadow + chunky border simulate puffy edges. */
 .thought-bubble {
   position: relative;
+  z-index: 2;
   max-width: 90%;
   padding: 0.55rem 0.85rem;
-  border-radius: 22px;
-  border: 2px solid color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 80%, transparent);
+  /* Carve the two diagonally-opposite corners — bottom-right makes room
+   * for the trailing chain; top-left mirrors it so the bubble itself
+   * picks up a subtle italic-style lean. */
+  border-radius: 32px 22px 32px 22px;
+  border: 1px solid color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 80%, transparent);
   background:
     radial-gradient(
       ellipse at 30% 25%,
@@ -3652,6 +3670,9 @@ body.imessage .event-thought-agent {
     0 4px 10px color-mix(in srgb, black 12%, transparent);
 }
 .thought-bubble-user {
+  /* Mirror: user variant carves the opposite diagonal (top-right +
+   * bottom-left), giving the same italic lean toward the user's column. */
+  border-radius: 22px 32px 22px 32px;
   border-color: color-mix(in srgb, var(--bubble-user-fg, currentColor) 80%, transparent);
   background:
     radial-gradient(
@@ -3672,9 +3693,10 @@ body.imessage .event-thought-agent {
   pointer-events: none;
 }
 .thought-bubble-tail-dot {
-  display: block;
+  position: absolute;
+  z-index: 3;
   border-radius: 50%;
-  border: 1.5px solid
+  border: 1px solid
     color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 80%, transparent);
   background:
     radial-gradient(
@@ -3686,14 +3708,27 @@ body.imessage .event-thought-agent {
     inset 0 1px 0 color-mix(in srgb, white 35%, transparent),
     0 1px 2px color-mix(in srgb, black 18%, transparent);
 }
-.thought-bubble-tail-dot-big {
-  width: 9px;
-  height: 9px;
+/* Four trailing dots diminishing in size, arcing down-and-inward from the
+ * bubble's corner. The tail container is anchored to the speaker's edge
+ * via .thought-bubble-{agent,user} .thought-bubble-tail below; these
+ * absolute offsets are measured from that anchor. */
+.thought-bubble-tail-dot-1 {
+  width: 15px;
+  height: 15px;
+  top: 0;
+  left: 0;
 }
-.thought-bubble-tail-dot-small {
-  width: 5px;
-  height: 5px;
-  margin-top: 2px;
+.thought-bubble-tail-dot-2 {
+  width: 10px;
+  height: 10px;
+  top: 17px;
+  left: 8px;
+}
+.thought-bubble-tail-dot-3 {
+  width: 6px;
+  height: 6px;
+  top: 30px;
+  left: 18px;
 }
 .thought-bubble-user .thought-bubble-tail-dot {
   border-color: color-mix(in srgb, var(--bubble-user-fg, currentColor) 80%, transparent);
@@ -3704,22 +3739,71 @@ body.imessage .event-thought-agent {
       color-mix(in srgb, var(--bubble-user-fg, currentColor) 90%, transparent) 100%
     );
 }
-/* Position the tail beneath whichever edge the speaker sits on. */
+/* Position the tail container — the dots themselves are absolutely
+ * positioned within it. Sized to contain the full diagonal arc of
+ * four dots (~30px × ~35px). */
+.thought-bubble-tail {
+  position: absolute;
+  z-index: 3;
+  width: 28px;
+  height: 38px;
+}
 .thought-bubble-agent .thought-bubble-tail {
-  right: 6px;
-  bottom: -14px;
+  right: -10px;
+  bottom: -28px;
 }
 .thought-bubble-user .thought-bubble-tail {
-  left: 6px;
-  bottom: -14px;
+  left: -10px;
+  bottom: -28px;
 }
+/* Mirror the dots for the user (down-left arc instead of down-right).
+ * Each dot's `left` offset becomes `right` via the same numeric value. */
+.thought-bubble-user .thought-bubble-tail-dot-1 {
+  left: auto;
+  right: 0;
+}
+.thought-bubble-user .thought-bubble-tail-dot-2 {
+  left: auto;
+  right: 8px;
+}
+.thought-bubble-user .thought-bubble-tail-dot-3 {
+  left: auto;
+  right: 18px;
+}
+/* iMessage view swaps the speaker columns, so the tail flips sides. */
 body.imessage .thought-bubble-agent .thought-bubble-tail {
   right: auto;
-  left: 6px;
+  left: -10px;
+}
+body.imessage .thought-bubble-agent .thought-bubble-tail-dot-1 {
+  left: auto;
+  right: 0;
+}
+body.imessage .thought-bubble-agent .thought-bubble-tail-dot-2 {
+  left: auto;
+  right: 8px;
+}
+body.imessage .thought-bubble-agent .thought-bubble-tail-dot-3 {
+  left: auto;
+  right: 18px;
 }
 body.imessage .thought-bubble-user .thought-bubble-tail {
   left: auto;
-  right: 6px;
+  right: -10px;
+}
+body.imessage .thought-bubble-user .thought-bubble-tail-dot-1,
+body.imessage .thought-bubble-user .thought-bubble-tail-dot-2,
+body.imessage .thought-bubble-user .thought-bubble-tail-dot-3 {
+  right: auto;
+}
+body.imessage .thought-bubble-user .thought-bubble-tail-dot-1 {
+  left: 0;
+}
+body.imessage .thought-bubble-user .thought-bubble-tail-dot-2 {
+  left: 8px;
+}
+body.imessage .thought-bubble-user .thought-bubble-tail-dot-3 {
+  left: 18px;
 }
 /* Theme tint — when the panel has a .hued theme, the agent thought
  * bubble fills with the theme's foreground (still inverted) and the

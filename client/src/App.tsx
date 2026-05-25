@@ -475,7 +475,23 @@ function AppMain() {
   // stats + recent sessions. Render after session cards in the grid.
   // Auto-derived from `panels` — not allocator-managed (widgets have
   // self-contained visibility rules, TBD).
-  const projectRollups = buildProjectRollups(panels);
+  const allProjectRollups = buildProjectRollups(panels);
+  // Widgets are *fill-only*: we render just enough of them to bring the
+  // grid up to `slotCount` once sessions claim their slots. A pinned
+  // widget (pseudo-id `project:<repo>`) always shows regardless of the
+  // fill budget, mirroring how pinned session panels work.
+  const widgetSlotBudget = Math.max(
+    0,
+    prefs.workspace.slotCount -
+      orderedGridPanels.length -
+      (debugMode ? 1 : 0),
+  );
+  const pinnedRollups: typeof allProjectRollups = [];
+  const unpinnedRollups: typeof allProjectRollups = [];
+  for (const r of allProjectRollups) {
+    (pinned.has(r.widget.id) ? pinnedRollups : unpinnedRollups).push(r);
+  }
+  const projectRollups = [...pinnedRollups, ...unpinnedRollups.slice(0, widgetSlotBudget)];
   const openSessionFromWidget = (sessionId: string) => {
     const panel = panels.get(sessionId);
     if (!panel) return;

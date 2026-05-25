@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 
@@ -18,12 +19,26 @@ type DebugState = Awaited<ReturnType<typeof trpc.debugState.query>>;
 
 const POLL_MS = 2000;
 
-type SortKey = 'id' | 'kind' | 'state' | 'slot' | 'age' | 'project' | 'title' | 'server';
+type SortKey =
+  | 'id'
+  | 'kind'
+  | 'state'
+  | 'slot'
+  | 'age'
+  | 'project'
+  | 'worktree'
+  | 'title'
+  | 'server';
 
 function projectKey(cwd: string | null): string {
   if (!cwd) return '';
   const segs = cwd.replace(/\/+$/, '').split('/');
   return (segs[segs.length - 1] ?? '').toLowerCase();
+}
+
+function worktreeLabel(cwd: string | null): string {
+  const wt = deriveWorktree(cwd);
+  return wt ? wt.name : '';
 }
 
 function makeComparator(
@@ -61,6 +76,9 @@ function makeComparator(
         break;
       case 'project':
         v = projectKey(a.cwd).localeCompare(projectKey(b.cwd));
+        break;
+      case 'worktree':
+        v = worktreeLabel(a.cwd).localeCompare(worktreeLabel(b.cwd));
         break;
       case 'title':
         v = a.title.localeCompare(b.title);
@@ -249,7 +267,7 @@ function ClientContents({
         className={`debug-row${colors ? ' has-theme' : ''}${slot === 'orphan' ? ' debug-row-orphan' : ''}`}
         style={rowStyle}
       >
-        <td className="debug-cell-truncate" title={p.title}>
+        <td className="debug-cell-title" title={p.title}>
           <span className="debug-tree-indent" style={{ paddingLeft: `${depth * 14}px` }}>
             {depth > 0 && <span className="debug-tree-branch">└</span>}
             <span
@@ -301,6 +319,9 @@ function ClientContents({
         <td>{fmtAge(p.last_event_at, now)}</td>
         <td className="debug-cell-truncate" title={p.cwd ?? ''}>
           {proj}
+        </td>
+        <td>
+          <WorktreeBadge cwd={p.cwd} />
         </td>
         {onServer !== null && (
           <td className={onServer ? '' : 'debug-gap-pos'}>{onServer ? '✓' : 'missing'}</td>
@@ -360,6 +381,12 @@ function ClientContents({
                 sort={sort}
                 onClick={toggleSort}
                 glyph={sortGlyph('project')}
+              />
+              <SortHeader
+                col="worktree"
+                sort={sort}
+                onClick={toggleSort}
+                glyph={sortGlyph('worktree')}
               />
               {serverPanels !== null && (
                 <SortHeader
@@ -437,25 +464,14 @@ function projectColors(
 
 function projectLabel(cwd: string | null): string {
   if (!cwd) return '—';
+  // Worktrees collapse to their parent repo — the worktree branch lives
+  // in its own column now, so showing `<repo>/<branch>` here would just
+  // duplicate that information.
+  const wt = deriveWorktree(cwd);
+  if (wt) return wt.repo;
   const segs = cwd.replace(/\/+$/, '').split('/').filter(Boolean);
   if (segs.length === 0) return cwd;
-  const last = segs[segs.length - 1];
-  // Worktree convention: `.../<repo>/.claude-worktrees/<branch>` or
-  // `.../<repo>/worktrees/<branch>`. Show as `<repo>/<branch>` so the
-  // table doesn't list a dozen branch names with no project context.
-  for (let i = segs.length - 2; i >= 0; i--) {
-    if (segs[i] === '.claude-worktrees' || segs[i] === 'worktrees') {
-      // Walk past tool-owned dotfile dirs like `.claude`, `.config`, etc.
-      // so a path like `<repo>/.claude/worktrees/<branch>` resolves to
-      // `<repo>/<branch>` instead of `.claude/<branch>`.
-      let j = i - 1;
-      while (j >= 0 && segs[j].startsWith('.')) j--;
-      const repo = j >= 0 ? segs[j] : null;
-      if (repo) return `${repo}/${last}`;
-      break;
-    }
-  }
-  return last || cwd;
+  return segs[segs.length - 1] || cwd;
 }
 
 function ServerContents({
@@ -691,4 +707,23 @@ function shortPath(p: string): string {
   const parts = p.split('/');
   if (parts.length <= 3) return p;
   return `…/${parts.slice(-3).join('/')}`;
+}
+
+/** Reuses the same chip the live panel header shows — same hash-derived
+ * worktree color, same pill shape — so the debug row reads as the
+ * "same thing in a table." Renders an em-dash when the cwd isn't a
+ * worktree (main checkout / unknown). */
+function WorktreeBadge({ cwd }: { cwd: string | null }) {
+  const wt = deriveWorktree(cwd);
+  if (!wt) return <span className="debug-muted">—</span>;
+  return (
+    <span
+      className="panel-worktree-chip"
+      style={{ ['--panel-worktree-color' as string]: worktreeColor(wt.key) }}
+      title={`worktree: ${wt.key}`}
+    >
+      <span className="panel-worktree-swatch" aria-hidden="true" />
+      {wt.name}
+    </span>
+  );
 }
