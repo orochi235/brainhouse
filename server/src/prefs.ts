@@ -106,6 +106,14 @@ export const WorkspaceSchema = z.object({
    * by default — useful when many in-flight worktrees blur the at-a-
    * glance scan, but otherwise interferes with manual layout. */
   groupByWorktree: z.boolean().default(false),
+  /** Number of "guaranteed" grid slots the client tries to keep full.
+   * Pinned + live unpinned panels claim slots first; remaining slots
+   * pull from recent closed/idle panels via per-repo round-robin. Panels
+   * beyond `slotCount` overflow into the tray. Pins are hard (always
+   * primary), so if more than `slotCount` panels are pinned the grid
+   * just grows. Set to 0 to disable the allocator (everything falls
+   * back to status-based placement). */
+  slotCount: z.number().int().min(0).default(4),
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 

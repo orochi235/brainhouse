@@ -64,6 +64,8 @@ interface PrefsDraft {
     maxTileSpan: number;
     spawnSubagentsMinimized: boolean;
     autoMinimizeOnClear: boolean;
+    groupByWorktree: boolean;
+    slotCount: number;
   };
   storage: {
     persistEnabled: boolean;
@@ -507,6 +509,12 @@ function WorkspaceSection({ draft, setDraft }: SectionProps) {
         label="Group panels by worktree"
         checked={draft.workspace.groupByWorktree}
         onChange={(v) => set({ groupByWorktree: v })}
+      />
+      <NumberField
+        label="Guaranteed grid slots (0 disables the allocator)"
+        value={draft.workspace.slotCount}
+        min={0}
+        onChange={(v) => set({ slotCount: v })}
       />
     </Section>
   );

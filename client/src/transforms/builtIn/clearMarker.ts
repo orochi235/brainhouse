@@ -9,6 +9,7 @@
  * produces the divider, so other slash commands still render normally.
  */
 
+import { hasTag } from '@server/parser.ts';
 import type { Stage1Transform } from '../types.ts';
 
 const CAVEAT_ONLY = /^\s*<local-command-caveat>[\s\S]*<\/local-command-caveat>\s*$/;
@@ -24,10 +25,13 @@ export const clearMarker: Stage1Transform = {
     'Converts `/clear` command artifacts into a "prior session cleared" divider and drops the surrounding caveat/stdout noise.',
   run(event, items) {
     if (event.kind !== 'user_text') return false;
+    // Artifact tag is the fast-bail gate; the user's normal prompts
+    // (no artifact tag) skip the regex work entirely.
+    if (!hasTag(event, 'artifact')) return false;
     const text = event.payload.text;
     if (typeof text !== 'string') return false;
     if (CAVEAT_ONLY.test(text) || STDOUT_ONLY.test(text)) return true;
-    if (CLEAR_COMMAND.test(text)) {
+    if (hasTag(event, 'slash_command') && CLEAR_COMMAND.test(text)) {
       items.push({ type: 'cleared', event });
       return true;
     }

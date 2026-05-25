@@ -18,6 +18,7 @@ import { usePrefs } from '../lib/usePrefs.tsx';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { Markdown } from './Markdown.tsx';
 import { OpStripLightbox } from './OpStripLightbox.tsx';
+import { ThoughtBubble } from './ThoughtBubble.tsx';
 import { ToolCapsule } from './ToolCapsule.tsx';
 
 interface EventListProps {
@@ -111,6 +112,13 @@ function Bubble({
   startedAt?: number;
   onBubbleClick?: (event: Event) => void;
 }) {
+  // Thought bubbles are exclusively for the agent's *thinking* events
+  // (the model's internal monologue). User-attributed thought bubbles
+  // were a category error: the user doesn't "have thoughts" the UI is
+  // privy to — they have typed messages. Synthetic `is_meta` user_texts
+  // (Skill preludes, hook-injected context) are still text the user
+  // didn't author, but they're not *thoughts*. Their visual treatment
+  // is TBD; for now they fall through to the default user bubble.
   return (
     <li
       className={classNames(
@@ -382,24 +390,20 @@ function BubblePartView({ part, escape }: { part: BubblePart; escape: boolean })
   return <Markdown text={part.text} escape={escape} />;
 }
 
-function ThinkingEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
+function ThinkingEvent({ event }: { event: Event; startedAt?: number }) {
   const lightbox = useLightbox();
   if (event.kind !== 'thinking') return null;
+  // TODO(tags): switch to `event.tags.has('thinking')` once tags ship.
   return (
-    <li
-      className="event event-thinking"
+    <ThoughtBubble
+      text={event.payload.text}
+      speaker="agent"
       onClick={() =>
         lightbox.open(<pre className="lightbox-text-content">{event.payload.text}</pre>, {
           variant: 'text',
         })
       }
-    >
-      <span className="event-kind">thinking</span>
-      <EventTime ts={event.ts} startedAt={startedAt} />
-      <div className="event-body">
-        <Markdown text={event.payload.text} />
-      </div>
-    </li>
+    />
   );
 }
 

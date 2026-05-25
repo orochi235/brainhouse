@@ -7,6 +7,7 @@ import { FlowsModal } from './components/FlowsModal.tsx';
 import { HoverPopover } from './components/HoverPopover.tsx';
 import { PanelCard } from './components/PanelCard.tsx';
 import { PrefsModal } from './components/PrefsModal.tsx';
+import { ProjectWidgetCard } from './components/ProjectWidgetCard.tsx';
 import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
@@ -23,6 +24,8 @@ import {
 } from './lib/panelOrder.ts';
 import { useTheme } from './lib/preferences.ts';
 import { clearScrollPosition } from './lib/scrollMemory.ts';
+import { buildProjectRollups } from './lib/projectWidgets.ts';
+import { allocateSlots } from './lib/slotAllocator.ts';
 import { useIntentions } from './lib/useIntentions.ts';
 import { PrefsProvider, usePrefs } from './lib/usePrefs.tsx';
 import { worktreeColor } from './lib/worktree.ts';
@@ -380,8 +383,9 @@ function AppMain() {
   // override hidden / clientMini / server-mini routing.
   const isPinned = (p: PanelState) => pinned.has(p.id);
 
-  // Dismissed panels move to the tray regardless of kind, unless pinned.
-  const clientMiniPanels = allGridPanels.filter((p) => !isPinned(p) && isClientMini(p));
+  // Subagents inside a parent's tray: user-intent filtering only — these
+  // panels don't compete for top-level slots, so the allocator doesn't see
+  // them.
   const clientMiniSubs: PanelState[] = [];
   const subsByParent = new Map<string, PanelState[]>();
   for (const [parentId, subs] of allSubsByParent) {
@@ -393,16 +397,42 @@ function AppMain() {
     }
     if (kept.length) subsByParent.set(parentId, kept);
   }
-  const gridPanels = [
-    ...allGridPanels.filter((p) => isPinned(p) || (!isHidden(p) && !isClientMini(p))),
-    // Pinned panels the server demoted to mini get promoted back to the grid.
-    ...allTrayPanels.filter(isPinned),
-  ];
-  const trayPanels = [
-    ...allTrayPanels.filter((p) => !isPinned(p)),
-    ...clientMiniPanels,
-    ...clientMiniSubs,
-  ].filter((p) => !isHidden(p));
+
+  // Slot allocator: top-level placement is allocator-driven. User intents
+  // (pin, dismiss, client-mini) always win — the allocator only sees panels
+  // that have no explicit intent. Pinned panels claim slots unconditionally
+  // (even past the cap); live unpinned next; then the allocator fills the
+  // remaining slots from closed/idle panels via per-repo round-robin.
+  const topLevel = [...allGridPanels, ...allTrayPanels];
+  const allocatorInput = topLevel
+    .filter((p) => isPinned(p) || (!isHidden(p) && !isClientMini(p)))
+    .map((p) => ({
+      id: p.id,
+      status: p.status,
+      cwd: p.cwd ?? null,
+      last_event_at: p.last_event_at,
+    }));
+  // Debug mode renders an extra tile in the grid; reserve a slot for it so
+  // it counts toward the cap instead of growing the grid past slotCount.
+  const effectiveSlotCount = Math.max(
+    0,
+    prefs.workspace.slotCount - (debugMode ? 1 : 0),
+  );
+  const allocation = allocateSlots(allocatorInput, pinned, effectiveSlotCount);
+
+  const gridPanels: PanelState[] = [];
+  const trayPanels: PanelState[] = [];
+  const clientMiniPanels: PanelState[] = [];
+  for (const p of topLevel) {
+    if (!isPinned(p) && isHidden(p)) continue; // dropped entirely
+    if (!isPinned(p) && isClientMini(p)) {
+      clientMiniPanels.push(p);
+      continue;
+    }
+    if (allocation.primary.has(p.id)) gridPanels.push(p);
+    else trayPanels.push(p);
+  }
+  trayPanels.push(...clientMiniPanels, ...clientMiniSubs);
   const orderedGridIds = sortByOrder(
     gridPanels.map((p) => p.id),
     order,
@@ -441,6 +471,24 @@ function AppMain() {
     }
   }, [panels]);
 
+  // Project widgets: one card per observed repo, with a rollup of
+  // stats + recent sessions. Render after session cards in the grid.
+  // Auto-derived from `panels` — not allocator-managed (widgets have
+  // self-contained visibility rules, TBD).
+  const projectRollups = buildProjectRollups(panels);
+  const openSessionFromWidget = (sessionId: string) => {
+    const panel = panels.get(sessionId);
+    if (!panel) return;
+    // Restore from tray/dock if needed.
+    if (clientMiniPanels.some((m) => m.id === sessionId)) restoreLocal(sessionId);
+    else if (panel.status === 'mini') trpc.restore.mutate({ panelId: sessionId });
+    // Then scroll into view on next paint.
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-panel-id="${sessionId}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   // Wide panels consume two cells; everything else consumes one. We pass the
   // total slot count to the layout hook so a 4-panel grid with one wide panel
   // becomes a 5-slot tile (still picks a nice integer cols/rows).
@@ -448,7 +496,8 @@ function AppMain() {
   // Debug mode adds an extra grid-slot for the DebugTile; include it in
   // the layout count so the grid sizes its rows for n+1 items instead of
   // overflowing into a 0-height auto-row.
-  const slots = orderedGridPanels.length + wideCount + (debugMode ? 1 : 0);
+  const slots =
+    orderedGridPanels.length + projectRollups.length + wideCount + (debugMode ? 1 : 0);
   const { ref: gridRef, cols, rows } = useGridLayout(slots);
   const gridStyle = {
     gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
@@ -626,6 +675,11 @@ function AppMain() {
           {insertGhost === null && orderedGridPanels.length > 0 && (
             <div className="grid-slot insert-ghost-append" aria-hidden="true" />
           )}
+          {projectRollups.map((r) => (
+            <div key={r.widget.id} className="grid-slot project-widget-slot">
+              <ProjectWidgetCard rollup={r} onOpenSession={openSessionFromWidget} />
+            </div>
+          ))}
           {debugMode && (
             <div className="grid-slot debug-tile-slot">
               <DebugTile

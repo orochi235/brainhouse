@@ -16,6 +16,47 @@ export type EventKind =
   | 'system'
   | 'meta';
 
+/**
+ * Additive classification tags computed once at parse time. Downstream
+ * code should classify via tags rather than re-deriving from `kind` /
+ * payload shape — the JSONL schema shifts upstream and centralizing the
+ * classifier keeps that change isolated to this file.
+ *
+ *   dialogue       — strict: direct user↔agent text only. `user_text`
+ *                    (without `artifact` / `meta`) + `assistant_text`.
+ *                    Excludes `thinking` (agent's internal monologue),
+ *                    tool calls, sidechannel records.
+ *   tool           — `tool_use` or `tool_result`.
+ *   thinking       — agent extended thinking (kind === 'thinking').
+ *   artifact       — Claude Code slash-command scaffolding emitted as
+ *                    user_text: `<local-command-caveat>`,
+ *                    `<command-name>`, `<command-message>`,
+ *                    `<command-args>`, `<local-command-stdout>`.
+ *   slash_command  — user_text artifact that's specifically a
+ *                    `<command-name>...</command-name>` record (the
+ *                    "/clear", "/branch", etc. the user typed). Always
+ *                    co-resident with `artifact`.
+ *   meta           — sidechannel metadata: `kind === 'meta'`, OR a
+ *                    `user_text` synthesized by Claude Code with
+ *                    `is_meta: true` (e.g. Skill SKILL.md preludes).
+ *                    Does NOT bump a done/mini panel back to live.
+ *   system         — `kind === 'system'`.
+ *   sidechain      — subagent transcript records (the raw JSONL had
+ *                    `isSidechain: true`). Lifts the flag onto the
+ *                    Event so transforms don't have to re-read it.
+ *   usage          — `kind === 'resource_usage'`.
+ */
+export type Tag =
+  | 'dialogue'
+  | 'tool'
+  | 'thinking'
+  | 'artifact'
+  | 'slash_command'
+  | 'meta'
+  | 'system'
+  | 'sidechain'
+  | 'usage';
+
 interface EventBase {
   session_id: string;
   agent_id: string | null;
@@ -25,6 +66,19 @@ interface EventBase {
   /** Original working directory of the Claude Code session, when present
    * on the record. Used to read per-project theme files (.hued). */
   cwd: string | null;
+  /** Classification tags. See `Tag` for the taxonomy. Always present;
+   * empty array means "no classifier matched" (defensive — shouldn't
+   * happen for valid records). */
+  tags: Tag[];
+}
+
+/** Membership check — a tiny shim so call sites read as
+ * `hasTag(event, 'meta')` instead of array `.includes`. Defensive
+ * against missing `tags` (synthetic events constructed outside the
+ * parser may not carry them yet); a missing tag array reads as "no
+ * tags applied" rather than throwing. */
+export function hasTag(event: { tags?: Tag[] }, tag: Tag): boolean {
+  return Array.isArray(event.tags) && event.tags.includes(tag);
 }
 
 export type Event =
@@ -101,8 +155,7 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
   const parentUuid = asString(raw.parentUuid) ?? null;
   const ts = asString(raw.timestamp) ?? '';
   const cwd = asString(raw.cwd) ?? null;
-  const rtype = asString(raw.type);
-
+  const isSidechain = raw.isSidechain === true;
   const base = (
     uuidSuffix: string,
   ): {
@@ -112,6 +165,7 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
     parent_uuid: string | null;
     ts: string;
     cwd: string | null;
+    tags: Tag[];
   } => ({
     session_id: sid,
     agent_id: aid,
@@ -119,7 +173,76 @@ export function parseLine(raw: Raw, ctx: ParseContext = {}): Event[] {
     parent_uuid: parentUuid,
     ts,
     cwd,
+    tags: [],
   });
+
+  // Tag the produced events in one shot before returning. Centralizing
+  // here keeps the classifier in lockstep with parsing — no downstream
+  // ad-hoc re-derivation.
+  const out = parseLineInner(raw, sid, aid, base, ts, cwd);
+  for (const ev of out) tagEvent(ev, isSidechain);
+  return out;
+}
+
+const ARTIFACT_RE = /^<(local-command-(caveat|stdout)|command-(name|message|args))>/;
+const SLASH_COMMAND_RE = /^<command-name>/;
+
+function tagEvent(ev: Event, isSidechain: boolean): void {
+  const tags = ev.tags;
+  if (isSidechain) tags.push('sidechain');
+  switch (ev.kind) {
+    case 'user_text': {
+      const text = ev.payload.text ?? '';
+      const isMeta = ev.payload.is_meta === true;
+      const isArtifact = ARTIFACT_RE.test(text);
+      if (isArtifact) {
+        tags.push('artifact');
+        if (SLASH_COMMAND_RE.test(text)) tags.push('slash_command');
+      }
+      if (isMeta) tags.push('meta');
+      // Strict dialogue: direct user-typed text only.
+      if (!isArtifact && !isMeta) tags.push('dialogue');
+      break;
+    }
+    case 'assistant_text':
+      tags.push('dialogue');
+      break;
+    case 'thinking':
+      tags.push('thinking');
+      break;
+    case 'tool_use':
+    case 'tool_result':
+      tags.push('tool');
+      break;
+    case 'resource_usage':
+      tags.push('usage');
+      break;
+    case 'system':
+      tags.push('system');
+      break;
+    case 'meta':
+      tags.push('meta');
+      break;
+  }
+}
+
+function parseLineInner(
+  raw: Raw,
+  sid: string,
+  aid: string | null,
+  base: (sfx: string) => {
+    session_id: string;
+    agent_id: string | null;
+    uuid: string;
+    parent_uuid: string | null;
+    ts: string;
+    cwd: string | null;
+    tags: Tag[];
+  },
+  _ts: string,
+  _cwd: string | null,
+): Event[] {
+  const rtype = asString(raw.type);
 
   if (rtype === 'user' || rtype === 'assistant') {
     const msg = (raw.message as Raw | undefined) ?? {};
@@ -253,6 +376,7 @@ function extractUsage(
     parent_uuid: string | null;
     ts: string;
     cwd: string | null;
+    tags: Tag[];
   },
 ): Event | null {
   const usage = (msg as { usage?: unknown }).usage;

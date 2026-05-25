@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Event, EventKind } from './parser.js';
+import type { Event, EventKind, Tag } from './parser.js';
 import { SessionStore } from './session.js';
 import { Store } from './store.js';
 
@@ -19,8 +19,25 @@ function ev(
     uuid?: string;
     payload?: unknown;
     cwd?: string | null;
+    tags?: Tag[];
   } = {},
 ): Event {
+  // Auto-tag based on kind so tests don't have to spell out tags for the
+  // common cases (matches the parser's classifier for non-artifact /
+  // non-meta user_texts).
+  const tags: Tag[] =
+    opts.tags ??
+    (kind === 'user_text' || kind === 'assistant_text'
+      ? ['dialogue']
+      : kind === 'tool_use' || kind === 'tool_result'
+        ? ['tool']
+        : kind === 'thinking'
+          ? ['thinking']
+          : kind === 'system'
+            ? ['system']
+            : kind === 'resource_usage'
+              ? ['usage']
+              : ['meta']);
   return {
     session_id: opts.session_id ?? 'S',
     agent_id: opts.agent_id ?? null,
@@ -29,6 +46,7 @@ function ev(
     ts: 't',
     cwd: opts.cwd ?? null,
     kind,
+    tags,
     payload: opts.payload ?? {},
   } as Event;
 }
@@ -355,7 +373,29 @@ describe('SessionStore', () => {
     expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
   });
 
-  it('mini panel is removed after removeAfterSeconds', () => {
+  it('mini panel is removed after removeAfterSeconds once ended', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({
+      idleSeconds: 10,
+      miniSeconds: 100,
+      removeAfterSeconds: 1000,
+      clock: clock.now,
+    });
+    store.apply(ev('user_text', { payload: { text: 'hi' } }));
+    store.markEnded('S', 'hook_stop');
+    clock.advance(11);
+    store.tick();
+    clock.advance(101);
+    store.tick();
+    clock.advance(1001);
+    expect(store.tick()).toEqual([{ op: 'panel_remove', panel_id: 'S' }]);
+    expect(store.panel('S')).toBeUndefined();
+  });
+
+  it('mini panel lingers past removeAfterSeconds while still alive', () => {
+    // A session that simply went quiet (no Stop hook, no /clear) must not
+    // be reaped — keeps recent sessions visible across the day regardless
+    // of how long ago they last did anything.
     const clock = new FakeClock();
     const store = new SessionStore({
       idleSeconds: 10,
@@ -365,12 +405,16 @@ describe('SessionStore', () => {
     });
     store.apply(ev('user_text', { payload: { text: 'hi' } }));
     clock.advance(11);
-    store.tick();
+    store.tick(); // live → done
     clock.advance(101);
-    store.tick();
-    clock.advance(1001);
+    store.tick(); // done → mini
+    clock.advance(10_000);
+    expect(store.tick().filter((d) => d.op === 'panel_remove')).toEqual([]);
+    expect(store.panel('S')).toBeDefined();
+    // Once the session ends, it reaps on the next tick past the threshold.
+    store.markEnded('S', 'hook_stop');
+    clock.advance(1);
     expect(store.tick()).toEqual([{ op: 'panel_remove', panel_id: 'S' }]);
-    expect(store.panel('S')).toBeUndefined();
   });
 
   it('parent reap waits for non-ended subagents', () => {
@@ -386,26 +430,24 @@ describe('SessionStore', () => {
       clock: clock.now,
     });
     store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'parent' } }));
-    // Keep the subagent ticking with an event 100s later so it lags the
-    // parent's lifecycle — otherwise both reap on the same tick and the
-    // gate is never exercised.
-    clock.advance(100);
     store.apply(
       ev('user_text', { agent_id: 'sub-a', uuid: 'u2', payload: { text: 'child' } }),
     );
-    // Advance far past every threshold. Each tick only progresses one
-    // transition step (live→done, done→mini, mini→remove), so step through
-    // them. The parent is held at the mini→remove step by the subagent
-    // gate; sub-a progresses normally.
+    // The parent has ended (Stop hook fired). The subagent has NOT — its
+    // work outlasts the parent's own activity. Under the lifecycle rules,
+    // only ended panels are reap-eligible at all, and the parent is
+    // additionally blocked while any non-ended subagent exists.
+    store.markEnded('S', 'hook_stop');
     clock.advance(5000);
-    store.tick(); // sub-a live→done; parent already mini, held by gate
+    // Step parent through live → done → mini. The non-ended subagent
+    // stays live; it isn't reap-eligible.
+    store.tick(); // parent + sub-a live → done (sub-a not yet ended so it goes done but won't progress to reap)
+    store.tick(); // parent done → mini
+    store.tick(); // parent mini, threshold met, but hasLiveSubagents() blocks
     expect(store.panel('S')).toBeDefined();
-    store.tick(); // sub-a done→mini; parent still held
-    expect(store.panel('S')).toBeDefined();
-    store.tick(); // sub-a reaped; parent still in this iteration sees sub-a
-    expect(store.panel('sub-a')).toBeUndefined();
-    expect(store.panel('S')).toBeDefined();
-    const finalDeltas = store.tick(); // gate now passes; parent reaps
+    // Now end the subagent. On the next tick the gate opens and the parent reaps.
+    store.markEnded('sub-a', 'hook_subagent_stop');
+    const finalDeltas = store.tick();
     expect(
       finalDeltas.some((d) => d.op === 'panel_remove' && d.panel_id === 'S'),
     ).toBe(true);
@@ -895,6 +937,7 @@ describe('SessionStore', () => {
         store,
       });
       sess.apply(ev('user_text', { payload: { text: 'hi' } }));
+      sess.markEnded('S', 'hook_stop');
       // Two ticks to progress live → done → mini, then one more for removal.
       sess.tick(1100); // → done
       sess.tick(1200); // → mini

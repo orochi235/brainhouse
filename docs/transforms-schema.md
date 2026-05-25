@@ -282,3 +282,38 @@ These are real choices but I'd defer them until Stage A is in:
   registration order (source-file order). Should user transforms get
   a `before: ['key']` / `after: ['key']` hint? Without it, the only
   ordering is "later layers run later." Punted for v1.
+
+## Event tags
+
+Every `Event` returned by `parseLine` carries a `tags: Tag[]` array
+computed once at parse time. Downstream code should classify events
+via tags (`hasTag(event, 'meta')`) rather than re-deriving from `kind`
++ payload shape — Claude Code's JSONL schema shifts upstream from
+time to time, and centralizing the classifier in `parser.ts` keeps
+each schema change isolated to one file.
+
+Taxonomy (see `Tag` in `server/src/parser.ts` for the source of truth):
+
+| tag | applied to | composes with |
+|---|---|---|
+| `dialogue` | direct user↔agent text only. `user_text` (sans `artifact` / `meta`) + `assistant_text`. Excludes `thinking`, `tool_use`/`tool_result`. | `sidechain` |
+| `tool` | `tool_use`, `tool_result` | `sidechain` |
+| `thinking` | the model's extended thinking (kind === `'thinking'`) | `sidechain` |
+| `artifact` | Claude Code slash-command scaffolding emitted as user_text: `<local-command-caveat>`, `<command-name>`, `<command-message>`, `<command-args>`, `<local-command-stdout>` | `slash_command`, `sidechain` |
+| `slash_command` | a user_text artifact specifically of the form `<command-name>...</command-name>`. Always co-resident with `artifact`. | `artifact`, `sidechain` |
+| `meta` | sidechannel records — kind === `'meta'`, OR an `is_meta: true` user_text. Does NOT bump a done/mini panel back to live. | `sidechain` |
+| `system` | kind === `'system'` | — |
+| `sidechain` | raw record had `isSidechain: true` (subagent transcripts). | composes with everything |
+| `usage` | kind === `'resource_usage'` | — |
+
+Tags are additive (an event can carry several) and computed once in
+`parseLine` — there is intentionally no second pass that needs
+cross-record context. If a future classifier genuinely needs that
+(e.g. "this user_text is the first post-`/clear` prompt"), revisit
+then rather than build the machinery preemptively.
+
+Synthetic events constructed outside the parser (auto-title meta,
+subagent-meta from the watcher) must set their own `tags` explicitly
+— there's no auto-tagger for them. `hasTag` is defensive against a
+missing `tags` field (returns false) but missing tags should be
+treated as a bug to fix at the constructor.

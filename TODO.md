@@ -1,5 +1,136 @@
 # brainhouse — project todos
 
+## Project widgets
+
+Scaffolding landed: one card per observed repo, auto-derived from the
+cwds of currently-loaded panels. Same outer dimensions as a session
+`PanelCard`, body is intentionally empty for v0. Lives at
+`client/src/lib/projectWidgets.ts` + `components/ProjectWidgetCard.tsx`,
+rendered in the grid after session cards (`App.tsx`). Counts as
+additional cells in `useGridLayout`; **not** part of the slot allocator
+— widgets have self-contained visibility rules.
+
+Open follow-ups:
+- **[NEXT] Server-side backfill from session_summary**. Today the
+  widget enumerates projects + computes stats from the in-memory
+  `panels` map only — so a repo whose sessions have all reaped
+  vanishes from the UI, and historical stats are lost. The
+  architecture should layer-cake (not swiss-cheese): SQLite →
+  server tRPC → client hook → widget, no cross-cuts.
+
+  Implementation sketch:
+    1. `server/src/store.ts`: new query `getProjectRollups()` that
+       hits `session_summary` (already has `cwd`, `started_at`,
+       `ended_at`, `account_label`, `unique_files_touched`,
+       `event_count`, `title`). Group by `cwd` at the SQL layer;
+       client collapses worktrees → repo via `deriveWorktree`.
+       Return shape:
+         - `cwdRollups: { cwd, sessionCount, fileCount,
+            accountLabel, lastEventAt }[]`
+         - `recentSessions: { sessionId, title, cwd, accountLabel,
+            startedAt, endedAt }[]` (cap ~200, most-recent first)
+    2. `server/src/trpc.ts`: `projects.rollup` query procedure.
+    3. `client/src/lib/projectWidgets.ts`: replace
+       `buildProjectRollups(panels)` with a hook
+       `useProjectRollups()` that fetches via tRPC, then *merges*
+       in-memory `panels` for live sessions (which aren't in
+       session_summary yet — they materialize on
+       end-of-session). Merge rule: a session present in both
+       (rare — only for ended-but-still-loaded panels) prefers
+       the in-memory copy for freshest status/title.
+    4. Re-fetch policy: once on mount, once per N minutes (or on
+       window focus). The data shifts only on session-end, so
+       polling at panel-tick cadence is overkill.
+
+  **Multi-account collision** (load-bearing): a single repo can
+  have sessions under multiple accounts over time (e.g.
+  `simpluris` had .claude commits 38 days ago, switched to
+  .claude-pw recently). Group-by-repo MUST pick the *most-recent*
+  `account_label` per repo, not the oldest, not a list. The
+  client-side rollup already does latest-wins for theme/cwd; the
+  server query should do the same for accountLabel: take it from
+  the row with `MAX(ended_at)` per cwd, then on the client take
+  it from the most-recent cwd per repo.
+
+  **Tokens**: not in `session_summary` today. Either add a
+  `total_tokens REAL` column (cheap; populate from
+  `panel.tokens` at materialize time) or compute on demand from
+  `events_index` resource_usage rows. Adding the column is the
+  simpler call. Migration: column is nullable, existing rows
+  get null, new rows populate. Display: show "—" when null.
+
+- **Content**: activity sparkline, key files surfaced from
+  `key_files_json`, last-prompt summary surfaced from
+  `key_decisions`. All already in `session_summary`.
+- **Exclusions pref**: UI in prefs to hide specific projects.
+- **Cold-project rule**: optionally only show widget when the
+  project has had no activity in N days. Today it's always-on.
+- **Pin / hide via intentions**: pseudo-id `project:<repo>` is
+  safe to share with `panel_id` in the intentions table.
+
+## [HIGH] Slot allocator: keep recent sessions visible, fill voids
+
+Replace the purely time-based `live → done → mini → reap` lifecycle as
+the sole driver of grid vs tray placement. Current behavior:
+- A still-running session that goes idle ages through done→mini→removed
+  on the clock, even though the process is alive.
+- An empty grid with a couple of mini tiles produces a big black void
+  when no work is currently in flight.
+
+Design: lifecycle still tracks `live`/`done`/`mini` server-side
+(useful as visual hints + reaping signal), but **placement** is decided
+by a client-side slot allocator that fills a target of N grid slots.
+
+Priority order (top wins):
+0. **Pinned** panels — always primary. Hard rule; pins override
+   everything else including the slot cap. If pins exceed N, all pins
+   still render and the fill step is skipped.
+1. **Live unpinned** panels — always primary, as many as exist.
+2. **Fill remaining slots** with closed/idle panels via per-project
+   round-robin (most-recent first):
+   - Pass 1: most-recent panel per project.
+   - Pass 2: second-most-recent per project.
+   - …until slots are full.
+   If only one project has activity, all slots fill from it (no quota
+   holds a slot open for an absent project).
+3. **Overflow** → mini tray. Includes user-dismissed and user-mini'd
+   panels regardless of allocator opinion.
+
+Reaping (server-side) — separate concern: only ended panels are
+eligible. A `mini` panel whose `panel.ended === false` lingers
+indefinitely; the allocator decides if it's primary or tray. Gate lives
+in `session.ts:tick`'s `mini → remove` branch alongside the existing
+`hasLiveSubagents` guard.
+
+Open questions:
+- **N**: target slot count. Start with a constant (6?), revisit if it
+  should track viewport width.
+- **Project key**: cwd's repo segment, or worktree key? Different
+  worktrees of the same repo are arguably one project for fill purposes
+  (diversify across repos) but separate for the existing
+  group-by-worktree layout. Lean toward repo-level key for the
+  allocator; group-by-worktree is orthogonal.
+- **Staleness cutoff**: should a week-old cross-project panel still
+  beat a fresh same-project one in pass 1? Probably yes; revisit if it
+  feels wrong.
+- **Process-dead detection**: a crashed session whose Stop hook never
+  fired keeps `ended=false` and so never reaps. Acceptable for now (it
+  just sits in the tray); future: a periodic `kill -0 <pid>` sweep
+  flipping `ended='process_dead'`.
+- **done→mini transition**: today this is also time-based. With the
+  allocator, mini is mostly cosmetic (the tray location is determined
+  by overflow). Leaving the time-based demotion alone for now; revisit
+  if it feels redundant.
+
+Replaces/refines these existing assertions in `docs/assertions.md`:
+- "On reload, panels whose `last_event_at` is more than 30 seconds old
+  are routed straight to the dock" — keep, but the allocator can pull
+  recent ones back if slots are empty.
+- "On reload, if the grid lands empty but the dock holds at least one
+  panel whose status is `live`, those live dock panels are
+  auto-restored" — subsumed by the allocator (live unpinned always
+  claim slots).
+
 ## Coalesce file ops — richer diff rendering
 Basic coalescing already lands (`coalesceFileOps()` in `pipeline.ts`
 groups Read/Edit/Write/MultiEdit runs on the same path into a

@@ -57,6 +57,7 @@ export interface ClientPrefs {
     spawnSubagentsMinimized: boolean;
     autoMinimizeOnClear: boolean;
     groupByWorktree: boolean;
+    slotCount: number;
   };
   timings: {
     idleSeconds: number;
@@ -105,6 +106,7 @@ const DEFAULT_PREFS: ClientPrefs = {
     spawnSubagentsMinimized: false,
     autoMinimizeOnClear: true,
     groupByWorktree: false,
+    slotCount: 4,
   },
   timings: { idleSeconds: 60, miniSeconds: 300, removeAfterSeconds: 86400, tickIntervalMs: 5000 },
   roots: [],

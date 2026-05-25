@@ -275,4 +275,127 @@ describe('parseLine', () => {
       expect(events.map((e) => e.kind)).toEqual(['assistant_text', 'resource_usage']);
     });
   });
+
+  describe('tags', () => {
+    const lineWith = (over: Record<string, unknown>) =>
+      parseLine({
+        sessionId: 's1',
+        uuid: 'u',
+        timestamp: 't',
+        ...over,
+      });
+
+    it('tags a plain user_text as dialogue', () => {
+      const [e] = lineWith({
+        type: 'user',
+        message: { role: 'user', content: 'hello' },
+      });
+      expect(e?.tags).toEqual(['dialogue']);
+    });
+
+    it('tags an assistant_text as dialogue (and excludes thinking)', () => {
+      const events = lineWith({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'reply' },
+            { type: 'thinking', thinking: 'wondering' },
+          ],
+        },
+      });
+      const byKind = Object.fromEntries(events.map((e) => [e.kind, e.tags]));
+      expect(byKind.assistant_text).toEqual(['dialogue']);
+      expect(byKind.thinking).toEqual(['thinking']);
+    });
+
+    it('tags slash-command artifact user_texts as artifact + slash_command, not dialogue', () => {
+      const [e] = lineWith({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: '<command-name>/clear</command-name>',
+        },
+      });
+      expect(e?.tags).toContain('artifact');
+      expect(e?.tags).toContain('slash_command');
+      expect(e?.tags).not.toContain('dialogue');
+    });
+
+    it('tags other slash-command scaffolding artifacts but not slash_command', () => {
+      const [caveat] = lineWith({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: '<local-command-caveat>x</local-command-caveat>',
+        },
+      });
+      expect(caveat?.tags).toContain('artifact');
+      expect(caveat?.tags).not.toContain('slash_command');
+      expect(caveat?.tags).not.toContain('dialogue');
+    });
+
+    it('tags is_meta user_texts as meta (not dialogue)', () => {
+      const [e] = lineWith({
+        type: 'user',
+        isMeta: true,
+        message: { role: 'user', content: 'skill prelude' },
+      });
+      expect(e?.tags).toContain('meta');
+      expect(e?.tags).not.toContain('dialogue');
+    });
+
+    it('tool_use and tool_result get the tool tag (not dialogue)', () => {
+      const events = lineWith({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } },
+          ],
+        },
+      });
+      const tu = events.find((e) => e.kind === 'tool_use');
+      expect(tu?.tags).toEqual(['tool']);
+    });
+
+    it('isSidechain on the raw record produces a sidechain tag on every event', () => {
+      const events = lineWith({
+        type: 'user',
+        isSidechain: true,
+        agentId: 'sub-a',
+        message: { role: 'user', content: 'go find X' },
+      });
+      expect(events[0]?.tags).toContain('sidechain');
+      expect(events[0]?.tags).toContain('dialogue');
+    });
+
+    it('resource_usage events are tagged with usage', () => {
+      const events = lineWith({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'hi' }],
+          usage: {
+            input_tokens: 5,
+            output_tokens: 10,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+        },
+      });
+      const usage = events.find((e) => e.kind === 'resource_usage');
+      expect(usage?.tags).toEqual(['usage']);
+    });
+
+    it('system events are tagged with system', () => {
+      const [e] = lineWith({ type: 'system', content: 'note' });
+      expect(e?.tags).toEqual(['system']);
+    });
+
+    it('fallback meta records are tagged with meta', () => {
+      const [e] = lineWith({ type: 'permission-mode', mode: 'bypass' });
+      expect(e?.tags).toEqual(['meta']);
+    });
+  });
 });

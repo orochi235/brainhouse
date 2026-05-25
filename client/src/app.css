@@ -3450,3 +3450,326 @@ body[data-debug] .debug-tile * {
   color: var(--muted);
   padding: 2px 0;
 }
+
+/* Project widgets — same outer shape as a session panel so the grid
+ * layout doesn't have to special-case sizes. Tinted by the project's
+ * `.hued` color when one is configured (`.has-theme`); falls back to
+ * the deterministic hash color from `worktreeColor`. */
+.panel.project-widget {
+  background: color-mix(in oklch, var(--panel-bg), var(--panel-worktree-color, transparent) 4%);
+  border-color: color-mix(in oklch, var(--panel-border), var(--panel-worktree-color, transparent) 30%);
+}
+.panel.project-widget.has-theme {
+  background: color-mix(in oklch, var(--panel-bg), var(--panel-theme-bg) 6%);
+  border-color: color-mix(in oklch, var(--panel-border), var(--panel-theme-bg) 35%);
+}
+.project-widget-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
+}
+.project-widget-header-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.project-widget-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.project-widget-kind {
+  font-size: 0.6rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.project-widget-meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+}
+.project-widget-path {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.project-widget-account {
+  color: var(--muted);
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--panel-bg), var(--accent) 14%);
+}
+.project-widget-stats {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+}
+.project-widget-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.project-widget-stat-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+}
+.project-widget-stat-label {
+  font-size: 0.6rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.project-widget-sessions {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+}
+.project-widget-sessions-empty {
+  padding: 0.5rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+.project-widget-session-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.25rem 0.75rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.project-widget-session-row:hover {
+  background: color-mix(in oklch, var(--panel-bg), var(--accent) 8%);
+}
+.project-widget-session-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--muted);
+}
+.project-widget-session-dot.status-live {
+  background: var(--ok, #4ad17a);
+  box-shadow: 0 0 0 2px color-mix(in oklch, transparent, var(--ok, #4ad17a) 25%);
+}
+.project-widget-session-dot.status-done {
+  background: var(--accent);
+  opacity: 0.6;
+}
+.project-widget-session-dot.status-mini {
+  background: var(--muted);
+  opacity: 0.4;
+}
+.project-widget-session-row.ended .project-widget-session-dot {
+  opacity: 0.35;
+}
+.project-widget-session-row.awaiting .project-widget-session-dot {
+  background: var(--warn, #e0a93b);
+  box-shadow: 0 0 0 2px color-mix(in oklch, transparent, var(--warn, #e0a93b) 30%);
+}
+.project-widget-session-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-widget-session-age {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- thought bubbles ---- */
+/* A comic-style thought balloon: rounded body with a dashed border and a
+ * two-dot "tail" linking it to the implied speaker. Layout mirrors the
+ * speech bubbles — agent thoughts gravitate to the assistant column,
+ * user thoughts to the user column — and flips under iMessage view mode.
+ * Hidden alongside regular thinking when `body.hide-thinking` is set. */
+.event-thought {
+  display: flex;
+  animation: bubble-in 0.32s cubic-bezier(0.22, 0.85, 0.25, 1);
+  cursor: pointer;
+}
+.event-thought-user {
+  justify-content: flex-start;
+}
+.event-thought-agent {
+  justify-content: flex-end;
+}
+body.imessage .event-thought-user {
+  justify-content: flex-end;
+}
+body.imessage .event-thought-agent {
+  justify-content: flex-start;
+}
+/* Thought bubbles are inverted vs. speech bubbles: the fill is the
+ * speaker's foreground tone, the text is the panel background. A
+ * radial-gradient highlight adds volume (light source top-left), and
+ * a layered drop-shadow + chunky border simulate puffy edges. */
+.thought-bubble {
+  position: relative;
+  max-width: 90%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 22px;
+  border: 2px solid color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 80%, transparent);
+  background:
+    radial-gradient(
+      ellipse at 30% 25%,
+      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 60%, white 40%) 0%,
+      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 85%, transparent) 55%,
+      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 95%, transparent) 100%
+    );
+  color: var(--bubble-assistant, currentColor);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  font-style: italic;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 35%, transparent),
+    inset 0 -2px 4px color-mix(in srgb, black 20%, transparent),
+    0 1px 2px color-mix(in srgb, black 18%, transparent),
+    0 4px 10px color-mix(in srgb, black 12%, transparent);
+}
+.thought-bubble-user {
+  border-color: color-mix(in srgb, var(--bubble-user-fg, currentColor) 80%, transparent);
+  background:
+    radial-gradient(
+      ellipse at 30% 25%,
+      color-mix(in srgb, var(--bubble-user-fg, currentColor) 60%, white 40%) 0%,
+      color-mix(in srgb, var(--bubble-user-fg, currentColor) 85%, transparent) 55%,
+      color-mix(in srgb, var(--bubble-user-fg, currentColor) 95%, transparent) 100%
+    );
+  color: var(--bubble-user, currentColor);
+}
+.thought-bubble-body {
+  font-style: italic;
+}
+/* Tail: two stacked dashed circles trailing toward the speaker's edge. */
+.thought-bubble-tail {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+.thought-bubble-tail-dot {
+  display: block;
+  border-radius: 50%;
+  border: 1.5px solid
+    color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 80%, transparent);
+  background:
+    radial-gradient(
+      ellipse at 30% 30%,
+      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 60%, white 40%) 0%,
+      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 90%, transparent) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 35%, transparent),
+    0 1px 2px color-mix(in srgb, black 18%, transparent);
+}
+.thought-bubble-tail-dot-big {
+  width: 9px;
+  height: 9px;
+}
+.thought-bubble-tail-dot-small {
+  width: 5px;
+  height: 5px;
+  margin-top: 2px;
+}
+.thought-bubble-user .thought-bubble-tail-dot {
+  border-color: color-mix(in srgb, var(--bubble-user-fg, currentColor) 80%, transparent);
+  background:
+    radial-gradient(
+      ellipse at 30% 30%,
+      color-mix(in srgb, var(--bubble-user-fg, currentColor) 60%, white 40%) 0%,
+      color-mix(in srgb, var(--bubble-user-fg, currentColor) 90%, transparent) 100%
+    );
+}
+/* Position the tail beneath whichever edge the speaker sits on. */
+.thought-bubble-agent .thought-bubble-tail {
+  right: 6px;
+  bottom: -14px;
+}
+.thought-bubble-user .thought-bubble-tail {
+  left: 6px;
+  bottom: -14px;
+}
+body.imessage .thought-bubble-agent .thought-bubble-tail {
+  right: auto;
+  left: 6px;
+}
+body.imessage .thought-bubble-user .thought-bubble-tail {
+  left: auto;
+  right: 6px;
+}
+/* Theme tint — when the panel has a .hued theme, the agent thought
+ * bubble fills with the theme's foreground (still inverted) and the
+ * text becomes the panel background. */
+body:not(.imessage) .panel.has-theme .event-thought-agent .thought-bubble,
+body:not(.imessage) .lightbox.has-theme .event-thought-agent .thought-bubble {
+  border-color: color-mix(in srgb, var(--panel-theme-fg) 80%, transparent);
+  background:
+    radial-gradient(
+      ellipse at 30% 25%,
+      color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
+      color-mix(in srgb, var(--panel-theme-fg) 85%, transparent) 55%,
+      color-mix(in srgb, var(--panel-theme-fg) 95%, transparent) 100%
+    );
+  color: var(--panel-theme-bg);
+}
+body:not(.imessage) .panel.has-theme .event-thought-agent .thought-bubble-tail-dot,
+body:not(.imessage) .lightbox.has-theme .event-thought-agent .thought-bubble-tail-dot {
+  border-color: color-mix(in srgb, var(--panel-theme-fg) 80%, transparent);
+  background:
+    radial-gradient(
+      ellipse at 30% 30%,
+      color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
+      color-mix(in srgb, var(--panel-theme-fg) 90%, transparent) 100%
+    );
+}
+body.imessage .panel.has-theme .event-thought-user .thought-bubble,
+body.imessage .lightbox.has-theme .event-thought-user .thought-bubble {
+  border-color: color-mix(in srgb, var(--panel-theme-fg) 80%, transparent);
+  background:
+    radial-gradient(
+      ellipse at 30% 25%,
+      color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
+      color-mix(in srgb, var(--panel-theme-fg) 85%, transparent) 55%,
+      color-mix(in srgb, var(--panel-theme-fg) 95%, transparent) 100%
+    );
+  color: var(--panel-theme-bg);
+}
+body.imessage .panel.has-theme .event-thought-user .thought-bubble-tail-dot,
+body.imessage .lightbox.has-theme .event-thought-user .thought-bubble-tail-dot {
+  border-color: color-mix(in srgb, var(--panel-theme-fg) 80%, transparent);
+  background:
+    radial-gradient(
+      ellipse at 30% 30%,
+      color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
+      color-mix(in srgb, var(--panel-theme-fg) 90%, transparent) 100%
+    );
+}
+/* hide-thinking pref also hides thought bubbles — they're the same
+ * underlying message class from the user's POV. */
+body.hide-thinking .event-thought-agent {
+  display: none;
+}

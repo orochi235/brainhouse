@@ -142,6 +142,13 @@ UI/server is meant to uphold. New entries go at the bottom.
   SubagentStop hook on a subagent panel. The dim level is user-controlled
   via the Display prefs slider (defaults to 50%, floor 20%) and applies
   live via the `--idle-opacity` CSS custom property on `.panel.ended`.
+- `thinking` events render as an *agent thought bubble* — a dashed-edged
+  balloon with a two-dot tail, attributed to the assistant. Synthetic
+  user_texts flagged `is_meta: true` that aren't absorbed onto a Skill
+  capsule (i.e. the Claude-Code-injected residue we previously rendered
+  as giant user bubbles) render as a *user thought bubble* in the user
+  column. The `body.hide-thinking` pref hides agent thought bubbles
+  alongside the legacy thinking row.
 
 ## Lifecycle
 
@@ -226,6 +233,15 @@ UI/server is meant to uphold. New entries go at the bottom.
   the next tick. Server-side, this lives in `session.ts:tick`'s mini→remove
   branch via `hasLiveSubagents()`.
 
+- A panel is **only reap-eligible once it has actually ended** (`panel.ended`
+  is true — set by Stop / SubagentStop / SessionEnd hooks, or by a
+  follow-up `/clear` that supersedes the prior session). A still-alive
+  session that simply went quiet ages through `live → done → mini` on the
+  clock but stays in the tray indefinitely so the user can always see
+  recent sessions regardless of how long ago they last did anything. The
+  full slot-allocation rules (which decide grid vs tray placement on top
+  of this lifecycle) are tracked in `TODO.md` under "Slot allocator".
+
 - A subagent can be **broken out** of its parent's nested tray into the
   top-level grid (or dock, via a drag onto the mini strip). When broken
   out, the parent's tray renders a thin status-mirrored placeholder row in
@@ -246,6 +262,15 @@ UI/server is meant to uphold. New entries go at the bottom.
   them as activity would resurrect retired panels. Only
   `user_text` / `assistant_text` / `tool_use` / `tool_result` /
   `thinking` / `resource_usage` / `system` events revive a non-ended panel.
+
+- Every `Event` returned by `parseLine` carries a `tags: Tag[]` array
+  computed at parse time. Downstream code (transforms, session-store
+  activity checks, view renderers) should classify events via tags —
+  `hasTag(event, 'meta')`, `hasTag(event, 'artifact')`, etc. — rather
+  than re-deriving from `kind` / payload shape. Centralizing the
+  classifier keeps Claude Code JSONL schema changes isolated to
+  `parser.ts`. The full taxonomy lives in
+  `docs/transforms-schema.md#event-tags`.
 
 ## State
 

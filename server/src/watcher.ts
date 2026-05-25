@@ -268,6 +268,7 @@ export class TranscriptWatcher {
         ts: mtimeIso,
         cwd: null,
         kind: 'meta',
+        tags: ['meta'],
         payload: { record_type: 'subagent-meta', raw },
       },
       this.findRoot(p),

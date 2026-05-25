@@ -10,7 +10,7 @@
  * Time comes from an injectable clock so tests are deterministic.
  */
 
-import type { Event } from './parser.js';
+import { type Event, hasTag } from './parser.js';
 import type { EventIndexRow, PanelRow, SessionSummaryRow, Store } from './store.js';
 
 export type PanelKind = 'parent' | 'subagent';
@@ -268,7 +268,7 @@ export class SessionStore {
     // batch of these long after the session went idle; treating them as
     // activity resurrects done/mini panels. Real activity comes through as
     // user_text/assistant_text/tool_use/etc.
-    if (!panel.ended && panel.status !== 'live' && event.kind !== 'meta') {
+    if (!panel.ended && panel.status !== 'live' && !hasTag(event, 'meta')) {
       panel.status = 'live';
       panel.status_changed_at = panel.last_event_at;
       deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'live' });
@@ -333,8 +333,12 @@ export class SessionStore {
         this.persistPanel(panel);
       } else if (
         panel.status === 'mini' &&
+        panel.ended &&
         t - panel.status_changed_at >= this.removeAfterSeconds
       ) {
+        // Only ended panels are reap-eligible. A still-alive session
+        // (Claude Code process running, no /clear, no Stop hook) lingers
+        // in mini indefinitely so it stays trackable across the day.
         // Don't reap a parent that still has non-ended subagents (docked or
         // detached). Subagents can outlive their parent's own activity, and
         // removing the container would orphan the placeholder in the tray
@@ -683,7 +687,7 @@ export class SessionStore {
       // caveat, command-name, command-message, command-args, stdout. They
       // arrive before the user's first real prompt and would otherwise
       // become the panel title.
-      if (/^<(local-command-(caveat|stdout)|command-(name|message|args))>/.test(text)) return;
+      if (hasTag(event, 'artifact')) return;
       const firstLine =
         text
           .split('\n')
@@ -842,6 +846,7 @@ export class SessionStore {
       agent_id: null,
       parent_uuid: null,
       kind: 'meta',
+      tags: ['meta'],
       ts: new Date(this.clock() * 1000).toISOString(),
       cwd: panel.cwd,
       payload: {

@@ -6,7 +6,8 @@
  * runs the same preprocessEvents() the live app uses.
  */
 
-import type { Event } from '@server/parser.ts';
+import type { Event, Tag } from '@server/parser.ts';
+import { useEffect } from 'react';
 import type React from 'react';
 import { LightboxProvider } from '../lib/lightbox.tsx';
 import { EventList } from './EventList.tsx';
@@ -17,6 +18,20 @@ function ev<K extends Event['kind']>(
   payload: Extract<Event, { kind: K }>['payload'],
 ): Event {
   uid += 1;
+  // Mirror parser tagging so transforms that classify via tags
+  // (clearMarker, attachSkillPrelude, etc.) see the same shape they
+  // would in production.
+  const tags: Tag[] = [];
+  if (kind === 'user_text') {
+    const isMeta = (payload as { is_meta?: boolean }).is_meta === true;
+    if (isMeta) tags.push('meta');
+    else tags.push('dialogue');
+  } else if (kind === 'assistant_text') tags.push('dialogue');
+  else if (kind === 'thinking') tags.push('thinking');
+  else if (kind === 'tool_use' || kind === 'tool_result') tags.push('tool');
+  else if (kind === 'system') tags.push('system');
+  else if (kind === 'resource_usage') tags.push('usage');
+  else tags.push('meta');
   return {
     kind,
     payload,
@@ -26,6 +41,7 @@ function ev<K extends Event['kind']>(
     agent_id: null,
     ts: '2026-05-20T00:00:00Z',
     cwd: null,
+    tags,
   } as Event;
 }
 
@@ -152,6 +168,94 @@ export const AskUserQuestionBubble = () => (
     />
   </Frame>
 );
+
+/**
+ * Body-class effect: many bubble styles key off `body.imessage` or
+ * `body.hide-thinking`. Ladle stories render in isolation, so we
+ * temporarily toggle the class on mount + revert on unmount.
+ */
+function useBodyClass(cls: string, enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    document.body.classList.add(cls);
+    return () => document.body.classList.remove(cls);
+  }, [cls, enabled]);
+}
+
+const conversation: Event[] = [
+  userText('hey, can you take a look at the slot allocator?'),
+  ev('thinking', {
+    text: 'They probably want me to find the file first. The allocator likely lives in src/lib — let me check there.',
+  }),
+  asstText("Sure — let me grep for it real quick."),
+  toolUse('t1', 'Glob', { pattern: '**/slotAllocator*' }),
+  toolResult('t1', 'client/src/lib/slotAllocator.ts'),
+  ev('thinking', {
+    text: 'Found it. I should also check the test file to understand the contract before diving in.',
+  }),
+  asstText("Found it at `client/src/lib/slotAllocator.ts`. The contract is: pinned panels first, then live, then round-robin by repo to fill remaining slots."),
+  userText("does it handle the multi-account case?"),
+  asstText("Not yet — that's planned. The TODO has a note about latest-wins per repo."),
+];
+
+/**
+ * Default view: speech bubbles for the user/agent dialogue and a
+ * thought bubble for each `thinking` event. Inverted puffy styling
+ * for the thoughts; flat fill for speech.
+ */
+export const Conversation = () => (
+  <Frame>
+    <EventList events={conversation} />
+  </Frame>
+);
+
+/**
+ * Same conversation, iMessage mode. User bubbles right-aligned,
+ * agent bubbles left-aligned, thought-bubble tail flips sides.
+ */
+export const ConversationIMessage = () => {
+  useBodyClass('imessage', true);
+  return (
+    <Frame>
+      <EventList events={conversation} />
+    </Frame>
+  );
+};
+
+/**
+ * Same conversation rendered inside a `.has-theme` panel. The agent
+ * bubbles and thought bubbles pick up the project's `.hued` theme
+ * (foreground for thought-bubble fill, background for thought-bubble
+ * text — inverted).
+ */
+export const ConversationThemed = () => (
+  <div
+    className="panel has-theme"
+    style={{
+      ['--panel-theme-bg' as string]: '#1f3a5f',
+      ['--panel-theme-fg' as string]: '#9ec5ff',
+      padding: '0.6rem',
+      background: 'var(--bg)',
+    }}
+  >
+    <Frame>
+      <EventList events={conversation} />
+    </Frame>
+  </div>
+);
+
+/**
+ * Hide-thinking pref engaged: agent thought bubbles disappear,
+ * only speech remains.
+ */
+export const ConversationHideThinking = () => {
+  useBodyClass('hide-thinking', true);
+  return (
+    <Frame>
+      <EventList events={conversation} />
+    </Frame>
+  );
+};
 
 export const Mixed = () => (
   <Frame>

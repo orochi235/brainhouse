@@ -1,4 +1,4 @@
-import type { Event } from '@server/parser.ts';
+import type { Event, Tag } from '@server/parser.ts';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { LightboxProvider } from '../lib/lightbox.tsx';
@@ -10,6 +10,19 @@ function ev<K extends Event['kind']>(
   payload: Extract<Event, { kind: K }>['payload'],
 ): Event {
   uid += 1;
+  // Mirror parser tagging so transforms/components that read tags see
+  // the same classification they would in production.
+  const tags: Tag[] = [];
+  if (kind === 'user_text') {
+    const isMeta = (payload as { is_meta?: boolean }).is_meta === true;
+    if (isMeta) tags.push('meta');
+    else tags.push('dialogue');
+  } else if (kind === 'assistant_text') tags.push('dialogue');
+  else if (kind === 'thinking') tags.push('thinking');
+  else if (kind === 'tool_use' || kind === 'tool_result') tags.push('tool');
+  else if (kind === 'system') tags.push('system');
+  else if (kind === 'resource_usage') tags.push('usage');
+  else tags.push('meta');
   return {
     kind,
     payload,
@@ -19,6 +32,7 @@ function ev<K extends Event['kind']>(
     agent_id: null,
     ts: '2026-05-19T00:00:00Z',
     cwd: null,
+    tags,
   } as Event;
 }
 
@@ -84,6 +98,23 @@ describe('<EventList>', () => {
     expect(container.querySelector('.event-assistant_text')).toBeInTheDocument();
     expect(container.querySelector('.tool-capsule')).toBeNull();
     expect(screen.getByText('Pick one?')).toBeInTheDocument();
+  });
+
+  it('renders a thinking event as an agent thought bubble', () => {
+    const { container } = renderInLightbox([ev('thinking', { text: 'pondering' })]);
+    expect(container.querySelector('.thought-bubble-agent')).toBeInTheDocument();
+    expect(screen.getByText('pondering')).toBeInTheDocument();
+  });
+
+  it('does NOT render an is_meta user_text as a thought bubble', () => {
+    // Thought bubbles are exclusively for the agent's `thinking` events.
+    // User-attributed thought bubbles were a category error — the user
+    // never has "thoughts" the UI is privy to, only typed messages.
+    const { container } = renderInLightbox([
+      ev('user_text', { text: 'synthetic prelude', is_meta: true }),
+    ]);
+    expect(container.querySelector('.thought-bubble-user')).toBeNull();
+    expect(container.querySelector('.thought-bubble')).toBeNull();
   });
 
   it('collapses a run of non-bubble items between chats into an op-strip', () => {
