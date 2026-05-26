@@ -142,7 +142,23 @@ background=#320053
 ## Layout
 
 ```
-client/   Vite + React 19 UI (Vitest)
-server/   Fastify + tRPC backend; chokidar-based JSONL watcher (Vitest)
-bin/      CLI entry consumed by `npm link` / `npm install -g`
+client/                       Vite + React 19 UI (Vitest)
+  src/App.tsx                 grid + dock orchestration
+  src/components/             PanelCard, PrefsModal, DebugTile, …
+  src/transforms/             event → view-item pipeline (registry.ts composes the order)
+  src/lib/                    hooks + utilities (prefs, layout, notifications, hued, …)
+  src/useDeltaStream.ts       tRPC subscription + reducer for snapshot/delta protocol
+server/                       Fastify + tRPC backend (Vitest)
+  src/watcher.ts              chokidar-based JSONL tail
+  src/parser.ts               raw JSONL → typed Event
+  src/session.ts              Panel lifecycle, Delta protocol, DTO shaping
+  src/store.ts                in-memory store + optional SQLite persistence
+  src/monitor.ts              hook-event ingestion (Stop / Notification / supersede)
+  src/prefs.ts                Zod-validated persisted user preferences
+  src/trpc.ts                 router exposing queries / mutations / deltas subscription
+docs/                         living docs — assertions, design principles, layout criteria,
+                              transforms schema (read first when touching a referenced area)
+hooks/                        Claude Code hook scripts the `init` command installs
+bin/                          CLI entry consumed by `npm link` / `npm install -g`
+scripts/, utils/              one-off dev / repro tooling
 ```
