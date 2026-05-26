@@ -2144,6 +2144,17 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
 .transforms-name {
   font-weight: 600;
 }
+.transforms-version {
+  font-size: 0.65rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  margin-right: auto;
+  margin-left: 0.5rem;
+  cursor: help;
+}
 .transforms-stage {
   font-size: 0.65rem;
   text-transform: uppercase;

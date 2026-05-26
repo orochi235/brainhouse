@@ -14,6 +14,7 @@ interface Scenario {
   name: string;
   description: string;
   expect: string;
+  claudeCodeVersion: string;
 }
 
 export function ScenariosModal() {
@@ -62,6 +63,12 @@ export function ScenariosModal() {
           <li className="transforms-item" key={s.key}>
             <div className="transforms-row">
               <span className="transforms-name">{s.name}</span>
+              <span
+                className="transforms-version"
+                title={`Authored against Claude Code ${s.claudeCodeVersion}. The JSONL schema drifts; if this scenario looks off, the CLI may have moved on.`}
+              >
+                cc {s.claudeCodeVersion}
+              </span>
               <button
                 type="button"
                 className="debug-spawn"

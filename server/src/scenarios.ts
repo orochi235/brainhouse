@@ -24,6 +24,13 @@ export interface ScenarioMeta {
   description: string;
   /** What you should expect to see in the UI when this runs correctly. */
   expect: string;
+  /** The Claude Code CLI version whose JSONL shape this fixture was built
+   * against. The schema drifts between releases (new event kinds, payload
+   * tweaks, hook envelopes), so a scenario that worked on an older version
+   * can quietly stop matching the parser. Bump this whenever you refresh a
+   * scenario against a newer recording. Surfaced in the Scenarios modal so
+   * a stale-looking fixture is easy to spot. */
+  claudeCodeVersion: string;
 }
 
 export interface ScenarioRunOptions {
@@ -39,6 +46,12 @@ interface Scenario extends ScenarioMeta {
 }
 
 const SYNTHETIC_CWD = '/synthetic/brainhouse-scenarios';
+
+/** Claude Code CLI version this batch of fixtures was authored against.
+ * When the JSONL schema drifts, bump this here (or peel a stale scenario
+ * off and stamp it individually) so the Scenarios modal can flag fixtures
+ * that no longer match the parser. See `ScenarioMeta.claudeCodeVersion`. */
+const SCENARIO_CC_VERSION = '2.1.138';
 
 function fresh(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
@@ -76,6 +89,7 @@ const interrupt: Scenario = {
     'A user prompt, an assistant response that starts but is interrupted, then a follow-up prompt.',
   expect:
     'The assistant bubble should be dimmed with strikethrough. The two user bubbles merge into one with a sawtooth tear between them.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     emit(
       monitor,
@@ -125,6 +139,7 @@ const awaitingInput: Scenario = {
   name: 'awaiting user input (Notification hook)',
   description: 'A session that triggered the Notification hook — waiting on permission or input.',
   expect: 'Panel header should carry the "blocking on you" badge. Underlying status stays live.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     emit(
       monitor,
@@ -157,6 +172,7 @@ const endedSubagent: Scenario = {
   description:
     'A parent session spawns a subagent that completes. SubagentStop fires; the subagent should dim, parent stays live.',
   expect: 'Subagent panel dims (opacity per Display prefs slider). Parent panel unchanged.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     const agentId = `agent-${randomUUID().slice(0, 8)}`;
     emit(
@@ -218,6 +234,7 @@ const parentStopNoDim: Scenario = {
     'A parent session that finished its turn via the Stop hook. Should write a session_summary with hook_stop provenance but NOT visually dim — the user might prompt again.',
   expect:
     'Panel transitions to done but does NOT carry the .ended class. `SELECT ended_provenance FROM session_summary` shows `hook_stop`.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     emit(monitor, sessionId, null, `${sessionId}:u1`, 'user_text', { text: 'hello!' }, cwd);
     await sleep(150);
@@ -243,6 +260,7 @@ const fanOut: Scenario = {
     'A parent that spawns three subagents in parallel. Two end (SubagentStop); one stays live. Exercises the nested-subagent rendering + multi-subagent dock routing.',
   expect:
     'Parent panel hosts a nested tray with 3 subagents. Two are dimmed; one is live and orange-pulsing.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     emit(
       monitor,
@@ -311,6 +329,7 @@ const idleCascade: Scenario = {
     'A panel synthesized with an old timestamp so the next tick demotes it through live → done → mini in one go. Tests the bootstrap-replay timestamp accuracy + auto-mini routing.',
   expect:
     'Panel appears in the dock immediately (auto-routed because >30s stale). Status reads "done Xm ago" with a real elapsed time, not "0s ago".',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('stale'), cwd = SYNTHETIC_CWD } = {}) {
     const oldTs = new Date(Date.now() - 90 * 60 * 1000).toISOString(); // 90 min ago
     emit(
@@ -346,6 +365,7 @@ const longResult: Scenario = {
     'A run of Read/Edit/Write calls on the same file between two assistant bubbles. Pipeline should coalesce into a file-change row, then a wider op-strip if there are other unrelated tools too.',
   expect:
     'Single file-change row replaces ~5 individual tool capsules. Click opens the diff lightbox.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     emit(
       monitor,
@@ -407,6 +427,7 @@ const askUserQuestion: Scenario = {
     'An AskUserQuestion tool call. Pipeline should render this as if Claude is speaking — bolded question with bulleted options — and swallow the matching tool_result.',
   expect:
     'No tool capsule. Single assistant bubble showing the question + options as markdown, with the chosen answer rendered as an italic footer below the options.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('mock'), cwd = SYNTHETIC_CWD } = {}) {
     emit(
       monitor,
@@ -471,6 +492,7 @@ const themedPanel: Scenario = {
     'A panel stamped with a synthetic .hued color (since we never touch your real ~/src/* paths). Exercises the themed waiting halo + themed thinking indicator.',
   expect:
     'Panel border tinted. Assistant bubble dominated by the theme color. Halo pulses in the same hue when waiting.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('themed'), cwd = SYNTHETIC_CWD } = {}) {
     emit(
       monitor,
@@ -509,6 +531,7 @@ const checklistProgressive: Scenario = {
     'A pinned brainhouse-checklist block, refreshed over multiple assistant messages with more items checked each time. Exercises the checklist pin + progress bar.',
   expect:
     'Pinned checklist appears above the panel body. Items tick off one by one as messages stream in.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
   async run(monitor, { sessionId = fresh('checklist'), cwd = SYNTHETIC_CWD } = {}) {
     const items = ['fetch data', 'parse json', 'validate schema', 'write output'];
     emit(
@@ -553,10 +576,11 @@ export function getScenario(key: string): Scenario | undefined {
 }
 
 export function listScenarios(): ScenarioMeta[] {
-  return SCENARIOS.map(({ key, name, description, expect }) => ({
+  return SCENARIOS.map(({ key, name, description, expect, claudeCodeVersion }) => ({
     key,
     name,
     description,
     expect,
+    claudeCodeVersion,
   }));
 }
