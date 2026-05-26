@@ -26,9 +26,15 @@ import { worktreeColor } from '../lib/worktree.ts';
 export function ProjectWidgetCard({
   rollup,
   onOpenSession,
+  pinned,
+  onTogglePin,
+  onClose,
 }: {
   rollup: ProjectRollup;
   onOpenSession?: (sessionId: string) => void;
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  onClose?: () => void;
 }) {
   const { widget, theme, account_label, sessionCount, fileCount, totalTokens, recentSessions } =
     rollup;
@@ -47,17 +53,53 @@ export function ProjectWidgetCard({
       style={styleVars}
     >
       <header className="panel-header project-widget-header">
-        <div className="project-widget-header-row">
-          <span className="project-widget-title">{widget.repo}</span>
-          <span className="project-widget-kind">project</span>
-        </div>
-        <div className="project-widget-meta-row">
-          <span className="project-widget-path" title={widget.cwd}>
-            {widget.cwd}
-          </span>
-          {account_label && (
-            <span className="project-widget-account">{account_label}</span>
-          )}
+        {(onTogglePin || onClose) && (
+          <div className="project-widget-actions" aria-label="widget actions">
+            {onTogglePin && (
+              <button
+                type="button"
+                className={classNames(
+                  'project-widget-action',
+                  'project-widget-action-pin',
+                  pinned && 'is-active',
+                )}
+                title={pinned ? 'Unpin widget' : 'Pin widget (always show as a tile)'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin();
+                }}
+              >
+                {pinned ? '📌' : '📍'}
+              </button>
+            )}
+            {onClose && (
+              <button
+                type="button"
+                className="project-widget-action project-widget-action-close"
+                title="Hide this project widget (returns on new activity)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+        <div className="project-widget-header-body">
+          <div className="project-widget-header-row">
+            <span className="project-widget-title">{widget.repo}</span>
+            <span className="project-widget-kind">project</span>
+          </div>
+          <div className="project-widget-meta-row">
+            <span className="project-widget-path" title={widget.cwd}>
+              {widget.cwd}
+            </span>
+            {account_label && (
+              <span className="project-widget-account">{account_label}</span>
+            )}
+          </div>
         </div>
       </header>
       <div className="project-widget-stats">
@@ -74,6 +116,44 @@ export function ProjectWidgetCard({
         ))}
       </ul>
     </article>
+  );
+}
+
+/**
+ * Compact dock-strip variant — repo name + session count + theme tint.
+ * Click promotes the widget into the grid (via the same pin toggle that
+ * pinned widgets use).
+ */
+export function ProjectWidgetChip({
+  rollup,
+  onPromote,
+}: {
+  rollup: ProjectRollup;
+  onPromote: () => void;
+}) {
+  const { widget, theme, sessionCount, account_label } = rollup;
+  const styleVars: CSSProperties & Record<string, string> = {
+    ['--panel-worktree-color']: worktreeColor(widget.repo),
+  };
+  if (theme) {
+    styleVars['--panel-theme-bg'] = theme.background;
+    styleVars['--panel-theme-fg'] = theme.foreground;
+  }
+  return (
+    <button
+      type="button"
+      className={classNames('project-widget-chip', theme && 'has-theme')}
+      style={styleVars}
+      onClick={onPromote}
+      title={`${widget.repo} — open as tile`}
+    >
+      <span className="project-widget-chip-swatch" aria-hidden="true" />
+      <span className="project-widget-chip-title">{widget.repo}</span>
+      <span className="project-widget-chip-count">{sessionCount}</span>
+      {account_label && (
+        <span className="project-widget-chip-account">{account_label}</span>
+      )}
+    </button>
   );
 }
 

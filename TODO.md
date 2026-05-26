@@ -1,5 +1,23 @@
 # brainhouse — project todos
 
+## Awaiting-input notifications — follow-ups
+
+Initial pass shipped: tab-title flash (default on), browser
+`Notification` toast (opt-in, permission prompted on flip), and a
+WebAudio chime (opt-in). All gated on the false→true `awaiting_input`
+transition; see `client/src/lib/useAwaitingNotifications.ts` and the
+prefs assertion in `docs/assertions.md`.
+
+Still on the table (no urgency):
+- **Favicon badge / dot.** Cheap visual on the tab strip, complements
+  the title flash. Needs a small canvas-favicon helper.
+- **OS-level notification via a server-side helper** (`osascript` /
+  `notify-send`). More reliable than the browser API but adds platform
+  branching; only worth it if the browser path proves unreliable.
+- **Panel-level wake-up.** When the flag flips on, scroll the panel
+  into view and pulse it — useful even with brainhouse in the
+  foreground. Currently we only do this on toast click.
+
 ## [HIGH] Auto-title marker is a visible seam in non-markdown renderers
 
 The inline `<!-- bh-title: ... -->` marker the auto-title hook asks
@@ -251,28 +269,6 @@ Still open:
   detect hook-injected text in the JSONL even when it's not from a
   brainhouse hook. Speculative until we see overhead-from-other-hooks
   matter in practice.
-
-## Nag the user when a session is awaiting input
-The Notification hook already populates `awaiting_input: true` on panels
-that are blocking on the user (e.g. permission required, AskUserQuestion
-pending), and we render a small badge in the header. That's easy to miss
-when brainhouse is in a background tab or another monitor.
-
-Want: a more assertive nudge that's hard to miss but still respectful.
-Candidates, mix-and-match:
-- Tab-title flash: prepend "● " to `document.title` when *any* panel is
-  awaiting; revert when none are.
-- Browser `Notification` API: native OS toast, gated on `Notification.
-  permission === 'granted'`. Requires a permission prompt the first
-  time; pref to enable.
-- Audible chime, off by default, pref to enable.
-- "Awaiting input" pulse on the favicon (some sites do this; tasteful).
-- A panel-level wake-up: bring the awaiting panel into view + briefly
-  highlight when the flag flips on. Probably worth doing regardless of
-  the cross-tab nudges.
-
-Per the design-principles doc, the prefs surface here should accept the
-user picking *which* of these they want, not be one hard-coded behavior.
 
 ## Transforms-as-diagrams
 Visualize the event → view-item pipeline as a flowchart-style diagram —
@@ -581,3 +577,29 @@ Sketch:
 - Open question: persistence. In-memory is fine for live sessions;
   serializing alongside panel state to disk would let us draw charts
   for retired sessions too.
+
+## Use the tool-use `description` field for capsule summaries
+
+Most tool_use messages carry a `description` field with a short
+plain-English summary the model wrote alongside the call (e.g. Bash
+descriptions like "List files in current directory", Edit's "Rename
+foo → bar"). Today our tool capsules render the tool name + a
+truncated `input` blob; the model-authored description is right there
+and is almost always a better at-a-glance label.
+
+Wins:
+- Cheaper-to-scan transcripts — readers don't have to parse a JSON
+  input to figure out what a tool call did.
+- Free i18n / phrasing — the model already adapts the description to
+  the actual call.
+- Especially useful for Bash (where `command` is opaque) and Agent
+  (where the description is *the* point of the call).
+
+Implementation sketch:
+- Parser already preserves the raw tool_use payload; surface
+  `description` on the view-item.
+- Capsule renderer: when `description` is present, show it as the
+  primary label and demote the raw input to the expand-on-click body.
+  Fall back to current behavior when absent.
+- Decide what to do when `description` and `input` disagree (rare but
+  possible) — probably show both, with `description` on top.

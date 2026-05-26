@@ -26,6 +26,7 @@ type SectionKey =
   | 'lifecycle'
   | 'workspace'
   | 'editor'
+  | 'notifications'
   | 'storage'
   | 'debug'
   | 'trash';
@@ -74,6 +75,11 @@ interface PrefsDraft {
   editor: {
     urlTemplate: string;
   };
+  notifications: {
+    tabTitleFlash: boolean;
+    browserNotification: boolean;
+    audibleChime: boolean;
+  };
   debug: {
     enabled: boolean;
   };
@@ -86,6 +92,7 @@ const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
   { key: 'lifecycle', icon: '◷', label: 'Lifecycle' },
   { key: 'workspace', icon: '▦', label: 'Workspace' },
   { key: 'editor', icon: '↗', label: 'Editor' },
+  { key: 'notifications', icon: '◔', label: 'Notifications' },
   { key: 'storage', icon: '◫', label: 'Storage' },
   { key: 'debug', icon: '⌬', label: 'Debug' },
   { key: 'trash', icon: '🗑', label: 'Trash' },
@@ -163,6 +170,9 @@ export function PrefsModal({ initial, onClose }: { initial: PrefsDraft; onClose:
           {active === 'lifecycle' && <LifecycleSection draft={draft} setDraft={setDraft} />}
           {active === 'workspace' && <WorkspaceSection draft={draft} setDraft={setDraft} />}
           {active === 'editor' && <EditorSection draft={draft} setDraft={setDraft} />}
+          {active === 'notifications' && (
+            <NotificationsSection draft={draft} setDraft={setDraft} />
+          )}
           {active === 'storage' && <StorageSection draft={draft} setDraft={setDraft} />}
           {active === 'debug' && <DebugSection draft={draft} setDraft={setDraft} />}
           {active === 'trash' && <TrashSection />}
@@ -570,6 +580,62 @@ function EditorSection({ draft, setDraft }: SectionProps) {
           Empty disables editor deeplinks (paths render as plain text).
         </span>
       </label>
+    </Section>
+  );
+}
+
+function NotificationsSection({ draft, setDraft }: SectionProps) {
+  const set = (patch: Partial<PrefsDraft['notifications']>) =>
+    setDraft({ ...draft, notifications: { ...draft.notifications, ...patch } });
+
+  // Live read of the OS permission state. We don't subscribe — it only
+  // changes via a user gesture we trigger ourselves, so a render at flip
+  // time is enough.
+  const permission =
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+
+  const handleBrowserToggle = async (v: boolean) => {
+    if (v && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      const result = await Notification.requestPermission();
+      if (result !== 'granted') {
+        // Permission denied or dismissed — leave the pref off so we don't
+        // store an aspirational "true" that can never fire.
+        set({ browserNotification: false });
+        return;
+      }
+    }
+    set({ browserNotification: v });
+  };
+
+  return (
+    <Section
+      title="Notifications"
+      hint="Active nudges when a session blocks on you. All three fire only on the false→true transition; a stuck-awaiting panel doesn't keep retoasting."
+    >
+      <CheckboxField
+        label="Flash the tab title when a tab is hidden"
+        hint='Prepends "● " to the browser-tab title while any panel is awaiting input AND the tab is in the background. No permission prompt.'
+        checked={draft.notifications.tabTitleFlash}
+        onChange={(v) => set({ tabTitleFlash: v })}
+      />
+      <CheckboxField
+        label="OS notification (browser toast)"
+        hint={
+          permission === 'denied'
+            ? 'Browser permission is denied — re-allow brainhouse in your browser site settings to enable.'
+            : permission === 'unsupported'
+              ? 'This browser does not expose the Notifications API.'
+              : 'Native OS toast on each awaiting transition. Click it to focus brainhouse and scroll to the panel. The browser will prompt for permission the first time you enable this.'
+        }
+        checked={draft.notifications.browserNotification}
+        onChange={(v) => void handleBrowserToggle(v)}
+      />
+      <CheckboxField
+        label="Audible chime"
+        hint="Short two-tone ping on each transition. Synthesized — no asset, but autoplay policies may suppress it until you've interacted with the page."
+        checked={draft.notifications.audibleChime}
+        onChange={(v) => set({ audibleChime: v })}
+      />
     </Section>
   );
 }

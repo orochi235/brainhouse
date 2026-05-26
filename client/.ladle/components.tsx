@@ -14,6 +14,15 @@ import '../src/app.css';
 
 void React;
 
+// Widen Ladle's story-source modal — default is 40em, which makes
+// multi-line JSX wrap aggressively. The selector is ladle-specific so
+// it's safe to scope globally inside the ladle bundle.
+const ladleOverrides = `
+  div[data-reach-dialog-content][data-testid="ladle-dialog"] {
+    max-width: min(90vw, 1100px) !important;
+  }
+`;
+
 export const Provider: GlobalProvider = ({ children }) => {
   // Dark is the default; the live app stamps `data-theme` on
   // documentElement and our CSS keys off `:root[data-theme="light"]`.
@@ -23,6 +32,8 @@ export const Provider: GlobalProvider = ({ children }) => {
     document.documentElement.dataset.theme = 'dark';
   }
   return (
+    <>
+    <style>{ladleOverrides}</style>
     <div
       style={{
         background: 'var(--bg)',
@@ -35,5 +46,6 @@ export const Provider: GlobalProvider = ({ children }) => {
     >
       {children}
     </div>
+    </>
   );
 };

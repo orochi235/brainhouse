@@ -185,6 +185,26 @@ export const StorageSchema = z.object({
 });
 export type Storage = z.infer<typeof StorageSchema>;
 
+/** Active nudges when a panel flips to `awaiting_input` (false → true).
+ * These are *transitions*, not steady-state polling: a stuck-awaiting panel
+ * doesn't keep retoasting. All channels off by default except the tab-title
+ * flash, which has no permission cost. */
+export const NotificationsSchema = z.object({
+  /** Prepend "● " to `document.title` while any panel is awaiting input
+   * AND the browser tab is hidden. Reverts as soon as either condition
+   * clears. No permission prompt; safe default-on. */
+  tabTitleFlash: z.boolean().default(true),
+  /** Fire a native OS toast via the Notifications API on each false→true
+   * transition. Clicking the toast focuses this tab and scrolls to the
+   * panel. Requires `Notification.permission === 'granted'`; the client
+   * triggers `requestPermission()` when the user flips this on. */
+  browserNotification: z.boolean().default(false),
+  /** Play a short synthesized chime on each transition. Off by default;
+   * no asset (uses WebAudio so it works in dev with no bundled file). */
+  audibleChime: z.boolean().default(false),
+});
+export type Notifications = z.infer<typeof NotificationsSchema>;
+
 /** Developer tooling. When `enabled`, the UI surfaces debug affordances
  * (toolbar buttons, scenarios picker, preview triggers). Off by default;
  * intended for first-party use while building / dogfooding features. */
@@ -203,6 +223,7 @@ export const PrefsSchema = z.object({
   workspace: WorkspaceSchema.default(WorkspaceSchema.parse({})),
   storage: StorageSchema.default(StorageSchema.parse({})),
   editor: EditorSchema.default(EditorSchema.parse({})),
+  notifications: NotificationsSchema.default(NotificationsSchema.parse({})),
   debug: DebugSchema.default(DebugSchema.parse({})),
 });
 export type Prefs = z.infer<typeof PrefsSchema>;

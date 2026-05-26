@@ -73,6 +73,11 @@ export interface ClientPrefs {
   editor: {
     urlTemplate: string;
   };
+  notifications: {
+    tabTitleFlash: boolean;
+    browserNotification: boolean;
+    audibleChime: boolean;
+  };
   debug: {
     enabled: boolean;
   };
@@ -112,6 +117,11 @@ const DEFAULT_PREFS: ClientPrefs = {
   roots: [],
   storage: { persistEnabled: false, eventsIndexRetentionDays: 30 },
   editor: { urlTemplate: 'cursor://file/{path}:{line}' },
+  notifications: {
+    tabTitleFlash: true,
+    browserNotification: false,
+    audibleChime: false,
+  },
   debug: { enabled: false },
 };
 

@@ -284,6 +284,17 @@ UI/server is meant to uphold. New entries go at the bottom.
   pinned / wide / broken-out sets; `usePanelDismissal` (hiddenPanels.ts)
   wraps the hidden / client-mini routing; `useIntentions` round-trips
   both to the server.
+- **Awaiting-input notifications** fire on the false→true *transition*
+  of `panel.awaiting_input`, not on steady state — a panel stuck
+  awaiting for ten minutes never re-toasts, re-chimes, or re-flashes the
+  title. Three channels are independently togglable in prefs
+  (`notifications.tabTitleFlash`, `browserNotification`,
+  `audibleChime`). Tab-title flash is the only one default-on (no
+  permission cost); the others require explicit opt-in. Clicking a
+  browser-toast focuses the brainhouse tab and scrolls the panel into
+  view. The tab-title flash is a *steady-state* effect with two
+  conditions (any awaiting panel AND `document.hidden`); it reverts the
+  moment either clears.
 - **Ephemeral UI state** — drag-hover ghosts, lightbox open/closed,
   scroll positions — lives in component state or `sessionStorage` and
   doesn't outlive the tab.

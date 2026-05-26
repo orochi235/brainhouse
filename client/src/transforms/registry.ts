@@ -13,7 +13,6 @@
  *     - suppressInterruptMarker drops "[Request interrupted by user]" and marks the in-flight turn canceled
  *     - clearMarker            `/clear` artifacts → "prior session cleared" divider; drops caveat/stdout noise
  *     - attachSkillPrelude     SKILL.md meta-text → attached to its Skill capsule (lightbox-only)
- *     - tagBtwUserText         /btw queue-operation meta → marked user bubble (btw:true)
  *     - userTextBubble         default user_text → bubble (handles interrupted-followup sawtooth)
  *     - assistantTextBubble    default assistant_text → bubble (folds short ones onto a prior tool capsule)
  *     - defaultEventItem       thinking / system / meta → wrapper items
@@ -37,7 +36,6 @@ import { mergeToolResult } from './builtIn/mergeToolResult.ts';
 import { scanChecklist } from './builtIn/scanChecklist.ts';
 import { stripBhTitleMarker } from './builtIn/stripBhTitleMarker.ts';
 import { suppressInterruptMarker } from './builtIn/suppressInterruptMarker.ts';
-import { tagBtwUserText } from './builtIn/tagBtwUserText.ts';
 import { taskSubagents } from './builtIn/taskSubagents.ts';
 import { todoWriteToChecklist } from './builtIn/todoWriteToChecklist.ts';
 import { toolUseToCapsule } from './builtIn/toolUseToCapsule.ts';
@@ -57,7 +55,6 @@ export const VIEW_TRANSFORMS: ViewTransform[] = [
   suppressInterruptMarker,
   clearMarker,
   attachSkillPrelude,
-  tagBtwUserText,
   userTextBubble,
   assistantTextBubble,
   defaultEventItem,

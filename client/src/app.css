@@ -3479,10 +3479,60 @@ body[data-debug] .debug-tile * {
 }
 .project-widget-header {
   display: flex;
-  flex-direction: column;
   align-items: stretch;
+  gap: 0;
+  padding: 0;
+}
+.project-widget-header-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   gap: 0.25rem;
   padding: 0.5rem 0.75rem;
+}
+/* Two stacked action buttons, full-height of the title bar, evenly
+ * split, separated from the header content by a right border and from
+ * each other by a middle border. */
+.project-widget-actions {
+  display: flex;
+  flex-direction: column;
+  width: 26px;
+  flex: 0 0 auto;
+  margin: 2px;
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
+}
+.project-widget-action {
+  flex: 1 1 0;
+  min-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+.project-widget-action + .project-widget-action {
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+.project-widget-action:hover {
+  background: color-mix(in oklch, var(--panel-bg), var(--accent) 14%);
+  color: inherit;
+}
+.project-widget-action-pin.is-active {
+  color: var(--accent);
+  background: color-mix(in oklch, var(--panel-bg), var(--accent) 10%);
+}
+.project-widget-action-close {
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+.project-widget-action-close:hover {
+  color: var(--warn, #e0a93b);
 }
 .project-widget-header-row {
   display: flex;
@@ -3613,6 +3663,73 @@ body[data-debug] .debug-tile * {
   color: var(--muted);
   font-size: 0.65rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Dock-strip variant: compact chip for project widgets that didn't claim a
+ * grid tile. Lives in `.session-dock-projects` at the bottom of the dock;
+ * clicking promotes (pins) the widget back into the grid. */
+.session-dock-projects {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--panel-border);
+}
+.session-dock-projects-label {
+  font-size: 0.6rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0 0.1rem 0.15rem;
+}
+.project-widget-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  background: color-mix(in oklch, var(--panel-bg), var(--panel-worktree-color, transparent) 6%);
+  border: 1px solid color-mix(in oklch, var(--panel-border), var(--panel-worktree-color, transparent) 30%);
+  border-radius: 5px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.project-widget-chip.has-theme {
+  background: color-mix(in oklch, var(--panel-bg), var(--panel-theme-bg) 8%);
+  border-color: color-mix(in oklch, var(--panel-border), var(--panel-theme-bg) 35%);
+}
+.project-widget-chip:hover {
+  background: color-mix(in oklch, var(--panel-bg), var(--accent) 10%);
+}
+.project-widget-chip-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+  background: var(--panel-theme-bg, var(--panel-worktree-color, var(--muted)));
+}
+.project-widget-chip-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.project-widget-chip-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+}
+.project-widget-chip-account {
+  color: var(--muted);
+  font-size: 0.6rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--panel-bg), var(--accent) 14%);
 }
 
 /* ---- thought bubbles ---- */

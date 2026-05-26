@@ -724,7 +724,10 @@ describe('preprocessEvents', () => {
     });
   });
 
-  describe('/btw queued prompt → marks next assistant bubble', () => {
+  // tagBtwUserText is temporarily disabled in the registry — the /btw
+  // detection has been firing on the wrong assistant bubble. Re-enable the
+  // transform + this suite together when the heuristic is reworked.
+  describe.skip('/btw queued prompt → marks next assistant bubble', () => {
     const queueOp = (content: string) =>
       ev('meta', {
         record_type: 'queue-operation',

@@ -7,7 +7,7 @@ import { FlowsModal } from './components/FlowsModal.tsx';
 import { HoverPopover } from './components/HoverPopover.tsx';
 import { PanelCard } from './components/PanelCard.tsx';
 import { PrefsModal } from './components/PrefsModal.tsx';
-import { ProjectWidgetCard } from './components/ProjectWidgetCard.tsx';
+import { ProjectWidgetCard, ProjectWidgetChip } from './components/ProjectWidgetCard.tsx';
 import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
@@ -26,6 +26,7 @@ import { useTheme } from './lib/preferences.ts';
 import { clearScrollPosition } from './lib/scrollMemory.ts';
 import { buildProjectRollups } from './lib/projectWidgets.ts';
 import { allocateSlots } from './lib/slotAllocator.ts';
+import { useAwaitingNotifications } from './lib/useAwaitingNotifications.ts';
 import { useIntentions } from './lib/useIntentions.ts';
 import { PrefsProvider, usePrefs } from './lib/usePrefs.tsx';
 import { worktreeColor } from './lib/worktree.ts';
@@ -82,6 +83,7 @@ const BRAND_OPTIONS: Array<{
   { label: "🙋🏻‍♂️'s 🏠", tier: 'rare', ariaLabel: "brian's house" },
   { label: "Brian's Horse", tier: 'legendary', ariaLabel: 'brainhouse' },
   { label: "🙋🏻‍♂️'s 🐴", tier: 'legendary', ariaLabel: "brian's horse" },
+  { label: '#151 Mewtwo', tier: 'legendary', ariaLabel: 'brainhouse (mewtwo)' },
 ];
 
 function weightFor(tier: Tier): number {
@@ -197,6 +199,7 @@ function AppMain() {
   const { status, panels } = useDeltaStream();
   const [theme, setTheme] = useTheme();
   const { prefs, refetch: refetchPrefs } = usePrefs();
+  useAwaitingNotifications(panels, prefs.notifications);
 
   // Suppress mount animations during the initial render burst — when the
   // first snapshot lands and 20+ panels spawn at once, the `panel-spawn`
@@ -475,7 +478,13 @@ function AppMain() {
   // stats + recent sessions. Render after session cards in the grid.
   // Auto-derived from `panels` — not allocator-managed (widgets have
   // self-contained visibility rules, TBD).
-  const allProjectRollups = buildProjectRollups(panels);
+  const allProjectRollups = buildProjectRollups(panels).filter((r) =>
+    // Widgets reuse the panel hidden_at intentions namespace (their ids are
+    // `project:<repo>`). The widget's `last_event_at` advances on new project
+    // activity, so a hidden widget re-appears automatically when a session
+    // moves — same semantics as session dismiss.
+    !isHidden({ id: r.widget.id, last_event_at: r.widget.last_event_at } as PanelState),
+  );
   // Widgets are *fill-only*: we render just enough of them to bring the
   // grid up to `slotCount` once sessions claim their slots. A pinned
   // widget (pseudo-id `project:<repo>`) always shows regardless of the
@@ -492,6 +501,9 @@ function AppMain() {
     (pinned.has(r.widget.id) ? pinnedRollups : unpinnedRollups).push(r);
   }
   const projectRollups = [...pinnedRollups, ...unpinnedRollups.slice(0, widgetSlotBudget)];
+  // Widgets past the grid fill budget land in a dock sub-strip rather than
+  // disappearing entirely — clicking one promotes it (pins) back into the grid.
+  const dockRollups = unpinnedRollups.slice(widgetSlotBudget);
   const openSessionFromWidget = (sessionId: string) => {
     const panel = panels.get(sessionId);
     if (!panel) return;
@@ -693,7 +705,19 @@ function AppMain() {
           )}
           {projectRollups.map((r) => (
             <div key={r.widget.id} className="grid-slot project-widget-slot">
-              <ProjectWidgetCard rollup={r} onOpenSession={openSessionFromWidget} />
+              <ProjectWidgetCard
+                rollup={r}
+                onOpenSession={openSessionFromWidget}
+                pinned={pinned.has(r.widget.id)}
+                onTogglePin={() => togglePin(r.widget.id)}
+                onClose={() =>
+                  dismiss({
+                    id: r.widget.id,
+                    status: 'mini',
+                    last_event_at: r.widget.last_event_at,
+                  } as PanelState)
+                }
+              />
             </div>
           ))}
           {debugMode && (
@@ -715,7 +739,7 @@ function AppMain() {
             <p className="empty">no sessions yet — try `+ mock session`</p>
           )}
         </main>
-        {trayPanels.length > 0 && (
+        {(trayPanels.length > 0 || dockRollups.length > 0) && (
           <aside
             className="session-dock"
             onDragOver={(e) => {
@@ -766,6 +790,18 @@ function AppMain() {
                 />
               ))}
             </AnimatePresence>
+            {dockRollups.length > 0 && (
+              <div className="session-dock-projects">
+                <div className="session-dock-projects-label">projects</div>
+                {dockRollups.map((r) => (
+                  <ProjectWidgetChip
+                    key={r.widget.id}
+                    rollup={r}
+                    onPromote={() => togglePin(r.widget.id)}
+                  />
+                ))}
+              </div>
+            )}
           </aside>
         )}
       </LayoutGroup>
