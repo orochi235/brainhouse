@@ -18,6 +18,7 @@ import type { PanelState } from '../useDeltaStream.ts';
 import { EventList } from './EventList.tsx';
 import { HoverPopover, TruncationTooltip } from './HoverPopover.tsx';
 import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
+import { TimelineLightbox } from './TimelineLightbox.tsx';
 import { TokenTooltip } from './TokenTooltip.tsx';
 import { ToolChip, ToolChips } from './ToolChips.tsx';
 
@@ -704,6 +705,15 @@ function PanelToolPalette({
           }}
         >
           ⛶
+        </ToolChip>
+        <ToolChip
+          title="Open the event timeline"
+          onClick={(e) => {
+            e.stopPropagation();
+            lightbox.open(<TimelineLightbox panel={panel} />, { theme: panel.theme });
+          }}
+        >
+          ⌁
         </ToolChip>
         {isSubWithParent && onToggleBrokenOut && (
           <ToolChip

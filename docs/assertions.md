@@ -61,6 +61,16 @@ UI/server is meant to uphold. New entries go at the bottom.
   Dividers are emitted only between real items — never leading,
   trailing, or two adjacent — so a day with no activity produces no
   divider. Owned by the `insertDayDividers` stage-2 transform.
+- Timeline view is a third way to look at a slice of activity, parallel
+  to Conversation and File. The `<Timeline>` component plots events
+  (raw `Event`s) or view-items (coalesced) along a horizontal time
+  axis, one lane + color per kind. Mouse interactions: hover → tooltip,
+  click → drill into a detail pane, drag → brush a range (lists the
+  contained items), scroll-wheel → zoom about the cursor. The component
+  is container-agnostic — sized via ResizeObserver — so it can drop
+  into any sized host (currently a panel-level lightbox + a tab inside
+  OpStripLightbox; future hosts may include an inline panel slot or a
+  top-level cross-panel route).
 - Parent-panel title derivation ignores slash-command artifact user_texts
   (`<local-command-caveat>`, `<local-command-stdout>`, `<command-name>`,
   `<command-message>`, `<command-args>`). The panel keeps its short-id

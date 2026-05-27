@@ -121,9 +121,11 @@ describe('<OpStripLightbox>', () => {
     expect(screen.getByText(/Write · entire file/)).toBeInTheDocument();
   });
 
-  it('hides the view toggle entirely when there are no file changes', () => {
+  it('hides only the File tab when there are no file changes', () => {
     renderLb(strip([op('Bash', { command: 'ls' }, 'out')]));
     expect(screen.queryByRole('button', { name: /^file$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /conversation/i })).not.toBeInTheDocument();
+    // Conversation + Timeline are always available.
+    expect(screen.getByRole('button', { name: /conversation/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /timeline/i })).toBeInTheDocument();
   });
 });

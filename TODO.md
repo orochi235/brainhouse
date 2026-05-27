@@ -1,5 +1,32 @@
 # brainhouse — project todos
 
+## Timeline view — follow-ups
+
+Initial pass shipped: a `<Timeline>` component with kind-colored lanes,
+hover/click/brush/wheel interaction, granularity toggle between raw
+Events and pipeline ViewItems, and two hosts (a panel tool-palette
+button and a tab in OpStripLightbox). See
+`client/src/components/Timeline.tsx`.
+
+Still on the table:
+- **Inline panel mode.** A third body-class (`view-timeline` next to
+  `view-conversation`) so a single panel can render its events as the
+  timeline by default, no lightbox required.
+- **Cross-panel route.** A top-level `/timeline` page that aggregates
+  marks from every live panel, with per-panel lane grouping or a
+  filter chip strip.
+- **Playback.** A scrubber + play button that walks the chart in real
+  time at adjustable speed, useful for replaying interesting
+  transcripts.
+- **Lane filters.** Toggle which lanes are visible (currently all
+  present lanes render unconditionally).
+- **Density rendering.** At very wide ranges, marks pile up — switch to
+  a histogram bin per pixel when the visible span has >2k marks.
+- **Persist view state.** Per-panel `view`/granularity/selection in
+  intentions so reopening the lightbox returns to the last zoom.
+- **Consider d3-brush/d3-zoom** if hand-rolled interaction starts to
+  groan under edge cases (e.g. two-finger trackpad zoom on Safari).
+
 ## Awaiting-input notifications — follow-ups
 
 Initial pass shipped: tab-title flash (default on), browser

@@ -18,9 +18,10 @@ import { LinkifyText } from '../lib/filenameLinksContext.tsx';
 import type { FileChangeItem, OpStripItem, ToolItem, ViewItem } from '../lib/pipeline.ts';
 import { ViewItemList } from './EventList.tsx';
 import { OpView, summarizeFileChange } from './fileOpView.tsx';
+import { Timeline } from './Timeline.tsx';
 import { ToolChip, ToolChips } from './ToolChips.tsx';
 
-type ViewMode = 'conversation' | 'file';
+type ViewMode = 'conversation' | 'file' | 'timeline';
 
 export function OpStripLightbox({
   item,
@@ -33,20 +34,20 @@ export function OpStripLightbox({
 }) {
   const [mode, setMode] = useState<ViewMode>('conversation');
   const hasFiles = useMemo(() => item.items.some((it) => it.type === 'file-change'), [item.items]);
-  const effectiveMode: ViewMode = hasFiles ? mode : 'conversation';
+  const effectiveMode: ViewMode = mode === 'file' && !hasFiles ? 'conversation' : mode;
   return (
     <div className="op-strip-lightbox">
       <div className="lightbox-title-row">
         <h3 className="lightbox-title">{title}</h3>
-        {hasFiles && (
-          <ToolChips>
-            <ToolChip
-              aria-pressed={effectiveMode === 'conversation'}
-              onClick={() => setMode('conversation')}
-              title="Show sub-items in the order they happened"
-            >
-              Conversation
-            </ToolChip>
+        <ToolChips>
+          <ToolChip
+            aria-pressed={effectiveMode === 'conversation'}
+            onClick={() => setMode('conversation')}
+            title="Show sub-items in the order they happened"
+          >
+            Conversation
+          </ToolChip>
+          {hasFiles && (
             <ToolChip
               aria-pressed={effectiveMode === 'file'}
               onClick={() => setMode('file')}
@@ -54,16 +55,33 @@ export function OpStripLightbox({
             >
               File
             </ToolChip>
-          </ToolChips>
-        )}
+          )}
+          <ToolChip
+            aria-pressed={effectiveMode === 'timeline'}
+            onClick={() => setMode('timeline')}
+            title="Plot the strip's items along a time axis"
+          >
+            Timeline
+          </ToolChip>
+        </ToolChips>
       </div>
       {effectiveMode === 'conversation' ? (
         <ViewItemList items={item.items} startedAt={startedAt} />
-      ) : (
+      ) : effectiveMode === 'file' ? (
         <FileView items={item.items} />
+      ) : (
+        <TimelineForStrip items={item.items} startedAt={startedAt} />
       )}
     </div>
   );
+}
+
+/** Timeline tab inside the op-strip lightbox. The strip only carries
+ * `ViewItem`s (the raw events aren't preserved at this layer), so we
+ * feed Timeline its `precomputedItems` and an empty events array — the
+ * Items granularity is the natural fit here anyway. */
+function TimelineForStrip({ items, startedAt }: { items: ViewItem[]; startedAt?: number }) {
+  return <Timeline events={[]} precomputedItems={items} startedAt={startedAt} />;
 }
 
 function FileView({ items }: { items: ViewItem[] }) {
