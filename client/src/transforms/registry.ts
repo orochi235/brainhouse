@@ -20,6 +20,7 @@
  *   Stage 2 (over assembled list, in order)
  *     - coalesceFileOps        merge same-file Read/Edit/Write runs
  *     - coalesceBetweenChats   compress runs between bubbles into op-strips
+ *     - insertDayDividers      "Tuesday, May 27" rule between items on different days
  *
  * Stage B (user-loaded transforms) will append/override into this list by
  * `key`. For now the list is the literal source-of-truth.
@@ -32,6 +33,7 @@ import { clearMarker } from './builtIn/clearMarker.ts';
 import { coalesceBetweenChats } from './builtIn/coalesceBetweenChats.ts';
 import { coalesceFileOps } from './builtIn/coalesceFileOps.ts';
 import { defaultEventItem } from './builtIn/defaultEventItem.ts';
+import { insertDayDividers } from './builtIn/insertDayDividers.ts';
 import { mergeToolResult } from './builtIn/mergeToolResult.ts';
 import { scanChecklist } from './builtIn/scanChecklist.ts';
 import { stripBhTitleMarker } from './builtIn/stripBhTitleMarker.ts';
@@ -60,4 +62,5 @@ export const VIEW_TRANSFORMS: ViewTransform[] = [
   defaultEventItem,
   coalesceFileOps,
   coalesceBetweenChats,
+  insertDayDividers,
 ];

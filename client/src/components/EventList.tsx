@@ -65,6 +65,7 @@ function itemKey(item: ViewItem): string {
   if (item.type === 'file-change') return `file:${item.anchorUuid}`;
   if (item.type === 'op-strip') return `strip:${item.anchorUuid}`;
   if (item.type === 'interrupt-divider') return `int:${item.anchorUuid}`;
+  if (item.type === 'day-divider') return `day:${item.date}:${item.anchorUuid}`;
   return `${item.type}:${item.event.uuid}`;
 }
 
@@ -98,6 +99,14 @@ function Item({
         <span className="interrupt-divider-rule" aria-hidden="true" />
         <span className="interrupt-divider-label">user interrupted</span>
         <span className="interrupt-divider-rule" aria-hidden="true" />
+      </li>
+    );
+  if (item.type === 'day-divider')
+    return (
+      <li className="event event-day-divider">
+        <div className="session-ended" aria-label={`new day — ${item.label}`}>
+          <span>{item.label}</span>
+        </div>
       </li>
     );
   return <MetaEvent event={item.event} startedAt={startedAt} />;

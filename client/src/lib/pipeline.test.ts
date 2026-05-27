@@ -894,6 +894,42 @@ describe('preprocessEvents', () => {
       expect(flags).toEqual([undefined, undefined]);
     });
   });
+
+  describe('day-divider', () => {
+    it('inserts a divider between items on different local days', () => {
+      const { items } = preprocessEvents([
+        userText('day one', '2026-05-25T22:00:00Z'),
+        userText('day two', '2026-05-26T22:00:00Z'),
+      ]);
+      expect(items.map((i) => i.type)).toEqual(['bubble', 'day-divider', 'bubble']);
+      const div = items[1] as Extract<typeof items[number], { type: 'day-divider' }>;
+      expect(div.label).toMatch(/\w+,/); // "Tuesday, May 26" or locale equivalent
+    });
+
+    it('does not insert leading or trailing dividers', () => {
+      const { items } = preprocessEvents([userText('just one', '2026-05-25T22:00:00Z')]);
+      expect(items.map((i) => i.type)).toEqual(['bubble']);
+    });
+
+    it('emits at most one divider per day boundary, never adjacent', () => {
+      const { items } = preprocessEvents([
+        userText('a', '2026-05-25T22:00:00Z'),
+        userText('b', '2026-05-26T22:00:00Z'),
+        userText('c', '2026-05-27T22:00:00Z'),
+      ]);
+      // Three bubbles + two dividers — no two dividers in a row.
+      const types = items.map((i) => i.type);
+      expect(types).toEqual(['bubble', 'day-divider', 'bubble', 'day-divider', 'bubble']);
+    });
+
+    it('same-day items produce no divider', () => {
+      const { items } = preprocessEvents([
+        userText('morning', '2026-05-25T08:00:00-04:00'),
+        userText('night', '2026-05-25T22:00:00-04:00'),
+      ]);
+      expect(items.map((i) => i.type)).toEqual(['bubble', 'bubble']);
+    });
+  });
 });
 
 describe('extractLastChecklist', () => {

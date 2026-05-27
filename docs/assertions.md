@@ -55,6 +55,12 @@ UI/server is meant to uphold. New entries go at the bottom.
 - The non-live panel terminator reads "session cleared" instead of
   "session ended" when `ended_provenance === 'hook_session_start_supersede'`
   (i.e. the panel was retired by a follow-up `/clear` or `/compact`).
+- Between two consecutive view-items whose timestamps fall on different
+  local-calendar days, the pipeline inserts a `day-divider` view-item
+  styled like the session-ended terminator (e.g. "Tuesday, May 26").
+  Dividers are emitted only between real items — never leading,
+  trailing, or two adjacent — so a day with no activity produces no
+  divider. Owned by the `insertDayDividers` stage-2 transform.
 - Parent-panel title derivation ignores slash-command artifact user_texts
   (`<local-command-caveat>`, `<local-command-stdout>`, `<command-name>`,
   `<command-message>`, `<command-args>`). The panel keeps its short-id

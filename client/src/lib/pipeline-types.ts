@@ -74,7 +74,12 @@ export type ViewItem =
    * canceled assistant turn and a fresh follow-up user_text that arrived
    * long enough after the ctrl-c to be considered a new prompt (full
    * interrupt) rather than a queued continuation. */
-  | { type: 'interrupt-divider'; ts: string; anchorUuid: string };
+  | { type: 'interrupt-divider'; ts: string; anchorUuid: string }
+  /** "----- Tuesday, May 27 -----" rule inserted between two items that
+   * fall on different local-calendar days. Only emitted between items
+   * (never leading or trailing), so a day with no activity produces no
+   * divider — and two dividers can never land adjacent. */
+  | { type: 'day-divider'; ts: string; date: string; label: string; anchorUuid: string };
 
 /** Tool names whose inputs touch a single file via `input.file_path`. These
  * are the ops eligible for `coalesceFileOps()`. */
