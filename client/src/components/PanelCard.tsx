@@ -363,7 +363,18 @@ function TurnLightbox({ panel, events }: { panel: PanelState; events: Event[] })
   return (
     <>
       <TruncationTooltip text={panel.title}>
-        <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
+        <h3 className="lightbox-title">
+          {panel.manually_renamed && (
+            <span
+              className="panel-title-manual-glyph"
+              aria-label="title set manually via /rename"
+              title="Title set manually via /rename"
+            >
+              ❖
+            </span>
+          )}
+          {renderInlineCode(panel.title)}
+        </h3>
       </TruncationTooltip>
       <EventList events={events} startedAt={panel.started_at} cwd={panel.cwd} />
     </>
@@ -510,6 +521,15 @@ function PanelHeader({
       <span className="panel-titles">
         <TruncationTooltip text={panel.title}>
           <span className={classNames('panel-title', useTitleFlash(panel.autoTitledAt) && 'flash')}>
+            {panel.manually_renamed && (
+              <span
+                className="panel-title-manual-glyph"
+                aria-label="title set manually via /rename"
+                title="Title set manually via /rename"
+              >
+                ❖
+              </span>
+            )}
             {renderInlineCode(panel.title)}
           </span>
         </TruncationTooltip>
@@ -1133,7 +1153,18 @@ function PanelLightboxContent({ panel }: { panel: PanelState }) {
   return (
     <>
       <TruncationTooltip text={panel.title}>
-        <h3 className="lightbox-title">{renderInlineCode(panel.title)}</h3>
+        <h3 className="lightbox-title">
+          {panel.manually_renamed && (
+            <span
+              className="panel-title-manual-glyph"
+              aria-label="title set manually via /rename"
+              title="Title set manually via /rename"
+            >
+              ❖
+            </span>
+          )}
+          {renderInlineCode(panel.title)}
+        </h3>
       </TruncationTooltip>
       <EventList events={panel.events} cwd={panel.cwd} />
     </>

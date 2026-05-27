@@ -106,6 +106,23 @@ describe('SessionStore', () => {
     expect(store.snapshot()[0]?.title).toBe('brainhouse jam');
   });
 
+  it('flips manually_renamed on /rename and the auto-derive path leaves it false', () => {
+    const clock = new FakeClock();
+    const auto = new SessionStore({ clock: clock.now });
+    auto.apply(ev('user_text', { uuid: 'u1', payload: { text: 'just a prompt' } }));
+    expect(auto.snapshot()[0]?.manually_renamed).toBe(false);
+
+    const renamed = new SessionStore({ clock: clock.now });
+    renamed.apply(ev('user_text', { uuid: 'u1', payload: { text: 'first prompt' } }));
+    renamed.apply(
+      ev('meta', {
+        uuid: 'u2',
+        payload: { record_type: 'custom-title', raw: { customTitle: 'manual name' } },
+      }),
+    );
+    expect(renamed.snapshot()[0]?.manually_renamed).toBe(true);
+  });
+
   describe('/clear inherited-title suppression', () => {
     it('drops the first custom-title after armClearTitleSuppression', () => {
       const store = new SessionStore({ clock: new FakeClock().now });

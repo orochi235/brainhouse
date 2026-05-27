@@ -80,6 +80,8 @@ export interface PanelRow {
   binned_at: number | null;
   awaiting_input: boolean;
   ended: boolean;
+  /** True if the title was set via /rename. Survives restart. */
+  manually_renamed: boolean;
   /** How we learned the session ended. Null when ended=false. */
   ended_provenance:
     | 'hook_stop'
@@ -198,6 +200,7 @@ CREATE TABLE IF NOT EXISTS panels (
   awaiting_input    INTEGER NOT NULL DEFAULT 0,
   ended             INTEGER NOT NULL DEFAULT 0,
   ended_provenance  TEXT,
+  manually_renamed  INTEGER NOT NULL DEFAULT 0,
   updated_at        REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS panels_cwd    ON panels (cwd);
@@ -290,6 +293,11 @@ export class Store {
     } catch {
       // column already exists
     }
+    try {
+      db.exec('ALTER TABLE panels ADD COLUMN manually_renamed INTEGER NOT NULL DEFAULT 0');
+    } catch {
+      // column already exists
+    }
     return new Store(db);
   }
 
@@ -365,9 +373,9 @@ export class Store {
         `INSERT INTO panels
            (id, kind, parent_panel_id, title, agent_type, account_label, status,
             started_at, last_event_at, status_changed_at, cwd, theme_bg, theme_fg,
-            binned_at, awaiting_input, ended, ended_provenance, updated_at)
+            binned_at, awaiting_input, ended, ended_provenance, manually_renamed, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            kind              = excluded.kind,
            parent_panel_id   = excluded.parent_panel_id,
@@ -385,6 +393,7 @@ export class Store {
            awaiting_input    = excluded.awaiting_input,
            ended             = excluded.ended,
            ended_provenance  = excluded.ended_provenance,
+           manually_renamed  = excluded.manually_renamed,
            updated_at        = excluded.updated_at`,
       )
       .run(
@@ -405,6 +414,7 @@ export class Store {
         row.awaiting_input ? 1 : 0,
         row.ended ? 1 : 0,
         row.ended_provenance,
+        row.manually_renamed ? 1 : 0,
         row.updated_at,
       );
   }
@@ -661,6 +671,7 @@ interface RawPanel {
   awaiting_input: number;
   ended: number;
   ended_provenance: string | null;
+  manually_renamed: number;
   updated_at: number;
 }
 
@@ -683,6 +694,7 @@ function deserializePanel(r: RawPanel): PanelRow {
     awaiting_input: !!r.awaiting_input,
     ended: !!r.ended,
     ended_provenance: r.ended_provenance as PanelRow['ended_provenance'],
+    manually_renamed: !!r.manually_renamed,
     updated_at: r.updated_at,
   };
 }

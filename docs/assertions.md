@@ -61,6 +61,12 @@ UI/server is meant to uphold. New entries go at the bottom.
   Dividers are emitted only between real items — never leading,
   trailing, or two adjacent — so a day with no activity produces no
   divider. Owned by the `insertDayDividers` stage-2 transform.
+- A panel whose title was explicitly set via `/rename` (any non-
+  suppressed `custom-title` meta record) carries `manually_renamed:
+  true` on its DTO and renders a `❖` (U+2756) glyph immediately before
+  the title in both the grid header and the lightbox title. Once flipped
+  the flag never clears — subsequent auto-titles don't affect it, and
+  the flag round-trips through the persisted panels row.
 - Timeline view is a third way to look at a slice of activity, parallel
   to Conversation and File. The `<Timeline>` component plots events
   (raw `Event`s) or view-items (coalesced) along a horizontal time

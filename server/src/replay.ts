@@ -88,6 +88,7 @@ export function parseJsonlToPanel(contents: string, sourceLabel: string): Replay
     awaiting_input: false,
     ended: true,
     ended_provenance: null,
+    manually_renamed: false,
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
     context_size: 0,
     hook_overhead_tokens: 0,

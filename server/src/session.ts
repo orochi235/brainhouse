@@ -109,6 +109,14 @@ export interface Panel {
    * `/rename` to a *different* string is honored immediately and also
    * clears the suppression. */
   clear_title_suppression: { suppressed_title: string | null } | null;
+  /** True once the user has explicitly set this panel's title via
+   * `/rename` (a `custom-title` meta record that wasn't a /clear
+   * inheritance echo). Stays true for the panel's lifetime — the auto-
+   * title path doesn't unset it, and rehydrate restores it from the
+   * persisted panels row. UI uses this to render a small "manual title"
+   * glyph next to the title so a user-authored name is visually
+   * distinct from an auto-derived one. */
+  manually_renamed: boolean;
 }
 
 export interface PanelDto {
@@ -130,6 +138,9 @@ export interface PanelDto {
   awaiting_input: boolean;
   ended: boolean;
   ended_provenance: Panel['ended_provenance'];
+  /** True if the title was explicitly set via `/rename`. See
+   * `Panel.manually_renamed` for the lifetime + UI contract. */
+  manually_renamed: boolean;
   tokens: {
     input: number;
     output: number;
@@ -588,6 +599,7 @@ export class SessionStore {
       awaiting_input: false,
       ended: false,
       ended_provenance: null,
+      manually_renamed: false,
       tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
       context_size: 0,
       hook_overhead_tokens: 0,
@@ -653,7 +665,15 @@ export class SessionStore {
         if (custom === supp.suppressed_title) return;
         panel.clear_title_suppression = null;
       }
-      if (custom) title = custom.length > 80 ? `${custom.slice(0, 79)}…` : custom;
+      if (custom) {
+        title = custom.length > 80 ? `${custom.slice(0, 79)}…` : custom;
+        // The user is the only source of a non-suppressed custom-title:
+        // /rename, /title, or a SessionStart sourced from a transcript
+        // they had previously /rename'd. Flag the panel as manually
+        // titled so the UI can mark it. We don't clear this on
+        // subsequent auto-title runs — once authored, always authored.
+        panel.manually_renamed = true;
+      }
     } else if (panel.kind === 'subagent') {
       if (event.kind !== 'meta') return;
       if (event.payload.record_type !== 'subagent-meta') return;
@@ -757,6 +777,7 @@ export class SessionStore {
       awaiting_input: p.awaiting_input,
       ended: p.ended,
       ended_provenance: p.ended_provenance,
+      manually_renamed: p.manually_renamed,
       tokens: p.tokens,
       context_size: p.context_size,
       hook_overhead_tokens: p.hook_overhead_tokens,
@@ -1022,6 +1043,7 @@ function panelToRow(p: Panel, now: number): PanelRow {
     awaiting_input: p.awaiting_input,
     ended: p.ended,
     ended_provenance: p.ended_provenance,
+    manually_renamed: p.manually_renamed,
     updated_at: now,
   };
 }
@@ -1046,6 +1068,7 @@ function panelRowToPanel(r: PanelRow): Panel {
     awaiting_input: r.awaiting_input,
     ended: r.ended,
     ended_provenance: r.ended_provenance,
+    manually_renamed: r.manually_renamed,
     // Tokens aren't persisted to the panels table yet (would require a
     // schema migration). On hydrate we start at zero and re-accumulate
     // as the watcher replays the JSONL. Brief flicker on restart;

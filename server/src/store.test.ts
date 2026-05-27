@@ -51,6 +51,7 @@ function panel(overrides: Partial<PanelRow> = {}): PanelRow {
     awaiting_input: false,
     ended: false,
     ended_provenance: null,
+    manually_renamed: false,
     updated_at: 100,
     ...overrides,
   };

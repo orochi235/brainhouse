@@ -4156,3 +4156,14 @@ body.hide-thinking .event-thought-agent {
   max-height: 30vh;
   overflow: auto;
 }
+
+/* "Title set manually via /rename" indicator — sits inline with the
+ * title, tinted in the muted text color so it reads as a status icon
+ * rather than competing with the title text itself. */
+.panel-title-manual-glyph {
+  color: color-mix(in srgb, var(--accent, #a78bfa) 75%, transparent);
+  margin-right: 0.35em;
+  font-size: 0.85em;
+  cursor: help;
+  user-select: none;
+}
