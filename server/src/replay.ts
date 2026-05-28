@@ -83,6 +83,7 @@ export function parseJsonlToPanel(contents: string, sourceLabel: string): Replay
     status_changed_at: lastTs,
     event_count: events.length,
     cwd: null,
+    repo_root: null,
     theme: null,
     binned_at: null,
     awaiting_input: false,

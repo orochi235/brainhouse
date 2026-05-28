@@ -10,8 +10,50 @@
  * Time comes from an injectable clock so tests are deterministic.
  */
 
+import { existsSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { type Event, hasTag } from './parser.js';
 import type { EventIndexRow, PanelRow, SessionSummaryRow, Store } from './store.js';
+
+/**
+ * Walk up `cwd` looking for the closest `.git` directory and return that
+ * ancestor's path. Used to stamp `repo_root` on a panel so widgets can
+ * group every session for the same repo together, regardless of which
+ * subdirectory the user ran Claude Code from.
+ *
+ * Cached per input so a busy directory tree doesn't re-stat on every
+ * new panel. Returns `null` when no `.git` is found before the
+ * filesystem root (e.g. a scratch directory, `/tmp`, etc.).
+ */
+const repoRootCache = new Map<string, string | null>();
+export function findRepoRoot(cwd: string | null | undefined): string | null {
+  if (!cwd) return null;
+  const cached = repoRootCache.get(cwd);
+  if (cached !== undefined) return cached;
+  let cur = cwd;
+  // Cap the walk so a misconfigured path can't loop indefinitely.
+  for (let i = 0; i < 64; i++) {
+    try {
+      const git = path.join(cur, '.git');
+      if (existsSync(git)) {
+        // `.git` can be a dir (normal repo) or a file (worktree). Both count.
+        const s = statSync(git);
+        if (s.isDirectory() || s.isFile()) {
+          repoRootCache.set(cwd, cur);
+          return cur;
+        }
+      }
+    } catch {
+      // Permission errors or transient fs issues: just stop walking.
+      break;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  repoRootCache.set(cwd, null);
+  return null;
+}
 
 export type PanelKind = 'parent' | 'subagent';
 export type PanelStatus = 'live' | 'done' | 'mini';
@@ -52,6 +94,13 @@ export interface Panel {
   last_event_at: number;
   status_changed_at: number;
   cwd: string | null;
+  /** Filesystem path of the repo this panel's `cwd` belongs to — the
+   * closest ancestor of `cwd` containing a `.git`. Stamped once at panel
+   * creation by `findRepoRoot()`. The widgets layer groups sessions by
+   * `repo_root` so a session run from `~/src/foo/client` clusters with
+   * one run from `~/src/foo`. `null` for scratch dirs / non-repo cwds —
+   * those still produce a widget keyed by the cwd's last segment. */
+  repo_root: string | null;
   theme: PanelTheme | null;
   events: Event[];
   /** Soft-delete timestamp. Non-null = the panel is in the trash bin: it
@@ -133,6 +182,9 @@ export interface PanelDto {
   status_changed_at: number;
   event_count: number;
   cwd: string | null;
+  /** Repo root inferred from `cwd` (closest `.git` ancestor). See
+   * `Panel.repo_root`. Null for non-repo cwds. */
+  repo_root: string | null;
   theme: PanelTheme | null;
   binned_at: number | null;
   awaiting_input: boolean;
@@ -617,6 +669,7 @@ export class SessionStore {
       last_event_at: eventTs,
       status_changed_at: eventTs,
       cwd: event.cwd,
+      repo_root: findRepoRoot(event.cwd),
       theme: null,
       events: [],
     };
@@ -773,6 +826,7 @@ export class SessionStore {
       status_changed_at: p.status_changed_at,
       event_count: p.events.length,
       cwd: p.cwd,
+      repo_root: p.repo_root,
       theme: p.theme,
       awaiting_input: p.awaiting_input,
       ended: p.ended,
@@ -1037,6 +1091,7 @@ function panelToRow(p: Panel, now: number): PanelRow {
     last_event_at: p.last_event_at,
     status_changed_at: p.status_changed_at,
     cwd: p.cwd,
+    repo_root: p.repo_root,
     theme_bg: p.theme?.background ?? null,
     theme_fg: p.theme?.foreground ?? null,
     binned_at: p.binned_at,
@@ -1062,6 +1117,9 @@ function panelRowToPanel(r: PanelRow): Panel {
     last_event_at: r.last_event_at,
     status_changed_at: r.status_changed_at,
     cwd: r.cwd,
+    // Repo root was persisted on the previous run; if missing (old row
+    // pre-migration), fall back to a live filesystem walk.
+    repo_root: r.repo_root ?? findRepoRoot(r.cwd),
     theme: r.theme_bg && r.theme_fg ? { background: r.theme_bg, foreground: r.theme_fg } : null,
     events: [], // hydrated lazily — JSONL on disk is canonical
     binned_at: r.binned_at,

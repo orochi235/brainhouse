@@ -45,6 +45,7 @@ function panel(overrides: Partial<PanelRow> = {}): PanelRow {
     last_event_at: 100,
     status_changed_at: 0,
     cwd: '/tmp/foo',
+    repo_root: null,
     theme_bg: null,
     theme_fg: null,
     binned_at: null,

@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { buildProjectRollups, deriveProjectWidgets } from './projectWidgets.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 
-const p = (id: string, cwd: string | null, last: number): PanelState =>
+const p = (
+  id: string,
+  cwd: string | null,
+  last: number,
+  repo_root: string | null = null,
+): PanelState =>
   ({
     id,
     cwd,
+    repo_root,
     last_event_at: last,
     kind: 'parent',
     status: 'live',
@@ -124,6 +130,27 @@ describe('buildProjectRollups', () => {
     } as unknown as PanelState;
     const rollups = buildProjectRollups(mapOf(panel));
     expect(rollups[0]?.fileCount).toBe(2);
+  });
+
+  it('groups sessions from subdirectories of the same repo via repo_root', () => {
+    // Three sessions in the same checkout but `cd`d to different subdirs.
+    // Without `repo_root`, each would fragment to its own widget keyed
+    // by the leaf segment ('brainhouse', 'client', 'server').
+    const a = p('a', '/Users/mike/src/brainhouse', 100, '/Users/mike/src/brainhouse');
+    const b = p('b', '/Users/mike/src/brainhouse/client', 200, '/Users/mike/src/brainhouse');
+    const c = p('c', '/Users/mike/src/brainhouse/server', 300, '/Users/mike/src/brainhouse');
+    const rollups = buildProjectRollups(mapOf(a, b, c));
+    expect(rollups).toHaveLength(1);
+    expect(rollups[0]?.widget.repo).toBe('brainhouse');
+    expect(rollups[0]?.sessionCount).toBe(3);
+    expect(rollups[0]?.recentSessions.map((s) => s.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('still falls back to cwd leaf when repo_root is null (non-git scratch dirs)', () => {
+    const a = p('a', '/tmp/scratch', 100, null);
+    const b = p('b', '/tmp/other', 200, null);
+    const rollups = buildProjectRollups(mapOf(a, b));
+    expect(rollups.map((r) => r.widget.repo).sort()).toEqual(['other', 'scratch']);
   });
 
   it('carries the most-recent panel theme and account_label into the rollup', () => {

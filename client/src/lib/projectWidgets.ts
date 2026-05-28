@@ -75,7 +75,28 @@ const RECENT_SESSIONS_CAP = 8;
 
 const NO_REPO_KEY = '__no_repo__';
 
-function projectKeyForCwd(cwd: string | null): { repo: string; key: string } | null {
+/** Build the widget key for a panel. Priority:
+ *
+ *   1. `repo_root` — stamped server-side by walking up the cwd looking
+ *      for `.git`. Authoritative when present: every session in the
+ *      same checkout collapses to one widget regardless of which
+ *      subdirectory the user `cd`'d into.
+ *   2. Worktree-pattern match on `cwd` (`.../<repo>/.claude/worktrees/foo`).
+ *      Pre-`repo_root` fallback; still useful when the worktree dir
+ *      isn't itself a `.git` checkout the walk would find.
+ *   3. `cwd`'s last segment. Coarse but at least keeps non-repo
+ *      scratch dirs visible. Will fragment under subdir use — that's
+ *      what `repo_root` exists to fix.
+ */
+function projectKeyForPanel(panel: {
+  cwd: string | null;
+  repo_root?: string | null;
+}): { repo: string; key: string } | null {
+  if (panel.repo_root) {
+    const repo = panel.repo_root.split('/').filter(Boolean).pop();
+    if (repo) return { repo, key: panel.repo_root };
+  }
+  const cwd = panel.cwd;
   if (!cwd) return null;
   const wt = deriveWorktree(cwd);
   if (wt) return { repo: wt.repo, key: wt.repo };
@@ -111,13 +132,13 @@ function filesTouched(events: PanelState['events']): Set<string> {
 export function deriveProjectWidgets(panels: Map<string, PanelState>): ProjectWidget[] {
   const byKey = new Map<string, { repo: string; cwd: string; last_event_at: number }>();
   for (const p of panels.values()) {
-    const proj = projectKeyForCwd(p.cwd);
+    const proj = projectKeyForPanel(p);
     if (!proj || proj.key === NO_REPO_KEY) continue;
     const prior = byKey.get(proj.key);
     if (!prior || p.last_event_at > prior.last_event_at) {
       byKey.set(proj.key, {
         repo: proj.repo,
-        cwd: p.cwd ?? '',
+        cwd: p.repo_root ?? p.cwd ?? '',
         last_event_at: p.last_event_at,
       });
     }
@@ -156,7 +177,7 @@ export function buildProjectRollups(panels: Map<string, PanelState>): ProjectRol
   const byKey = new Map<string, Acc>();
 
   for (const p of panels.values()) {
-    const proj = projectKeyForCwd(p.cwd);
+    const proj = projectKeyForPanel(p);
     if (!proj) continue;
     let acc = byKey.get(proj.key);
     if (!acc) {
@@ -174,9 +195,13 @@ export function buildProjectRollups(panels: Map<string, PanelState>): ProjectRol
       byKey.set(proj.key, acc);
     }
     // Latest-wins for representative metadata (cwd, theme, account_label).
+    // Prefer `repo_root` over `cwd` when available so the widget header
+    // names the project, not whichever subdir the latest session
+    // happened to run from.
     if (p.last_event_at > acc.last_event_at) {
       acc.last_event_at = p.last_event_at;
-      if (p.cwd) acc.cwd = p.cwd;
+      const rep = p.repo_root ?? p.cwd;
+      if (rep) acc.cwd = rep;
       if (p.theme) acc.theme = p.theme;
       if (p.account_label) acc.account_label = p.account_label;
     }

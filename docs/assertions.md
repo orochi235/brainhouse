@@ -61,6 +61,14 @@ UI/server is meant to uphold. New entries go at the bottom.
   Dividers are emitted only between real items — never leading,
   trailing, or two adjacent — so a day with no activity produces no
   divider. Owned by the `insertDayDividers` stage-2 transform.
+- Each panel carries a `repo_root` field: the closest ancestor of its
+  `cwd` containing a `.git` directory (or file, for worktrees).
+  Resolved server-side via `findRepoRoot()` at panel creation and
+  cached. Persisted in the panels table so a restart preserves it.
+  Project widgets key on `repo_root` first so sessions run from
+  arbitrary subdirectories of the same checkout cluster into one
+  widget. `cwd`'s leaf segment is only used as a fallback for non-repo
+  scratch directories.
 - A panel whose title was explicitly set via `/rename` (any non-
   suppressed `custom-title` meta record) carries `manually_renamed:
   true` on its DTO and renders a `❖` (U+2756) glyph immediately before

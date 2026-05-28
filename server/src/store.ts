@@ -75,6 +75,8 @@ export interface PanelRow {
   last_event_at: number;
   status_changed_at: number;
   cwd: string | null;
+  /** Closest `.git` ancestor of `cwd`. Null when no repo root was found. */
+  repo_root: string | null;
   theme_bg: string | null;
   theme_fg: string | null;
   binned_at: number | null;
@@ -194,6 +196,7 @@ CREATE TABLE IF NOT EXISTS panels (
   last_event_at     REAL NOT NULL,
   status_changed_at REAL NOT NULL,
   cwd               TEXT,
+  repo_root         TEXT,
   theme_bg          TEXT,
   theme_fg          TEXT,
   binned_at         REAL,
@@ -298,6 +301,11 @@ export class Store {
     } catch {
       // column already exists
     }
+    try {
+      db.exec('ALTER TABLE panels ADD COLUMN repo_root TEXT');
+    } catch {
+      // column already exists
+    }
     return new Store(db);
   }
 
@@ -372,10 +380,10 @@ export class Store {
       .prepare(
         `INSERT INTO panels
            (id, kind, parent_panel_id, title, agent_type, account_label, status,
-            started_at, last_event_at, status_changed_at, cwd, theme_bg, theme_fg,
+            started_at, last_event_at, status_changed_at, cwd, repo_root, theme_bg, theme_fg,
             binned_at, awaiting_input, ended, ended_provenance, manually_renamed, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            kind              = excluded.kind,
            parent_panel_id   = excluded.parent_panel_id,
@@ -387,6 +395,7 @@ export class Store {
            last_event_at     = excluded.last_event_at,
            status_changed_at = excluded.status_changed_at,
            cwd               = excluded.cwd,
+           repo_root         = excluded.repo_root,
            theme_bg          = excluded.theme_bg,
            theme_fg          = excluded.theme_fg,
            binned_at         = excluded.binned_at,
@@ -408,6 +417,7 @@ export class Store {
         row.last_event_at,
         row.status_changed_at,
         row.cwd,
+        row.repo_root,
         row.theme_bg,
         row.theme_fg,
         row.binned_at,
@@ -665,6 +675,7 @@ interface RawPanel {
   last_event_at: number;
   status_changed_at: number;
   cwd: string | null;
+  repo_root: string | null;
   theme_bg: string | null;
   theme_fg: string | null;
   binned_at: number | null;
@@ -688,6 +699,7 @@ function deserializePanel(r: RawPanel): PanelRow {
     last_event_at: r.last_event_at,
     status_changed_at: r.status_changed_at,
     cwd: r.cwd,
+    repo_root: r.repo_root,
     theme_bg: r.theme_bg,
     theme_fg: r.theme_fg,
     binned_at: r.binned_at,
