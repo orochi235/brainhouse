@@ -11,6 +11,7 @@
 
 import type { OpRender } from '../lib/fileSnapshot.ts';
 import type { FileChangeItem } from '../lib/pipeline.ts';
+import { prettyJson } from '../lib/tools.ts';
 import { DiffTable } from './DiffTable.tsx';
 
 export function OpView({ op, render }: { op: FileChangeItem['ops'][number]; render: OpRender }) {
@@ -59,7 +60,7 @@ export function OpView({ op, render }: { op: FileChangeItem['ops'][number]; rend
   return (
     <section className="file-change-hunk">
       <header>{name}</header>
-      <pre className="file-change-raw">{JSON.stringify(input, null, 2)}</pre>
+      <pre className="file-change-raw">{prettyJson(input)}</pre>
     </section>
   );
 }

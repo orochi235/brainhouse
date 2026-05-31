@@ -141,6 +141,7 @@ export const appRouter = t.router({
           hidden_at: z.number().nullable().optional(),
           auto_mini_at: z.number().nullable().optional(),
           broken_out: z.boolean().optional(),
+          user_kept: z.boolean().optional(),
         }),
       )
       .mutation(({ ctx, input }) => {
@@ -163,6 +164,8 @@ export const appRouter = t.router({
               ? input.auto_mini_at
               : (existing?.auto_mini_at ?? null),
           broken_out: input.broken_out ?? existing?.broken_out ?? false,
+          user_kept:
+            input.user_kept ?? existing?.user_kept ?? false,
           updated_at: Date.now() / 1000,
         });
         return { ok: true, persisted: true };

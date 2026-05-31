@@ -60,6 +60,10 @@ export interface IntentionsRow {
   /** Subagent that's been pulled out of its parent's nested tray and
    * promoted to a top-level grid panel. Only meaningful for kind=subagent. */
   broken_out: boolean;
+  /** User pulled this panel out of the dock; the allocator should give it a
+   * grid slot unconditionally (treated like `pinned` for placement, but
+   * cleared as soon as the user dismisses again). */
+  user_kept: boolean;
   updated_at: number;
 }
 
@@ -181,6 +185,7 @@ CREATE TABLE IF NOT EXISTS intentions (
   hidden_at    REAL,
   auto_mini_at REAL,
   broken_out   INTEGER NOT NULL DEFAULT 0,
+  user_kept INTEGER NOT NULL DEFAULT 0,
   updated_at   REAL NOT NULL
 );
 
@@ -297,6 +302,13 @@ export class Store {
       // column already exists
     }
     try {
+      db.exec(
+        'ALTER TABLE intentions ADD COLUMN user_kept INTEGER NOT NULL DEFAULT 0',
+      );
+    } catch {
+      // column already exists
+    }
+    try {
       db.exec('ALTER TABLE panels ADD COLUMN manually_renamed INTEGER NOT NULL DEFAULT 0');
     } catch {
       // column already exists
@@ -331,18 +343,19 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO intentions
-           (panel_id, pinned, wide, manual_order, user_mini, hidden_at, auto_mini_at, broken_out, updated_at)
+           (panel_id, pinned, wide, manual_order, user_mini, hidden_at, auto_mini_at, broken_out, user_kept, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(panel_id) DO UPDATE SET
-           pinned       = excluded.pinned,
-           wide         = excluded.wide,
-           manual_order = excluded.manual_order,
-           user_mini    = excluded.user_mini,
-           hidden_at    = excluded.hidden_at,
-           auto_mini_at = excluded.auto_mini_at,
-           broken_out   = excluded.broken_out,
-           updated_at   = excluded.updated_at`,
+           pinned           = excluded.pinned,
+           wide             = excluded.wide,
+           manual_order     = excluded.manual_order,
+           user_mini        = excluded.user_mini,
+           hidden_at        = excluded.hidden_at,
+           auto_mini_at     = excluded.auto_mini_at,
+           broken_out       = excluded.broken_out,
+           user_kept = excluded.user_kept,
+           updated_at       = excluded.updated_at`,
       )
       .run(
         row.panel_id,
@@ -353,6 +366,7 @@ export class Store {
         row.hidden_at,
         row.auto_mini_at,
         row.broken_out ? 1 : 0,
+        row.user_kept ? 1 : 0,
         row.updated_at,
       );
   }
@@ -660,6 +674,7 @@ interface RawIntentions {
   hidden_at: number | null;
   auto_mini_at: number | null;
   broken_out?: number;
+  user_kept?: number;
   updated_at: number;
 }
 
@@ -673,6 +688,7 @@ function deserializeIntentions(r: RawIntentions): IntentionsRow {
     hidden_at: r.hidden_at,
     auto_mini_at: r.auto_mini_at,
     broken_out: !!r.broken_out,
+    user_kept: !!r.user_kept,
     updated_at: r.updated_at,
   };
 }

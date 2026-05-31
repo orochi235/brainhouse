@@ -604,11 +604,6 @@ function PanelHeader({
           <span aria-hidden="true">↩</span> {parentTitle}
         </button>
       )}
-      {account && (
-        <span className="panel-account" title={`account: ${account}`}>
-          {account}
-        </span>
-      )}
       {panel.status === 'mini' && !readOnly && (
         <button
           type="button"
@@ -689,6 +684,13 @@ function PanelHeader({
       leading={leading}
       title={titleNode}
       titleAside={titleAside}
+      subtitleLeading={
+        account ? (
+          <span className="panel-account" title={`account: ${account}`}>
+            {account}
+          </span>
+        ) : undefined
+      }
       subtitle={subtitleNode}
       subtitleAside={subtitleAside}
     />

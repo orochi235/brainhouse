@@ -22,7 +22,7 @@ import { ViewItemList } from './EventList.tsx';
 import { ToolChip, ToolChips } from './ToolChips.tsx';
 import { formatClockTime } from '../lib/format.ts';
 import { type ViewItem, preprocessEvents } from '../lib/pipeline.ts';
-import { iconForTool, summarizeTool } from '../lib/tools.ts';
+import { iconForTool, prettyJson, summarizeTool } from '../lib/tools.ts';
 
 type Granularity = 'events' | 'items';
 /** Vertical time direction. `asc` = oldest at top (matches conversation
@@ -834,7 +834,7 @@ function DetailPane({ source, startedAt }: { source: MarkSource; startedAt?: num
             {formatClockTime(ev.ts)} · {ev.uuid.slice(0, 8)}
           </span>
         </h4>
-        <pre className="timeline-detail-body">{JSON.stringify(ev.payload, null, 2)}</pre>
+        <pre className="timeline-detail-body">{prettyJson(ev.payload)}</pre>
       </div>
     );
   }

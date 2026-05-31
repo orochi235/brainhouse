@@ -27,6 +27,7 @@ function intentions(overrides: Partial<IntentionsRow> = {}): IntentionsRow {
     hidden_at: null,
     auto_mini_at: null,
     broken_out: false,
+    user_kept: false,
     updated_at: 1_000,
     ...overrides,
   };

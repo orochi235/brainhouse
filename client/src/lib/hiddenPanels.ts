@@ -30,6 +30,10 @@ export interface DismissalIntentions {
   userMini?: Set<string>;
   hiddenAt?: Record<string, number>;
   autoMiniAt?: Record<string, number>;
+  /** Panels the user has explicitly pulled out of the dock. The allocator
+   * treats these as unconditional primary (like pinned, but cleared as
+   * soon as the user dismisses again). */
+  userKept?: Set<string>;
 }
 
 export interface DismissalOpts {
@@ -42,6 +46,7 @@ export interface DismissalOpts {
       user_mini?: boolean;
       hidden_at?: number | null;
       auto_mini_at?: number | null;
+      user_kept?: boolean;
     },
   ) => void;
 }
@@ -55,6 +60,9 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
   const [autoMiniAt, setAutoMiniAt] = useState<Record<string, number>>(() => ({
     ...(initial?.autoMiniAt ?? {}),
   }));
+  const [userKept, setUserKept] = useState<Set<string>>(
+    () => new Set(initial?.userKept ?? []),
+  );
   const seenIdsRef = useRef<Set<string>>(new Set());
   const touched = useRef(false);
   // Re-seed when `initial` arrives async from useIntentions (empty on mount
@@ -65,6 +73,7 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
     setHiddenAt({ ...(initial?.hiddenAt ?? {}) });
     setUserMini(new Set(initial?.userMini ?? []));
     setAutoMiniAt({ ...(initial?.autoMiniAt ?? {}) });
+    setUserKept(new Set(initial?.userKept ?? []));
   }, [initial]);
 
   // First-sight auto-mini: bootstrap replays panels with old
@@ -95,6 +104,15 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
     }
     setHiddenAt((cur) => pruneMap(cur, panels));
     setAutoMiniAt((cur) => pruneMap(cur, panels));
+    setUserKept((cur) => {
+      const next = new Set<string>();
+      let changed = false;
+      for (const id of cur) {
+        if (panels.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : cur;
+    });
     setUserMini((cur) => {
       const next = new Set<string>();
       let changed = false;
@@ -109,6 +127,14 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
   const dismiss = useCallback(
     (panel: PanelState) => {
       touched.current = true;
+      // Dismissing always clears any manually-primary intent the user had
+      // expressed earlier — the gesture is "send this back to the dock".
+      setUserKept((cur) => {
+        if (!cur.has(panel.id)) return cur;
+        const next = new Set(cur);
+        next.delete(panel.id);
+        return next;
+      });
       // Panels already in the tray (server-side mini) → fully hide; there's
       // nowhere else for them to go. Everything else (live or done in the
       // grid) → send to the tray as userMini. Auto-mini entries get
@@ -117,7 +143,7 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
       if (panel.status === 'mini') {
         const at = Date.now() / 1000;
         setHiddenAt((cur) => ({ ...cur, [panel.id]: at }));
-        persist?.(panel.id, { hidden_at: at });
+        persist?.(panel.id, { hidden_at: at, user_kept: false });
       } else {
         setUserMini((cur) => {
           const next = new Set(cur);
@@ -130,7 +156,11 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
           delete next[panel.id];
           return next;
         });
-        persist?.(panel.id, { user_mini: true, auto_mini_at: null });
+        persist?.(panel.id, {
+          user_mini: true,
+          auto_mini_at: null,
+          user_kept: false,
+        });
       }
     },
     [persist],
@@ -157,7 +187,22 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
         delete next[id];
         return next;
       });
-      persist?.(id, { user_mini: false, hidden_at: null, auto_mini_at: null });
+      // Mark as manually primary so the allocator gives it a grid slot
+      // unconditionally — otherwise a freshly-restored server-mini panel
+      // (which transitions to `done`, not `live`) would be left in the
+      // dock when pinned + live already saturate the slot budget.
+      setUserKept((cur) => {
+        if (cur.has(id)) return cur;
+        const next = new Set(cur);
+        next.add(id);
+        return next;
+      });
+      persist?.(id, {
+        user_mini: false,
+        hidden_at: null,
+        auto_mini_at: null,
+        user_kept: true,
+      });
     },
     [persist],
   );
@@ -187,6 +232,11 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
     [userMini, autoMiniAt],
   );
 
+  const isUserKept = useCallback(
+    (panel: PanelState) => userKept.has(panel.id),
+    [userKept],
+  );
+
   const dismissAll = useCallback(() => {
     const now = Date.now() / 1000;
     const nextHidden: Record<string, number> = {};
@@ -197,9 +247,10 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
     setHiddenAt(nextHidden);
     setUserMini(new Set());
     setAutoMiniAt({});
+    setUserKept(new Set());
   }, [panels, persist]);
 
-  return { dismiss, dismissAll, restore, isHidden, isClientMini };
+  return { dismiss, dismissAll, restore, isHidden, isClientMini, isUserKept };
 }
 
 function pruneMap(

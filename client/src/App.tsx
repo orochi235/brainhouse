@@ -287,6 +287,7 @@ function AppMain() {
     restore: restoreLocal,
     isHidden,
     isClientMini,
+    isUserKept,
   } = usePanelDismissal(panels, {
     initial: seeded.dismissal,
     persist: (id, patch) => persistIntention(id, patch),
@@ -430,7 +431,12 @@ function AppMain() {
   // remaining slots from closed/idle panels via per-repo round-robin.
   const topLevel = [...allGridPanels, ...allTrayPanels];
   const allocatorInput = topLevel
-    .filter((p) => isPinned(p) || (!isHidden(p) && !isClientMini(p)))
+    .filter(
+      (p) =>
+        isPinned(p) ||
+        isUserKept(p) ||
+        (!isHidden(p) && !isClientMini(p)),
+    )
     .map((p) => ({
       id: p.id,
       status: p.status,
@@ -443,7 +449,14 @@ function AppMain() {
     0,
     prefs.workspace.slotCount - (debugMode ? 1 : 0),
   );
-  const allocation = allocateSlots(allocatorInput, pinned, effectiveSlotCount);
+  // Manually-primary panels (user pulled them out of the dock) get the
+  // same unconditional grid-slot treatment as pinned. Merging at the
+  // call site keeps the allocator simple — it only knows "pinned".
+  const allocatorPinned = new Set(pinned);
+  for (const p of topLevel) {
+    if (isUserKept(p)) allocatorPinned.add(p.id);
+  }
+  const allocation = allocateSlots(allocatorInput, allocatorPinned, effectiveSlotCount);
 
   const gridPanels: PanelState[] = [];
   const trayPanels: PanelState[] = [];
@@ -710,11 +723,15 @@ function AppMain() {
               });
               return;
             }
-            // Client-mini panels live entirely in client state; restoring them
-            // is a local op. Server-mini panels need an explicit trpc.restore.
+            // Drag-out from dock to grid = "give this panel a slot."
+            // restoreLocal clears any dismiss intent + marks manually
+            // primary; for server-mini panels we also flip lifecycle.
             withViewTransition(() => {
-              if (clientMiniPanels.some((p) => p.id === id)) restoreLocal(id);
-              else trpc.restore.mutate({ panelId: id });
+              restoreLocal(id);
+              const srcPanel = panels.get(id);
+              if (srcPanel?.status === 'mini') {
+                trpc.restore.mutate({ panelId: id });
+              }
             });
           }}
         >
@@ -775,6 +792,11 @@ function AppMain() {
                 onOpenSession={openSessionFromWidget}
                 pinned={pinned.has(r.widget.id)}
                 onTogglePin={() => togglePin(r.widget.id)}
+                accountColor={
+                  r.account_label
+                    ? accountColorByLabel.get(r.account_label)
+                    : undefined
+                }
                 onClose={() =>
                   dismiss({
                     id: r.widget.id,
@@ -845,11 +867,15 @@ function AppMain() {
                     // sessionStorage scroll offset before the panel
                     // remounts so its useLayoutEffect snaps cleanly.
                     clearScrollPosition(p.id);
-                    // Client-mini panels restore locally; server-mini ones need trpc.
+                    // Always mark manually-primary so the allocator gives
+                    // this panel a grid slot. For server-mini panels we
+                    // also flip the lifecycle state so the status dot
+                    // reflects the user's intent.
                     withViewTransition(() => {
-                      if (clientMiniPanels.some((m) => m.id === p.id)) restoreLocal(p.id);
-                      else if (clientMiniSubs.some((m) => m.id === p.id)) restoreLocal(p.id);
-                      else trpc.restore.mutate({ panelId: p.id });
+                      restoreLocal(p.id);
+                      if (p.status === 'mini') {
+                        trpc.restore.mutate({ panelId: p.id });
+                      }
                     });
                   }}
                   pinned={pinned.has(p.id)}

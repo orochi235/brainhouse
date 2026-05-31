@@ -13,7 +13,7 @@ import {
   preprocessEvents,
   type ViewItem,
 } from '../lib/pipeline.ts';
-import { iconForTool, parseBashCommandHead, shortenPath, type ToolIcon } from '../lib/tools.ts';
+import { iconForTool, parseBashCommandHead, prettyJson, shortenPath, type ToolIcon } from '../lib/tools.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -456,7 +456,7 @@ function MetaEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
       className="event event-meta"
       onClick={() =>
         lightbox.open(
-          <pre className="lightbox-text-content">{JSON.stringify(event.payload, null, 2)}</pre>,
+          <pre className="lightbox-text-content">{prettyJson(event.payload)}</pre>,
           { variant: 'text' },
         )
       }

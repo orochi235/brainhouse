@@ -439,6 +439,7 @@ describe('TranscriptMonitor', () => {
           hidden_at: null,
           auto_mini_at: null,
           broken_out: false,
+          user_kept: false,
           updated_at: recentTs,
         });
         monitor.applyHookEvent({

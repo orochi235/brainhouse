@@ -38,12 +38,14 @@ export function ProjectWidgetCard({
   pinned,
   onTogglePin,
   onClose,
+  accountColor,
 }: {
   rollup: ProjectRollup;
   onOpenSession?: (sessionId: string) => void;
   pinned?: boolean;
   onTogglePin?: () => void;
   onClose?: () => void;
+  accountColor?: string;
 }) {
   const { widget, theme, account_label, fileCount, totalTokens, recentSessions } = rollup;
   // The in-memory `recentSessions` covers only currently-tracked panels
@@ -64,6 +66,9 @@ export function ProjectWidgetCard({
   if (theme) {
     styleVars['--panel-theme-bg'] = theme.background;
     styleVars['--panel-theme-fg'] = theme.foreground;
+  }
+  if (accountColor) {
+    styleVars['--account-color'] = accountColor;
   }
 
   const agg = aggregateProjectStatus(rollup);
@@ -115,15 +120,17 @@ export function ProjectWidgetCard({
         leading={leading}
         title={<span className="project-widget-title">{widget.repo}</span>}
         titleAside={<span className="project-widget-kind">project</span>}
+        subtitleLeading={
+          account_label ? (
+            <span className="panel-account" title={`account: ${account_label}`}>
+              {account_label}
+            </span>
+          ) : undefined
+        }
         subtitle={
           <span className="project-widget-path" title={widget.cwd}>
             {widget.cwd}
           </span>
-        }
-        subtitleAside={
-          account_label ? (
-            <span className="project-widget-account">{account_label}</span>
-          ) : undefined
         }
       />
       <div className="project-widget-stats">

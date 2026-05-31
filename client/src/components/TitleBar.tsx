@@ -23,8 +23,13 @@ import type { MouseEvent, ReactNode } from 'react';
 
 export type TitleBarProps = {
   leading?: ReactNode;
+  /** Inline content rendered to the left of the title text (e.g. an
+   * account badge that should prefix the project name). */
+  titleLeading?: ReactNode;
   title: ReactNode;
   titleAside?: ReactNode;
+  /** Inline content rendered to the left of the subtitle text. */
+  subtitleLeading?: ReactNode;
   subtitle?: ReactNode;
   subtitleAside?: ReactNode;
   trailing?: ReactNode;
@@ -34,8 +39,10 @@ export type TitleBarProps = {
 
 export function TitleBar({
   leading,
+  titleLeading,
   title,
   titleAside,
+  subtitleLeading,
   subtitle,
   subtitleAside,
   trailing,
@@ -47,16 +54,22 @@ export function TitleBar({
       {leading !== undefined && <div className="title-bar-leading">{leading}</div>}
       <div className="title-bar-body">
         <div className="title-bar-title-row">
-          <span className="title-bar-title">{title}</span>
+          <span className="title-bar-row-left">
+            {titleLeading}
+            <span className="title-bar-title">{title}</span>
+          </span>
           {titleAside !== undefined && (
             <span className="title-bar-aside">{titleAside}</span>
           )}
         </div>
         {(subtitle !== undefined || subtitleAside !== undefined) && (
           <div className="title-bar-subtitle-row">
-            {subtitle !== undefined && (
-              <span className="title-bar-subtitle">{subtitle}</span>
-            )}
+            <span className="title-bar-row-left">
+              {subtitleLeading}
+              {subtitle !== undefined && (
+                <span className="title-bar-subtitle">{subtitle}</span>
+              )}
+            </span>
             {subtitleAside !== undefined && (
               <span className="title-bar-aside">{subtitleAside}</span>
             )}

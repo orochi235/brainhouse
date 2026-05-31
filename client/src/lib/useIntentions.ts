@@ -29,6 +29,7 @@ interface IntentionsRow {
   hidden_at: number | null;
   auto_mini_at: number | null;
   broken_out: boolean;
+  user_kept: boolean;
 }
 
 export interface SeededIntentions {
@@ -44,7 +45,12 @@ const EMPTY_INTENTIONS: SeededIntentions = {
   wide: new Set(),
   brokenOut: new Set(),
   order: new Map(),
-  dismissal: { userMini: new Set(), hiddenAt: {}, autoMiniAt: {} },
+  dismissal: {
+    userMini: new Set(),
+    hiddenAt: {},
+    autoMiniAt: {},
+    userKept: new Set(),
+  },
 };
 
 export interface UseIntentionsReturn {
@@ -60,6 +66,7 @@ export interface UseIntentionsReturn {
       hidden_at?: number | null;
       auto_mini_at?: number | null;
       broken_out?: boolean;
+      user_kept?: boolean;
     },
   ) => void;
 }
@@ -105,7 +112,12 @@ function materialize(rows: IntentionsRow[]): SeededIntentions {
     wide: new Set(),
     brokenOut: new Set(),
     order: new Map(),
-    dismissal: { userMini: new Set(), hiddenAt: {}, autoMiniAt: {} },
+    dismissal: {
+      userMini: new Set(),
+      hiddenAt: {},
+      autoMiniAt: {},
+      userKept: new Set(),
+    },
   };
   for (const r of rows) {
     if (r.pinned) out.pinned.add(r.panel_id);
@@ -119,6 +131,7 @@ function materialize(rows: IntentionsRow[]): SeededIntentions {
     if (r.auto_mini_at !== null && out.dismissal.autoMiniAt) {
       out.dismissal.autoMiniAt[r.panel_id] = r.auto_mini_at;
     }
+    if (r.user_kept) out.dismissal.userKept?.add(r.panel_id);
   }
   return out;
 }

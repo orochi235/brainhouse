@@ -230,8 +230,66 @@ export function stringifyToolValue(value: unknown): string {
   if (value == null) return '';
   if (typeof value === 'string') return value;
   try {
-    return JSON.stringify(value, null, 2);
+    return prettyJson(value);
   } catch {
     return String(value);
   }
+}
+
+/**
+ * Pretty-print a JSON value for human display. Same as
+ * `JSON.stringify(v, null, 2)` except string literals get their
+ * escape sequences unfolded: `\n` becomes a real newline (with
+ * continuation indent so the value still reads as a single string),
+ * `\t` becomes a tab, and `\"`, `\\`, `\r` are unescaped too.
+ *
+ * The output is no longer parseable JSON — readability wins. Use
+ * `JSON.stringify` directly when the result needs to round-trip.
+ */
+export function prettyJson(value: unknown, indent = 2): string {
+  return serialize(value, '', ' '.repeat(indent));
+}
+
+function serialize(value: unknown, prefix: string, indent: string): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  const t = typeof value;
+  if (t === 'string') return formatString(value as string, prefix);
+  if (t === 'number' || t === 'boolean') return String(value);
+  if (t === 'bigint') return `${value}n`;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '[]';
+    const next = prefix + indent;
+    const items = value
+      .map((v) => `${next}${serialize(v, next, indent)}`)
+      .join(',\n');
+    return `[\n${items}\n${prefix}]`;
+  }
+  if (t === 'object') {
+    const entries = Object.entries(value as object);
+    if (entries.length === 0) return '{}';
+    const next = prefix + indent;
+    const lines = entries
+      .map(([k, v]) => `${next}${JSON.stringify(k)}: ${serialize(v, next, indent)}`)
+      .join(',\n');
+    return `{\n${lines}\n${prefix}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function formatString(s: string, prefix: string): string {
+  // No special chars? Standard JSON quoted string.
+  if (!/[\n\r\t\\"]/.test(s)) return JSON.stringify(s);
+  // Unescape into a readable block. Inner lines get the prefix so the
+  // continuation aligns under the opening quote's column.
+  const lines = s.split(/\r?\n/);
+  if (lines.length === 1) {
+    // Single-line but contains tabs / quotes / backslashes — just
+    // unescape those individually inside a quoted form.
+    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\t/g, '\t')}"`;
+  }
+  const inner = lines
+    .map((line, i) => (i === 0 ? line : `${prefix}${line}`))
+    .join('\n');
+  return `"${inner}"`;
 }

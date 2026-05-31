@@ -1086,7 +1086,7 @@ body.hide-context .panel-context {
 /* Mini panels size to fit their contents (header + optional checklist).
  * The transcript body is hidden — anything inside the header is responsible
  * for its own abbreviation. */
-.panel.status-mini,
+.panel.status-mini:not(.project-widget),
 .session-dock .panel {
   flex: 0 0 auto;
   max-width: 100%;
@@ -1311,6 +1311,19 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   align-items: center;
   gap: 0.3rem;
   flex: 0 0 auto;
+}
+/* Left half of each row: optional leading chip (e.g. account badge) +
+ * the title/subtitle text. Tight gap so the badge sits flush with the
+ * name like a single composed unit. */
+.title-bar-row-left {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.title-bar-subtitle-row .title-bar-row-left {
+  align-items: center;
 }
 .title-bar-title-row .title-bar-title {
   flex: 0 1 auto;
@@ -3949,13 +3962,6 @@ body[data-freeze] .debug-tile * {
   white-space: nowrap;
   flex: 1;
   min-width: 0;
-}
-.project-widget-account {
-  color: var(--muted);
-  font-size: 0.65rem;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: color-mix(in oklch, var(--panel-bg), var(--accent) 14%);
 }
 .project-widget-stats {
   display: flex;
