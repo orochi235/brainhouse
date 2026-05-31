@@ -46,6 +46,39 @@ UI/server is meant to uphold. New entries go at the bottom.
 - While a panel is actively waiting on a model response, the titlebar's
   session timer is replaced by a waiting badge showing a spinner and the
   elapsed time since the request was submitted.
+- "Waiting on the model" spans the entire agentic turn, not just the gap
+  before the first model token. `user_text` and `tool_result` set the
+  pending flag; only `assistant_text` clears it. A mid-turn `tool_use`
+  leaves pending unchanged, so the titlebar sweep + waiting badge stay
+  visible across tool loops until Claude produces a user-visible reply.
+- Promoting a panel from dock to grid (or vice versa) commits the state
+  mutation inside `document.startViewTransition()` so the browser
+  crossfades / morphs between the pre- and post-layout instead of
+  repainting in two stutter frames. Each panel carries a unique
+  `view-transition-name` so its own box morphs, while non-named elements
+  (dock chrome, etc.) crossfade as part of the root. Falls back to a
+  plain state commit when the API is unavailable.
+- Session panel headers and project widget headers share a single
+  layout (`<TitleBar>`): a fixed-width leading column for the status
+  light (with action buttons stacked below it on mini panels, separated
+  by a rotated-T divider), and a two-row body — title on the left of
+  the first row with worktree chip + waiting/idle on the right, cwd on
+  the left of the second row with account + meta capsule trio on the
+  right. There is no third column; consumers compose anything they need
+  into the title/subtitle asides.
+- `?freeze=1` on the URL freezes every CSS animation + transition
+  globally (sets `data-freeze` on body). Useful for inspecting layout
+  without motion fighting you. `?debug=1` toggles the debug tile but
+  no longer affects animations.
+- Session IDs listed in `prefs.blacklist.sessionIds` are filtered out
+  of the panels map in `App.tsx` before any downstream consumer
+  (notifications, project rollups, slot allocator, render trees)
+  observes them — they never appear in the grid, dock, or project
+  widgets. The server keeps ingesting events; removing the id from the
+  list (via Prefs → Blacklist) brings the panel back. Shift-clicking
+  the × on a mini panel header or a project widget × opens a confirm
+  modal that adds the relevant session id(s) to the list (a project
+  widget's × blacklists every session in its rollup).
 - The `/clear` artifact trio that Claude Code emits at the top of a
   post-clear session — `<local-command-caveat>`, `<command-name>/clear`,
   `<local-command-stdout>` — is replaced by a single "prior session
@@ -77,14 +110,19 @@ UI/server is meant to uphold. New entries go at the bottom.
   the flag round-trips through the persisted panels row.
 - Timeline view is a third way to look at a slice of activity, parallel
   to Conversation and File. The `<Timeline>` component plots events
-  (raw `Event`s) or view-items (coalesced) along a horizontal time
-  axis, one lane + color per kind. Mouse interactions: hover → tooltip,
-  click → drill into a detail pane, drag → brush a range (lists the
-  contained items), scroll-wheel → zoom about the cursor. The component
-  is container-agnostic — sized via ResizeObserver — so it can drop
-  into any sized host (currently a panel-level lightbox + a tab inside
-  OpStripLightbox; future hosts may include an inline panel slot or a
-  top-level cross-panel route).
+  (raw `Event`s) or view-items (coalesced) on a **vertical** time axis
+  with lanes as columns, one color per kind. A horizontal mini-chart
+  above it doubles as a range scrubber — it always shows the full data
+  range with a draggable+resizable window overlay that drives the main
+  chart's visible range. A direction toggle flips top↔bottom between
+  oldest-first and newest-first. Marks render as HTML capsules (via
+  `<foreignObject>`) so they share the visual language of inline
+  `ToolCapsule`s — icon + label + status pill — with per-lane tinting.
+  Mouse interactions on the main chart: hover → highlight, click →
+  drill into a detail pane, vertical drag → brush a time range (lists
+  the contained items), scroll-wheel → zoom about the cursor. The
+  component is container-agnostic — sized via ResizeObserver — so it
+  can drop into any sized host.
 - Parent-panel title derivation ignores slash-command artifact user_texts
   (`<local-command-caveat>`, `<local-command-stdout>`, `<command-name>`,
   `<command-message>`, `<command-args>`). The panel keeps its short-id
@@ -173,12 +211,19 @@ UI/server is meant to uphold. New entries go at the bottom.
   via the Display prefs slider (defaults to 50%, floor 20%) and applies
   live via the `--idle-opacity` CSS custom property on `.panel.ended`.
 - `thinking` events render as an *agent thought bubble* — a dashed-edged
-  balloon with a two-dot tail, attributed to the assistant. Synthetic
-  user_texts flagged `is_meta: true` that aren't absorbed onto a Skill
-  capsule (i.e. the Claude-Code-injected residue we previously rendered
-  as giant user bubbles) render as a *user thought bubble* in the user
-  column. The `body.hide-thinking` pref hides agent thought bubbles
-  alongside the legacy thinking row.
+  balloon with a two-dot tail, attributed to the assistant. **Redacted
+  thinking events** (`payload.text` empty or whitespace-only, common
+  in modern Claude transcripts where the model returns an encrypted
+  signature but no visible content) are dropped at the pipeline level
+  by `defaultEventItem`. Without this filter, every redacted block
+  would render as an empty thought bubble stranded above the assistant's
+  real reply; with it, only thinking events that actually have content
+  surface as their own bubble. Synthetic user_texts flagged
+  `is_meta: true` that aren't absorbed onto a Skill capsule (i.e. the
+  Claude-Code-injected residue we previously rendered as giant user
+  bubbles) render as a *user thought bubble* in the user column. The
+  `body.hide-thinking` pref hides agent thought bubbles alongside the
+  legacy thinking row.
 
 ## Lifecycle
 
@@ -325,6 +370,18 @@ UI/server is meant to uphold. New entries go at the bottom.
   view. The tab-title flash is a *steady-state* effect with two
   conditions (any awaiting panel AND `document.hidden`); it reverts the
   moment either clears.
+- **Project widget session list** is sourced from the persistent
+  `session_summary` table, not just the in-memory panels Map. The
+  `ProjectWidgetCard` fires a `trpc.sessions.forProject` query on mount
+  keyed on the widget's repo root, merges the result with the
+  `recentSessions` rollup (live rows win on id collision so their live
+  status keeps displaying), and renders the union sorted by last
+  activity. Without this, old sessions that have aged out of the
+  live→done→mini→removed lifecycle would silently disappear from the
+  widget — the table that's a project's primary "what have we done
+  here" surface. Per-row tokens for historical rows are 0 (session
+  summary doesn't store the total) and the widget-level token + file
+  stats remain in-memory-only.
 - **Ephemeral UI state** — drag-hover ghosts, lightbox open/closed,
   scroll positions — lives in component state or `sessionStorage` and
   doesn't outlive the tab.

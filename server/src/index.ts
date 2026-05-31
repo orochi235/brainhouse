@@ -34,7 +34,17 @@ async function main() {
   });
   await monitor.start();
 
-  const app = Fastify({ logger: { transport: { target: 'pino-pretty' } } });
+  // pino-pretty's default ANSI emission (color resets, attribute clears)
+  // visibly wipes terminal background tints in some terminals — opt out
+  // of all in-line colors. Timestamps + level prefixes stay readable.
+  const app = Fastify({
+    logger: {
+      transport: {
+        target: 'pino-pretty',
+        options: { colorize: false },
+      },
+    },
+  });
 
   await app.register(fastifyTRPCPlugin, {
     prefix: '/trpc',

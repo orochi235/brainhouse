@@ -173,6 +173,32 @@ export const appRouter = t.router({
     }),
   }),
 
+  /** Sessions belonging to a project, read from the persistent
+   * `session_summary` table. Used by `ProjectWidgetCard` so the widget's
+   * session list reflects everything that's ever run under the project
+   * — not just the handful of panels still in client memory after the
+   * mini→removed reap. Prefix-matches `cwd`, so a `root` of `/repo`
+   * picks up sessions that ran from any subdir of the repo. */
+  sessions: t.router({
+    forProject: t.procedure
+      .input(
+        z.object({
+          root: z.string().min(1),
+          limit: z.number().int().positive().max(500).default(100),
+          parentOnly: z.boolean().default(true),
+        }),
+      )
+      .query(({ ctx, input }) => {
+        if (!ctx.store) return { sessions: [] };
+        return {
+          sessions: ctx.store.sessionsForProject(input.root, {
+            limit: input.limit,
+            parentOnly: input.parentOnly,
+          }),
+        };
+      }),
+  }),
+
   /** Cross-session event-type frequency counters. Counts every event the
    * monitor has ingested since the DB was created, broken down by (kind,
    * subkey). Used by the debug StatsModal to surface "what are we actually

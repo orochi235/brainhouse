@@ -214,6 +214,36 @@ describe('Store', () => {
       const rows = store.sessionsForProject('/a');
       expect(rows.map((r) => r.session_id)).toEqual(['s2', 's1']);
     });
+
+    it('sessionsForProject matches sessions in subdirectories of the project root', () => {
+      store.materializeSession(summary({ session_id: 's1', cwd: '/repo', started_at: 100 }));
+      store.materializeSession(summary({ session_id: 's2', cwd: '/repo/sub', started_at: 200 }));
+      store.materializeSession(
+        summary({ session_id: 's3', cwd: '/repo/sub/deeper', started_at: 300 }),
+      );
+      store.materializeSession(
+        summary({ session_id: 's4', cwd: '/repo-other', started_at: 400 }),
+      );
+      const rows = store.sessionsForProject('/repo');
+      expect(rows.map((r) => r.session_id)).toEqual(['s3', 's2', 's1']);
+    });
+
+    it('sessionsForProject parentOnly excludes subagent rows', () => {
+      store.materializeSession(
+        summary({ session_id: 'p1', cwd: '/a', started_at: 100, kind: 'parent' }),
+      );
+      store.materializeSession(
+        summary({
+          session_id: 's1',
+          cwd: '/a',
+          started_at: 150,
+          kind: 'subagent',
+          parent_session_id: 'p1',
+        }),
+      );
+      const rows = store.sessionsForProject('/a', { parentOnly: true });
+      expect(rows.map((r) => r.session_id)).toEqual(['p1']);
+    });
   });
 
   describe('bootstrap_offsets', () => {

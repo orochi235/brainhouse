@@ -213,6 +213,19 @@ export const DebugSchema = z.object({
 });
 export type Debug = z.infer<typeof DebugSchema>;
 
+/**
+ * Hard blacklist by session id. Blacklisted sessions are filtered out of
+ * the panels list on the client before any render runs — they never
+ * appear in the grid, dock, project widgets, or session lists. The
+ * server still ingests their events (so unblacklisting recovers them);
+ * this is purely a UI hide. Sessions are added via shift-click on a
+ * title-bar × or by editing the list in PrefsModal.
+ */
+export const BlacklistSchema = z.object({
+  sessionIds: z.array(z.string()).default([]),
+});
+export type Blacklist = z.infer<typeof BlacklistSchema>;
+
 export const PrefsSchema = z.object({
   /** Transcript roots to monitor. Empty array → fall back to platform defaults. */
   roots: z.array(RootSchema).default([]),
@@ -225,6 +238,7 @@ export const PrefsSchema = z.object({
   editor: EditorSchema.default(EditorSchema.parse({})),
   notifications: NotificationsSchema.default(NotificationsSchema.parse({})),
   debug: DebugSchema.default(DebugSchema.parse({})),
+  blacklist: BlacklistSchema.default(BlacklistSchema.parse({})),
 });
 export type Prefs = z.infer<typeof PrefsSchema>;
 

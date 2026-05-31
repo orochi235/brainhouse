@@ -29,6 +29,7 @@ type SectionKey =
   | 'notifications'
   | 'storage'
   | 'debug'
+  | 'blacklist'
   | 'trash';
 
 interface PrefsDraft {
@@ -83,6 +84,9 @@ interface PrefsDraft {
   debug: {
     enabled: boolean;
   };
+  blacklist: {
+    sessionIds: string[];
+  };
 }
 
 const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
@@ -95,6 +99,7 @@ const SECTIONS: { key: SectionKey; icon: string; label: string }[] = [
   { key: 'notifications', icon: '◔', label: 'Notifications' },
   { key: 'storage', icon: '◫', label: 'Storage' },
   { key: 'debug', icon: '⌬', label: 'Debug' },
+  { key: 'blacklist', icon: '⊘', label: 'Blacklist' },
   { key: 'trash', icon: '🗑', label: 'Trash' },
 ];
 
@@ -175,6 +180,7 @@ export function PrefsModal({ initial, onClose }: { initial: PrefsDraft; onClose:
           )}
           {active === 'storage' && <StorageSection draft={draft} setDraft={setDraft} />}
           {active === 'debug' && <DebugSection draft={draft} setDraft={setDraft} />}
+          {active === 'blacklist' && <BlacklistSection draft={draft} setDraft={setDraft} />}
           {active === 'trash' && <TrashSection />}
         </div>
       </div>
@@ -677,6 +683,42 @@ function DebugSection({ draft, setDraft }: SectionProps) {
         checked={draft.debug.enabled}
         onChange={(v) => set({ enabled: v })}
       />
+    </Section>
+  );
+}
+
+function BlacklistSection({ draft, setDraft }: SectionProps) {
+  // The list is edited as free text — one session id per line — so the
+  // user can paste a list straight in from elsewhere. Comma- and
+  // whitespace-separated input also splits cleanly on save.
+  const textValue = draft.blacklist.sessionIds.join('\n');
+  const onChange = (raw: string) => {
+    const ids = raw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    setDraft({ ...draft, blacklist: { sessionIds: ids } });
+  };
+  return (
+    <Section
+      title="Blacklist"
+      hint="Session ids listed here are hidden from the UI entirely — they won't appear in the grid, dock, or project widgets. The server keeps ingesting events so removing an id from this list brings the panel back. Shift-click the × on a title bar to add a session quickly."
+    >
+      <textarea
+        className="prefs-blacklist-textarea"
+        placeholder="one session id per line"
+        spellCheck={false}
+        rows={Math.max(6, draft.blacklist.sessionIds.length + 1)}
+        value={textValue}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <p className="prefs-hint">
+        {draft.blacklist.sessionIds.length === 0
+          ? 'No sessions blacklisted.'
+          : `${draft.blacklist.sessionIds.length} session${
+              draft.blacklist.sessionIds.length === 1 ? '' : 's'
+            } blacklisted.`}
+      </p>
     </Section>
   );
 }

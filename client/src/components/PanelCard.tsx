@@ -15,10 +15,13 @@ import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
+import { BlacklistConfirm } from './BlacklistConfirm.tsx';
 import { EventList } from './EventList.tsx';
 import { HoverPopover, TruncationTooltip } from './HoverPopover.tsx';
 import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
+import { StatusLight } from './StatusLight.tsx';
 import { TimelineLightbox } from './TimelineLightbox.tsx';
+import { TitleBar } from './TitleBar.tsx';
 import { TokenTooltip } from './TokenTooltip.tsx';
 import { ToolChip, ToolChips } from './ToolChips.tsx';
 
@@ -242,7 +245,13 @@ export function PanelCard({
 
   const worktree = deriveWorktree(panel.cwd);
 
-  const style: CSSProperties = {};
+  const style: CSSProperties = {
+    // Per-panel view-transition name so the browser morphs the panel's
+    // pre→post box (e.g. when promoted from dock to grid) instead of
+    // cross-fading the entire layout. Only matters during an explicit
+    // `document.startViewTransition()` — see `lib/viewTransition.ts`.
+    viewTransitionName: `panel-${panel.id.replace(/[^a-zA-Z0-9-]/g, '-')}`,
+  };
   const styleVars = style as Record<string, string>;
   if (progressPct !== null) styleVars['--progress'] = `${progressPct}%`;
   if (accountColor) styleVars['--account-color'] = accountColor;
@@ -464,191 +473,142 @@ function PanelHeader({
   // actual cost, so an unweighted sum overstates effective usage by ~5×.
   const totalTokens = inputEquivalentTokens(panel.tokens);
 
-  return (
-    <header
-      className="panel-header"
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest('button')) return;
-        if (panel.status !== 'live') {
-          // Open the whole panel in a lightbox so done/mini panels can still be inspected.
-          lightbox.open(<PanelLightboxContent panel={panel} />, { theme: panel.theme });
+  // Leading column: status light on top. Mini panels also get a × (and
+  // trash for non-tray contexts) below it, separated by a rotated-T
+  // border that mirrors the project-widget treatment. Live and done
+  // panels keep the floating tool palette for ×, so the leading column
+  // shows only the status light.
+  const statusLight =
+    onRestore || onTogglePin ? (
+      <StatusLight
+        ended={panel.ended}
+        pinned={pinned}
+        spinDir={spinDir}
+        ariaPressed={onRestore ? undefined : !!pinned}
+        title={
+          onRestore
+            ? `Restore to the grid · ${statusIconTitle(panel.status, !!waiting, !!pinned)}`
+            : pinned
+              ? `Unpin · ${statusIconTitle(panel.status, !!waiting, true)}`
+              : `Pin · ${statusIconTitle(panel.status, !!waiting, false)}`
         }
-      }}
-    >
-      {onRestore || onTogglePin ? (
-        <button
-          type="button"
-          className={classNames(
-            'panel-status-slot',
-            'panel-status-slot-button',
-            pinned && 'pinned',
-          )}
-          title={
-            onRestore
-              ? `Restore to the grid · ${statusIconTitle(panel.status, !!waiting, !!pinned)}`
-              : pinned
-                ? `Unpin · ${statusIconTitle(panel.status, !!waiting, true)}`
-                : `Pin · ${statusIconTitle(panel.status, !!waiting, false)}`
-          }
-          aria-pressed={onRestore ? undefined : !!pinned}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onRestore) onRestore();
-            else onTogglePin?.();
-          }}
-        >
-          {panel.ended ? (
-            <CheckGlyph />
-          ) : (
-            <span
-              className={classNames(
-                'panel-status-icon',
-                spinDir === 'cw' && 'panel-status-icon-spin-cw',
-                spinDir === 'ccw' && 'panel-status-icon-spin-ccw',
-              )}
-              aria-hidden="true"
-            />
-          )}
-        </button>
-      ) : (
-        <span
-          className="panel-status-slot"
-          title={statusIconTitle(panel.status, !!waiting, !!pinned)}
-        >
-          {panel.ended ? <CheckGlyph /> : <span className="panel-status-icon" aria-hidden="true" />}
-        </span>
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onRestore) onRestore();
+          else onTogglePin?.();
+        }}
+      />
+    ) : (
+      <StatusLight
+        ended={panel.ended}
+        title={statusIconTitle(panel.status, !!waiting, !!pinned)}
+      />
+    );
+
+  // Leading is at most 2 items so the rotated-T divider matches the
+  // project-widget design. Mini panels get the × stacked below the
+  // status light; trash lives in the subtitle aside (hover-revealed)
+  // so it doesn't crowd this column.
+  const showLeadingClose = panel.status === 'mini' && !!onHide && !onRestore;
+  const leading = (
+    <>
+      {statusLight}
+      {showLeadingClose && (
+        <BlacklistableCloseButton
+          label={panel.title || panel.id}
+          sessionIds={[panel.id]}
+          onClose={onHide!}
+          className="panel-leading-close"
+          title="Close this window. Shift-click to blacklist this session permanently. The session keeps running otherwise."
+        />
       )}
-      <span className="panel-titles">
-        <TruncationTooltip text={panel.title}>
-          <span className={classNames('panel-title', useTitleFlash(panel.autoTitledAt) && 'flash')}>
-            {panel.manually_renamed && (
-              <span
-                className="panel-title-manual-glyph"
-                aria-label="title set manually via /rename"
-                title="Title set manually via /rename"
-              >
-                ❖
-              </span>
-            )}
-            {renderInlineCode(panel.title)}
-          </span>
-        </TruncationTooltip>
-        <span className="panel-subtitle-row">
-          {panel.kind === 'subagent' && panel.agent_type ? (
-            <span className="panel-subtitle">{panel.agent_type}</span>
-          ) : panel.cwd ? (
-            <TruncationTooltip text={panel.cwd}>
-              <span className="panel-subtitle panel-subtitle-cwd">{projectLabel(panel.cwd)}</span>
-            </TruncationTooltip>
-          ) : null}
-          {worktree && (
-            <span
-              className="panel-worktree-chip"
-              title={`worktree: ${worktree.key}`}
-              aria-label={`worktree ${worktree.name} on ${worktree.repo}`}
-            >
-              <span className="panel-worktree-swatch" aria-hidden="true" />
-              {worktree.name}
-            </span>
-          )}
-          {brokenOut && parentTitle && (
-            <button
-              type="button"
-              className="panel-parent-breadcrumb"
-              title={`Re-dock into "${parentTitle}"`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleBrokenOut?.();
-              }}
-            >
-              <span aria-hidden="true">↩</span> {parentTitle}
-            </button>
-          )}
-          {account && (
-            <span className="panel-account" title={`account: ${account}`}>
-              {account}
-            </span>
-          )}
-          {panel.status === 'mini' && !showWaitingBadge && (
-            <span className="panel-idle-inline">{idleLabel}</span>
-          )}
-        </span>
-      </span>
-      <span className="panel-meta">
-        <span className="panel-meta-row panel-meta-row-top">
-          {showWaitingBadge ? (
-            <span
-              className="panel-waiting-badge"
-              title="awaiting response from the model"
-              aria-live="polite"
-            >
-              <span className="panel-waiting-spinner" aria-hidden="true" />
-              <span className="panel-waiting-elapsed">{waitingLabel}</span>
-            </span>
-          ) : (
-            panel.status !== 'mini' && <span className="panel-idle">{idleLabel}</span>
-          )}
-          <HeaderActions panel={panel} onHide={onHide} onRestore={onRestore} readOnly={readOnly} />
-        </span>
-        {panel.status !== 'mini' && !onRestore && (
-          <span className="panel-meta-row panel-meta-row-bottom">
-            <HoverPopover
-              className="panel-session-time"
-              content={<SessionTimeTooltip startedAt={panel.started_at} isLive={isLive} />}
-            >
-              <span aria-label="total session time">
-                {formatIdleCoarse(
-                  Math.max(0, (isLive ? now : panel.last_event_at) - panel.started_at),
-                )}
-              </span>
-            </HoverPopover>
-            {totalTokens > 0 && (
-              <HoverPopover
-                className={classNames('panel-tokens', `cache-${cacheHealth(panel.tokens)}`)}
-                content={<TokenTooltip tokens={panel.tokens} />}
-              >
-                <span aria-label="token usage">{formatTokens(totalTokens)}</span>
-              </HoverPopover>
-            )}
-            {panel.context_size > 0 && (
-              <HoverPopover
-                className="panel-context"
-                content={
-                  <ContextSizeTooltip
-                    contextSize={panel.context_size}
-                    hookOverheadTokens={panel.hook_overhead_tokens}
-                  />
-                }
-              >
-                <span aria-label="context window size">{formatTokens(panel.context_size)}</span>
-              </HoverPopover>
-            )}
+    </>
+  );
+
+  const titleNode = (
+    <TruncationTooltip text={panel.title}>
+      <span className={classNames('panel-title', useTitleFlash(panel.autoTitledAt) && 'flash')}>
+        {panel.manually_renamed && (
+          <span
+            className="panel-title-manual-glyph"
+            aria-label="title set manually via /rename"
+            title="Title set manually via /rename"
+          >
+            ❖
           </span>
         )}
+        {renderInlineCode(panel.title)}
       </span>
-    </header>
+    </TruncationTooltip>
   );
-}
 
-function HeaderActions({
-  panel,
-  onHide,
-  onRestore,
-  readOnly,
-}: {
-  panel: PanelState;
-  onHide?: () => void;
-  onRestore?: () => void;
-  readOnly?: boolean;
-}) {
-  // When the panel lives in the tray (onRestore provided), we swap `×` for
-  // a restore affordance. A tray panel doesn't need closing — it's already
-  // out of the way — but it does need an unmini.
-  const inTray = !!onRestore;
-  return (
+  // Title row right side: worktree chip + idle/waiting label. The
+  // waiting badge (spinner + elapsed) takes over when the panel is
+  // pending; otherwise the static idle counter shows.
+  const titleAside = (
     <>
-      {/* Live panels host popout / fullscreen / close in the floating
-       * PanelToolPalette; the header only renders these for done/mini. */}
+      {worktree && (
+        <span
+          className="panel-worktree-chip"
+          title={`worktree: ${worktree.key}`}
+          aria-label={`worktree ${worktree.name} on ${worktree.repo}`}
+        >
+          <span className="panel-worktree-swatch" aria-hidden="true" />
+          {worktree.name}
+        </span>
+      )}
+      {showWaitingBadge ? (
+        <span
+          className="panel-waiting-badge"
+          title="awaiting response from the model"
+          aria-live="polite"
+        >
+          <span className="panel-waiting-spinner" aria-hidden="true" />
+          <span className="panel-waiting-elapsed">{waitingLabel}</span>
+        </span>
+      ) : (
+        <span className={panel.status === 'mini' ? 'panel-idle-inline' : 'panel-idle'}>
+          {idleLabel}
+        </span>
+      )}
+    </>
+  );
+
+  const subtitleNode =
+    panel.kind === 'subagent' && panel.agent_type ? (
+      <span className="panel-subtitle">{panel.agent_type}</span>
+    ) : panel.cwd ? (
+      <TruncationTooltip text={panel.cwd}>
+        <span className="panel-subtitle panel-subtitle-cwd">{projectLabel(panel.cwd)}</span>
+      </TruncationTooltip>
+    ) : undefined;
+
+  // Subtitle row right side: breadcrumb back to parent (if broken-out),
+  // account chip, then the meta capsule trio (session-time / tokens /
+  // context). Mini panels suppress the meta trio — their footprint is
+  // a single row, so the bottom stats would crowd. Mini panels also
+  // host the trash button here (hover-revealed), since the leading
+  // column is reserved for the rotated-T status-light + × pair.
+  const subtitleAside = (
+    <>
+      {brokenOut && parentTitle && (
+        <button
+          type="button"
+          className="panel-parent-breadcrumb"
+          title={`Re-dock into "${parentTitle}"`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleBrokenOut?.();
+          }}
+        >
+          <span aria-hidden="true">↩</span> {parentTitle}
+        </button>
+      )}
+      {account && (
+        <span className="panel-account" title={`account: ${account}`}>
+          {account}
+        </span>
+      )}
       {panel.status === 'mini' && !readOnly && (
         <button
           type="button"
@@ -667,22 +627,104 @@ function HeaderActions({
           />
         </button>
       )}
-      {/* Live + done panels have × in the floating palette; mini keeps it
-       * in the header since the palette doesn't render there. */}
-      {!inTray && panel.status === 'mini' && onHide && (
-        <button
-          type="button"
-          className="panel-btn"
-          title="Close this window. The session keeps running; this panel reappears on new activity."
-          onClick={(e) => {
-            e.stopPropagation();
-            onHide();
-          }}
-        >
-          ×
-        </button>
+      {panel.status !== 'mini' && !onRestore && (
+        <>
+          <HoverPopover
+            className="panel-session-time"
+            content={<SessionTimeTooltip startedAt={panel.started_at} isLive={isLive} />}
+          >
+            <span aria-label="total session time">
+              {formatIdleCoarse(
+                Math.max(0, (isLive ? now : panel.last_event_at) - panel.started_at),
+              )}
+            </span>
+          </HoverPopover>
+          {totalTokens > 0 && (
+            <HoverPopover
+              className={classNames('panel-tokens', `cache-${cacheHealth(panel.tokens)}`)}
+              content={<TokenTooltip tokens={panel.tokens} />}
+            >
+              <span aria-label="token usage">{formatTokens(totalTokens)}</span>
+            </HoverPopover>
+          )}
+          {panel.context_size > 0 && (
+            <HoverPopover
+              className="panel-context"
+              content={
+                <ContextSizeTooltip
+                  contextSize={panel.context_size}
+                  hookOverheadTokens={panel.hook_overhead_tokens}
+                />
+              }
+            >
+              <span aria-label="context window size">{formatTokens(panel.context_size)}</span>
+            </HoverPopover>
+          )}
+        </>
       )}
     </>
+  );
+
+  return (
+    <TitleBar
+      className="panel-header"
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('button')) return;
+        // Mini panels in the tray render as just-a-header — clicking
+        // anywhere on that header should fully restore the session to
+        // a full-sized window, matching what the status-icon button
+        // already does. Without this, the header click opens the
+        // lightbox instead, which is the right behavior for *done*
+        // panels (inspect-in-place) but wrong for *mini* (the user is
+        // bringing the session back).
+        if (panel.status === 'mini' && onRestore) {
+          onRestore();
+          return;
+        }
+        if (panel.status !== 'live') {
+          // Open the whole panel in a lightbox so done panels can still be inspected.
+          lightbox.open(<PanelLightboxContent panel={panel} />, { theme: panel.theme });
+        }
+      }}
+      leading={leading}
+      title={titleNode}
+      titleAside={titleAside}
+      subtitle={subtitleNode}
+      subtitleAside={subtitleAside}
+    />
+  );
+}
+
+function BlacklistableCloseButton({
+  label,
+  sessionIds,
+  onClose,
+  className = 'panel-btn',
+  title = 'Close. Shift-click to blacklist this session permanently.',
+}: {
+  label: string;
+  sessionIds: string[];
+  onClose: () => void;
+  className?: string;
+  title?: string;
+}) {
+  const lightbox = useLightbox();
+  return (
+    <button
+      type="button"
+      className={className}
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.shiftKey) {
+          lightbox.open(<BlacklistConfirm label={label} sessionIds={sessionIds} />);
+          return;
+        }
+        onClose();
+      }}
+    >
+      ×
+    </button>
   );
 }
 
@@ -1172,30 +1214,6 @@ function PanelLightboxContent({ panel }: { panel: PanelState }) {
 }
 
 /** Multi-line tooltip with the per-bucket token breakdown + model. */
-/**
- * Checkmark used in the status slot when the server is sure a session has
- * ended (panel.ended === true — set by SubagentStop, Stop hooks, etc.).
- * Replaces the LED glyph; the slot still pins/unpins on click.
- */
-function CheckGlyph() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="panel-status-check"
-      aria-hidden="true"
-    >
-      <polyline points="4 12 10 18 20 6" />
-    </svg>
-  );
-}
 
 function statusIconTitle(
   status: 'live' | 'done' | 'mini',

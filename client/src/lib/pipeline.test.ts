@@ -137,22 +137,56 @@ describe('preprocessEvents', () => {
     expect(pending).toBe(true);
   });
 
+  it('pending stays true through a mid-turn tool_use (model is still working)', () => {
+    const { pending } = preprocessEvents([userText('go'), toolUse('t1')]);
+    expect(pending).toBe(true);
+  });
+
   it('routes thinking/system/meta into their own item types', () => {
-    // Sandwich them with bubbles so the between-chats collapse doesn't
-    // wrap them into a single op-strip.
+    // Each is sandwiched as a singleton between bubbles so the
+    // between-chats collapse passes them through. Thinking is placed
+    // after its asstText (not before) so the assistant-bubble fold
+    // rule doesn't absorb it — that absorption is tested separately
+    // below.
     const { items } = preprocessEvents([
       userText('a'),
-      ev('thinking', { text: 'hmm' }),
       asstText(`a long enough message\n\nto avoid folding as an ack`),
-      ev('system', { subtype: null, content: 'note', level: null }),
+      ev('thinking', { text: 'hmm' }),
       userText('b'),
-      ev('meta', { raw: {} }),
+      ev('system', { subtype: null, content: 'note', level: null }),
       asstText(`another long enough message\n\nto avoid folding`),
+      ev('meta', { raw: {} }),
+      userText('c'),
     ]);
     const kinds = items.map((i) => i.type);
     expect(kinds).toContain('thinking');
     expect(kinds).toContain('system');
     expect(kinds).toContain('meta');
+  });
+
+  it('drops redacted (empty-text) thinking events entirely', () => {
+    // Modern Claude transcripts often ship `thinking: ""` + a non-empty
+    // signature (encrypted/redacted internal reasoning). Without this
+    // filter, every such block renders as an empty thought bubble
+    // stranded above the assistant's actual reply.
+    const { items } = preprocessEvents([
+      userText('a'),
+      ev('thinking', { text: '' }),
+      asstText(`my answer\n\nwith enough text to avoid the tool-ack fold`),
+    ]);
+    expect(items.map((i) => i.type)).not.toContain('thinking');
+    const bubble = items.find((i) => i.type === 'bubble' && i.role === 'assistant');
+    expect(bubble?.type).toBe('bubble');
+  });
+
+  it('keeps visible thinking as its own standalone item', () => {
+    const { items } = preprocessEvents([
+      userText('a'),
+      ev('thinking', { text: 'pondering' }),
+      asstText(`my answer\n\nwith enough text to avoid the tool-ack fold`),
+    ]);
+    expect(items.map((i) => i.type)).toContain('thinking');
+    expect(items.map((i) => i.type)).toContain('bubble');
   });
 
   it('coalesces consecutive file ops on the same path into a file-change item', () => {

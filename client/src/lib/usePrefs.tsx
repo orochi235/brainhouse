@@ -81,6 +81,9 @@ export interface ClientPrefs {
   debug: {
     enabled: boolean;
   };
+  blacklist: {
+    sessionIds: string[];
+  };
 }
 
 const DEFAULT_PREFS: ClientPrefs = {
@@ -123,6 +126,7 @@ const DEFAULT_PREFS: ClientPrefs = {
     audibleChime: false,
   },
   debug: { enabled: false },
+  blacklist: { sessionIds: [] },
 };
 
 interface PrefsContextValue {

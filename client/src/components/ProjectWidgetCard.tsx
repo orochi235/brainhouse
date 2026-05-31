@@ -19,9 +19,18 @@
  */
 
 import classNames from 'classnames';
-import { type CSSProperties } from 'react';
-import type { ProjectRollup, ProjectRollupSessionRow } from '../lib/projectWidgets.ts';
+import { type CSSProperties, useEffect, useMemo, useState } from 'react';
+import {
+  aggregateProjectStatus,
+  type ProjectRollup,
+  type ProjectRollupSessionRow,
+} from '../lib/projectWidgets.ts';
+import { trpc } from '../trpc.ts';
+import { useLightbox } from '../lib/lightbox.tsx';
 import { worktreeColor } from '../lib/worktree.ts';
+import { BlacklistConfirm } from './BlacklistConfirm.tsx';
+import { StatusLight } from './StatusLight.tsx';
+import { TitleBar } from './TitleBar.tsx';
 
 export function ProjectWidgetCard({
   rollup,
@@ -36,8 +45,18 @@ export function ProjectWidgetCard({
   onTogglePin?: () => void;
   onClose?: () => void;
 }) {
-  const { widget, theme, account_label, sessionCount, fileCount, totalTokens, recentSessions } =
-    rollup;
+  const { widget, theme, account_label, fileCount, totalTokens, recentSessions } = rollup;
+  // The in-memory `recentSessions` covers only currently-tracked panels
+  // (live/done/mini). Older sessions get reaped after their mini window
+  // expires, so a project with a long history would otherwise show just
+  // 1–2 entries. Pull the historical list from the server's persistent
+  // `session_summary` table and merge — live rows win on collision so
+  // their status stays accurate. Best-effort: if the query fails, fall
+  // back to the in-memory list.
+  const { sessions: mergedSessions, totalCount } = useMergedProjectSessions(
+    widget.cwd,
+    recentSessions,
+  );
 
   const styleVars: CSSProperties & Record<string, string> = {
     ['--panel-worktree-color']: worktreeColor(widget.repo),
@@ -47,71 +66,76 @@ export function ProjectWidgetCard({
     styleVars['--panel-theme-fg'] = theme.foreground;
   }
 
+  const agg = aggregateProjectStatus(rollup);
+
+  // Compose the leading column: status light on top, optional close
+  // below. CSS gives the column a rotated-T border so the two sit in
+  // visually-distinct cells.
+  const leading = (
+    <>
+      <StatusLight
+        title={`${rollup.widget.repo} — ${agg.status}${
+          agg.ended ? ' · all ended' : agg.awaitingInput ? ' · awaiting input' : ''
+        }${pinned ? ' · pinned' : ''}${onTogglePin ? ' · click to toggle pin' : ''}`}
+        ended={agg.ended}
+        pinned={pinned}
+        ariaPressed={onTogglePin ? !!pinned : undefined}
+        onClick={
+          onTogglePin
+            ? (e) => {
+                e.stopPropagation();
+                onTogglePin();
+              }
+            : undefined
+        }
+      />
+      {onClose && (
+        <ProjectWidgetCloseButton
+          rollup={rollup}
+          mergedSessions={mergedSessions}
+          onClose={onClose}
+        />
+      )}
+    </>
+  );
+
   return (
     <article
-      className={classNames('panel project-widget', theme && 'has-theme')}
+      className={classNames(
+        'panel project-widget',
+        `status-${agg.status}`,
+        agg.ended && 'ended',
+        agg.awaitingInput && 'awaiting-input',
+        theme && 'has-theme',
+      )}
       style={styleVars}
     >
-      <header className="panel-header project-widget-header">
-        {(onTogglePin || onClose) && (
-          <div className="project-widget-actions" aria-label="widget actions">
-            {onTogglePin && (
-              <button
-                type="button"
-                className={classNames(
-                  'project-widget-action',
-                  'project-widget-action-pin',
-                  pinned && 'is-active',
-                )}
-                title={pinned ? 'Unpin widget' : 'Pin widget (always show as a tile)'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTogglePin();
-                }}
-              >
-                {pinned ? '📌' : '📍'}
-              </button>
-            )}
-            {onClose && (
-              <button
-                type="button"
-                className="project-widget-action project-widget-action-close"
-                title="Hide this project widget (returns on new activity)"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClose();
-                }}
-              >
-                ×
-              </button>
-            )}
-          </div>
-        )}
-        <div className="project-widget-header-body">
-          <div className="project-widget-header-row">
-            <span className="project-widget-title">{widget.repo}</span>
-            <span className="project-widget-kind">project</span>
-          </div>
-          <div className="project-widget-meta-row">
-            <span className="project-widget-path" title={widget.cwd}>
-              {widget.cwd}
-            </span>
-            {account_label && (
-              <span className="project-widget-account">{account_label}</span>
-            )}
-          </div>
-        </div>
-      </header>
+      <TitleBar
+        className="project-widget-header"
+        leading={leading}
+        title={<span className="project-widget-title">{widget.repo}</span>}
+        titleAside={<span className="project-widget-kind">project</span>}
+        subtitle={
+          <span className="project-widget-path" title={widget.cwd}>
+            {widget.cwd}
+          </span>
+        }
+        subtitleAside={
+          account_label ? (
+            <span className="project-widget-account">{account_label}</span>
+          ) : undefined
+        }
+      />
       <div className="project-widget-stats">
-        <Stat label="sessions" value={sessionCount} />
+        <Stat label="sessions" value={totalCount} />
         <Stat label="files" value={fileCount} />
         <Stat label="tokens" value={formatTokens(totalTokens)} />
       </div>
       <ul className="project-widget-sessions">
-        {recentSessions.length === 0 && (
+        {mergedSessions.length === 0 && (
           <li className="project-widget-sessions-empty">no sessions loaded</li>
         )}
-        {recentSessions.map((s) => (
+        {mergedSessions.map((s) => (
           <SessionRow key={s.id} row={s} onOpen={onOpenSession} />
         ))}
       </ul>
@@ -157,6 +181,63 @@ export function ProjectWidgetChip({
   );
 }
 
+/** Merge the in-memory recent-sessions list with the persistent
+ * `session_summary` table for this project's root. Live entries win on
+ * id collision so their live status (awaiting input, ended, etc.) keeps
+ * displaying correctly; historical rows fill in everything older that
+ * has aged out of the in-memory map. */
+function useMergedProjectSessions(
+  root: string,
+  liveRows: ProjectRollupSessionRow[],
+): { sessions: ProjectRollupSessionRow[]; totalCount: number } {
+  const [historical, setHistorical] = useState<ProjectRollupSessionRow[]>([]);
+
+  useEffect(() => {
+    if (!root) return;
+    let cancelled = false;
+    trpc.sessions.forProject
+      .query({ root, limit: 200, parentOnly: true })
+      .then((data) => {
+        if (cancelled) return;
+        const rows: ProjectRollupSessionRow[] = data.sessions.map((s) => ({
+          id: s.session_id,
+          title: s.title ?? '',
+          // Historical rows are no longer in the live lifecycle. Render
+          // them as `done` so the dot styling stays consistent; the
+          // ended flag below dims them so users can tell at a glance.
+          status: 'done',
+          last_event_at: s.ended_at,
+          started_at: s.started_at,
+          awaiting_input: false,
+          ended: true,
+          // session_summary doesn't store token totals — historical
+          // rows contribute 0 to the per-row chip. The widget-level
+          // token stat still comes from in-memory panels only (noted
+          // there).
+          tokens: 0,
+        }));
+        setHistorical(rows);
+      })
+      .catch(() => {
+        // Server-down / persistence-off: leave historical empty and let
+        // the live-only list render. The widget keeps working.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [root]);
+
+  return useMemo(() => {
+    const byId = new Map<string, ProjectRollupSessionRow>();
+    for (const h of historical) byId.set(h.id, h);
+    for (const l of liveRows) byId.set(l.id, l); // live wins
+    const sessions = Array.from(byId.values()).sort(
+      (a, b) => b.last_event_at - a.last_event_at,
+    );
+    return { sessions, totalCount: sessions.length };
+  }, [historical, liveRows]);
+}
+
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="project-widget-stat">
@@ -192,6 +273,42 @@ function SessionRow({
         <span className="project-widget-session-age">{ageLabel}</span>
       </button>
     </li>
+  );
+}
+
+function ProjectWidgetCloseButton({
+  rollup,
+  mergedSessions,
+  onClose,
+}: {
+  rollup: ProjectRollup;
+  mergedSessions: ProjectRollupSessionRow[];
+  onClose: () => void;
+}) {
+  const lightbox = useLightbox();
+  return (
+    <button
+      type="button"
+      className="project-widget-action project-widget-action-close"
+      title="Hide this project widget. Shift-click to blacklist every session in this project."
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.shiftKey) {
+          const ids = mergedSessions.map((s) => s.id).filter(Boolean);
+          if (ids.length === 0) {
+            onClose();
+            return;
+          }
+          lightbox.open(
+            <BlacklistConfirm label={rollup.widget.repo} sessionIds={ids} />,
+          );
+          return;
+        }
+        onClose();
+      }}
+    >
+      ×
+    </button>
   );
 }
 

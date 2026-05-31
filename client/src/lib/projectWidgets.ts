@@ -73,6 +73,40 @@ export interface ProjectRollup {
 const FILE_TOOL_NAMES = new Set(['Read', 'Edit', 'Write', 'MultiEdit']);
 const RECENT_SESSIONS_CAP = 8;
 
+/** Project-widget aggregate status — collapses every session in the
+ * rollup into one of the canonical panel statuses for use with
+ * `<StatusLight>` + the existing `.status-*` CSS cascade.
+ *
+ * Priority: live > done > mini. Awaiting-input and pending (waiting on
+ * model) are surfaced separately as booleans so callers can decorate
+ * the wrapper with `.awaiting-input` / `.waiting` like a session
+ * article does. `ended` is true only when every session has ended.
+ */
+export function aggregateProjectStatus(rollup: ProjectRollup): {
+  status: PanelState['status'];
+  ended: boolean;
+  awaitingInput: boolean;
+} {
+  const rows = rollup.recentSessions;
+  if (rows.length === 0) {
+    return { status: 'mini', ended: false, awaitingInput: false };
+  }
+  let live = false;
+  let done = false;
+  let mini = false;
+  let awaitingInput = false;
+  let allEnded = true;
+  for (const r of rows) {
+    if (r.status === 'live') live = true;
+    else if (r.status === 'done') done = true;
+    else if (r.status === 'mini') mini = true;
+    if (r.awaiting_input) awaitingInput = true;
+    if (!r.ended) allEnded = false;
+  }
+  const status: PanelState['status'] = live ? 'live' : done ? 'done' : mini ? 'mini' : 'done';
+  return { status, ended: allEnded, awaitingInput };
+}
+
 const NO_REPO_KEY = '__no_repo__';
 
 /** Build the widget key for a panel. Priority:

@@ -1,6 +1,6 @@
 import classNames from 'classnames';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
-import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnTooltip } from './components/ConnTooltip.tsx';
 import { DebugTile } from './components/DebugTile.tsx';
 import { FlowsModal } from './components/FlowsModal.tsx';
@@ -24,6 +24,7 @@ import {
 } from './lib/panelOrder.ts';
 import { useTheme } from './lib/preferences.ts';
 import { clearScrollPosition } from './lib/scrollMemory.ts';
+import { withViewTransition } from './lib/viewTransition.ts';
 import { buildProjectRollups } from './lib/projectWidgets.ts';
 import { allocateSlots } from './lib/slotAllocator.ts';
 import { useAwaitingNotifications } from './lib/useAwaitingNotifications.ts';
@@ -190,15 +191,34 @@ function useReplayEntry(): ReplaySource | ReplayInlineSource | null {
 }
 
 function AppMain() {
-  const debugMode = new URLSearchParams(window.location.search).get('debug') === '1';
+  const searchParams = new URLSearchParams(window.location.search);
+  const debugMode = searchParams.get('debug') === '1';
+  const freezeMode = searchParams.get('freeze') === '1';
   useEffect(() => {
     if (!debugMode) return;
     document.body.setAttribute('data-debug', '1');
     return () => document.body.removeAttribute('data-debug');
   }, [debugMode]);
-  const { status, panels } = useDeltaStream();
+  useEffect(() => {
+    if (!freezeMode) return;
+    document.body.setAttribute('data-freeze', '1');
+    return () => document.body.removeAttribute('data-freeze');
+  }, [freezeMode]);
+  const { status, panels: allPanels } = useDeltaStream();
   const [theme, setTheme] = useTheme();
   const { prefs, refetch: refetchPrefs } = usePrefs();
+  // Filter out blacklisted session IDs before anything downstream touches
+  // the panel set — that way every consumer (notifications, project
+  // rollups, slot allocator, the grid/dock render trees) sees a
+  // consistent reduced view, and unblacklisting (via PrefsModal) brings
+  // panels back on the next refetch.
+  const panels = useMemo(() => {
+    const blocked = new Set(prefs.blacklist.sessionIds);
+    if (blocked.size === 0) return allPanels;
+    const out = new Map(allPanels);
+    for (const id of blocked) out.delete(id);
+    return out;
+  }, [allPanels, prefs.blacklist.sessionIds]);
   useAwaitingNotifications(panels, prefs.notifications);
 
   // Suppress mount animations during the initial render burst — when the
@@ -302,8 +322,10 @@ function AppMain() {
       if (!id) return;
       const srcPanel = panels.get(id);
       if (!srcPanel) return;
-      if (!brokenOut.has(id)) toggleBrokenOut(id);
-      if (isClientMini(srcPanel)) restoreLocal(id);
+      withViewTransition(() => {
+        if (!brokenOut.has(id)) toggleBrokenOut(id);
+        if (isClientMini(srcPanel)) restoreLocal(id);
+      });
     };
     window.addEventListener('brainhouse:promote-subagent', onPromote);
     return () => window.removeEventListener('brainhouse:promote-subagent', onPromote);
@@ -465,13 +487,16 @@ function AppMain() {
     if (orderedGridPanels.length > 0) return;
     const liveTray = trayPanels.filter((p) => p.status === 'live');
     if (liveTray.length === 0) return;
-    for (const p of liveTray) {
-      clearScrollPosition(p.id);
-      const isClient =
-        clientMiniPanels.some((m) => m.id === p.id) || clientMiniSubs.some((m) => m.id === p.id);
-      if (isClient) restoreLocal(p.id);
-      else trpc.restore.mutate({ panelId: p.id });
-    }
+    withViewTransition(() => {
+      for (const p of liveTray) {
+        clearScrollPosition(p.id);
+        const isClient =
+          clientMiniPanels.some((m) => m.id === p.id) ||
+          clientMiniSubs.some((m) => m.id === p.id);
+        if (isClient) restoreLocal(p.id);
+        else trpc.restore.mutate({ panelId: p.id });
+      }
+    });
   }, [panels]);
 
   // Project widgets: one card per observed repo, with a rollup of
@@ -485,14 +510,32 @@ function AppMain() {
     // moves — same semantics as session dismiss.
     !isHidden({ id: r.widget.id, last_event_at: r.widget.last_event_at } as PanelState),
   );
-  // Widgets are *fill-only*: we render just enough of them to bring the
-  // grid up to `slotCount` once sessions claim their slots. A pinned
-  // widget (pseudo-id `project:<repo>`) always shows regardless of the
-  // fill budget, mirroring how pinned session panels work.
+  // Widgets are *fill-only*: a true last resort. We render them only in
+  // grid slots that no real session needs. Three subtractions go into
+  // the budget:
+  //   - the cells already consumed by grid panels (one each, plus an
+  //     extra cell for every wide panel, since wide consumes two);
+  //   - the debug tile's reserved slot (when ?debug=1);
+  //   - any live tray panels. A live session sitting in the dock —
+  //     whether server-mini'd through idle-out or user-mini'd by the
+  //     user — has a "rightful claim" on a slot, and widgets must
+  //     defer. This keeps the user from seeing project widgets in the
+  //     main grid while a real session is parked in the minibar.
+  //
+  // A pinned widget (pseudo-id `project:<repo>`) always shows
+  // regardless of the fill budget, mirroring how pinned session
+  // panels work.
+  const wideCountForBudget = orderedGridPanels.reduce(
+    (n, p) => n + (wide.has(p.id) ? 1 : 0),
+    0,
+  );
+  const liveTrayCount = trayPanels.filter((p) => p.status === 'live').length;
   const widgetSlotBudget = Math.max(
     0,
     prefs.workspace.slotCount -
       orderedGridPanels.length -
+      wideCountForBudget -
+      liveTrayCount -
       (debugMode ? 1 : 0),
   );
   const pinnedRollups: typeof allProjectRollups = [];
@@ -506,11 +549,28 @@ function AppMain() {
   const dockRollups = unpinnedRollups.slice(widgetSlotBudget);
   const openSessionFromWidget = (sessionId: string) => {
     const panel = panels.get(sessionId);
-    if (!panel) return;
-    // Restore from tray/dock if needed.
-    if (clientMiniPanels.some((m) => m.id === sessionId)) restoreLocal(sessionId);
-    else if (panel.status === 'mini') trpc.restore.mutate({ panelId: sessionId });
-    // Then scroll into view on next paint.
+    if (!panel) {
+      // Historical row from the session_summary merge — the panel was
+      // reaped from the in-memory map after its mini lifecycle expired.
+      // We don't currently have a re-hydrate path that pulls a reaped
+      // panel back from disk; click is a no-op for these. (TODO: a
+      // server-side `reopenSession` that re-creates the panel row +
+      // replays events from JSONL.)
+      return;
+    }
+    // Clear *all* local dismissal intentions for this id —
+    // `hidden_at`, `user_mini`, `auto_mini_at` — so a panel parked in
+    // the dock OR fully hidden both return to the grid. The call is a
+    // no-op if none of those flags are set.
+    withViewTransition(() => {
+      restoreLocal(sessionId);
+      // Server-side mini panels need the server to step them back to
+      // done so they re-allocate into a primary slot. `restore` ignores
+      // ids that aren't mini, so it's safe to call regardless of the
+      // local clear above.
+      if (panel.status === 'mini') trpc.restore.mutate({ panelId: sessionId });
+    });
+    // Scroll into view once the next paint has the tile in the DOM.
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-panel-id="${sessionId}"]`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -519,8 +579,9 @@ function AppMain() {
 
   // Wide panels consume two cells; everything else consumes one. We pass the
   // total slot count to the layout hook so a 4-panel grid with one wide panel
-  // becomes a 5-slot tile (still picks a nice integer cols/rows).
-  const wideCount = orderedGridPanels.reduce((n, p) => n + (wide.has(p.id) ? 1 : 0), 0);
+  // becomes a 5-slot tile (still picks a nice integer cols/rows). Mirrors
+  // `wideCountForBudget` above — kept separate so each consumer is local.
+  const wideCount = wideCountForBudget;
   // Debug mode adds an extra grid-slot for the DebugTile; include it in
   // the layout count so the grid sizes its rows for n+1 items instead of
   // overflowing into a 0-height auto-row.
@@ -643,14 +704,18 @@ function AppMain() {
             if (from === 'nested') {
               const srcPanel = panels.get(id);
               if (!srcPanel) return;
-              if (!brokenOut.has(id)) toggleBrokenOut(id);
-              if (isClientMini(srcPanel)) restoreLocal(id);
+              withViewTransition(() => {
+                if (!brokenOut.has(id)) toggleBrokenOut(id);
+                if (isClientMini(srcPanel)) restoreLocal(id);
+              });
               return;
             }
             // Client-mini panels live entirely in client state; restoring them
             // is a local op. Server-mini panels need an explicit trpc.restore.
-            if (clientMiniPanels.some((p) => p.id === id)) restoreLocal(id);
-            else trpc.restore.mutate({ panelId: id });
+            withViewTransition(() => {
+              if (clientMiniPanels.some((p) => p.id === id)) restoreLocal(id);
+              else trpc.restore.mutate({ panelId: id });
+            });
           }}
         >
           <AnimatePresence initial={false}>
@@ -761,8 +826,10 @@ function AppMain() {
               e.preventDefault();
               e.stopPropagation();
               // Break out of the parent's tray AND client-mini onto the dock.
-              if (!brokenOut.has(id)) toggleBrokenOut(id);
-              if (!isClientMini(srcPanel)) dismiss(srcPanel);
+              withViewTransition(() => {
+                if (!brokenOut.has(id)) toggleBrokenOut(id);
+                if (!isClientMini(srcPanel)) dismiss(srcPanel);
+              });
             }}
           >
             <AnimatePresence initial={false}>
@@ -779,9 +846,11 @@ function AppMain() {
                     // remounts so its useLayoutEffect snaps cleanly.
                     clearScrollPosition(p.id);
                     // Client-mini panels restore locally; server-mini ones need trpc.
-                    if (clientMiniPanels.some((m) => m.id === p.id)) restoreLocal(p.id);
-                    else if (clientMiniSubs.some((m) => m.id === p.id)) restoreLocal(p.id);
-                    else trpc.restore.mutate({ panelId: p.id });
+                    withViewTransition(() => {
+                      if (clientMiniPanels.some((m) => m.id === p.id)) restoreLocal(p.id);
+                      else if (clientMiniSubs.some((m) => m.id === p.id)) restoreLocal(p.id);
+                      else trpc.restore.mutate({ panelId: p.id });
+                    });
                   }}
                   pinned={pinned.has(p.id)}
                   onTogglePin={() => togglePin(p.id)}

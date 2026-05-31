@@ -30,6 +30,14 @@ export const defaultEventItem: Stage1Transform = {
     'Wraps thinking, system, and meta events as view items. Drops meta records that exist only to update panel-level state (subagent-meta, custom-title, agent-name).',
   run(event, items) {
     if (event.kind === 'thinking') {
+      // Drop *redacted* thinking — Claude's encrypted-signature variant
+      // ships an empty `text` and a non-empty signature. Without this,
+      // every redacted block renders as an empty thought bubble
+      // stranded above the assistant's real reply. We keep visible
+      // thinking (non-empty text) so genuine extended-thinking output
+      // still surfaces as its own bubble.
+      const text = (event.payload as { text?: unknown }).text;
+      if (typeof text !== 'string' || text.trim() === '') return true;
       items.push({ type: 'thinking', event });
       return true;
     }

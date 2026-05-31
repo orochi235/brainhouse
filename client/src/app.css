@@ -288,6 +288,32 @@ body {
   cursor: grabbing;
 }
 
+/* View Transitions API tuning. PanelCard stamps a unique
+ * `view-transition-name` per panel (`panel-<uuid>`) so the browser
+ * morphs each panel's pre→post box when a promote/restore mutates
+ * the layout (see lib/viewTransition.ts). The default duration is
+ * 0.25s; we shorten + smooth it. The root crossfade handles
+ * everything else (dock chrome, project widgets, debug tile, etc.).
+ *
+ * The `::view-transition-group(*)` selector matches every named
+ * participant. The wildcard `*` is required — bare element selectors
+ * don't apply to pseudo-element trees. */
+::view-transition-group(*) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0.32, 1);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 /* ---- panel ---- */
 .panel-group {
   display: flex;
@@ -472,6 +498,239 @@ body.loading-quiet .panel {
   }
   50% {
     opacity: 1;
+  }
+}
+
+/* Title-bar sweep — a translucent band that travels across the header
+ * of any live panel that's waiting on the model. Reinforces the halo
+ * pulse with a directional signal ("something is being produced") at a
+ * higher information density than the slow halo fade. Implemented as
+ * an absolutely-positioned pseudo-element so the header keeps its
+ * normal layout and the sweep is GPU-composited rather than repainting
+ * the bar.
+ *
+ * Color follows kind: parents get the purple accent, subagents get
+ * orange — same palette as the halo so the two cues read as the same
+ * "thinking" state. The subagent rule uses .status-live (no .waiting)
+ * because subagents don't currently flip the waiting class — their
+ * halo fires off status-live alone, and the sweep mirrors that.
+ *
+ * ----- Presets -----
+ *
+ * The sweep is fully parameterized via CSS custom properties so the
+ * "feel" can be swapped without touching the selector tree. The active
+ * preset is chosen by `[data-sweep-preset="<name>"]` on the document
+ * root. Default is `pendulum`. To add a new preset, define a new
+ * @keyframes block + a `[data-sweep-preset="<name>"]` rule on
+ * `:root` that overrides any of the vars below.
+ *
+ *   --sweep-tint-parent  fallback HUE source for un-themed parents
+ *   --sweep-tint-subagent fallback HUE source for un-themed subagents
+ *                        (only the hue is used — L/C come from below)
+ *   --sweep-lightness    OKLCH L applied to every panel's tint
+ *   --sweep-chroma       OKLCH C applied to every panel's tint
+ *   --sweep-opacity      tint→band opacity (dark theme)
+ *   --sweep-opacity-light  same, light theme
+ *   --sweep-duration / --sweep-duration-sub  one-leg duration
+ *   --sweep-easing       animation-timing-function
+ *   --sweep-direction    animation-direction (alternate / normal / reverse)
+ *   --sweep-keyframes    @keyframes name driving the travel path
+ *   --sweep-blend / --sweep-blend-light  mix-blend-mode per theme
+ *   --sweep-band-angle   linear-gradient angle
+ *   --sweep-band-edge-stop / --sweep-band-mid-stop — gradient stops
+ *
+ * `pendulum`: bounces edge-to-edge, ease-in-out + alternate gives a
+ * pendulum feel — slows at the edges, accelerates through the middle.
+ */
+
+/* ----- Project-color accent (--panel-accent) -----
+ *
+ * Every per-panel tinted surface — sweep, pinned-checklist progress
+ * bar + check glyphs + in-progress label, future pulses — borrows the
+ * HUE from the panel's `.hued` theme (or a kind-based fallback when
+ * no theme is set) and pins lightness + chroma to constants here.
+ * Result: a project's color identity carries through every dynamic
+ * surface at consistent perceptual intensity, regardless of whether
+ * the user's `.hued` color is dark/muted or hot/saturated.
+ *
+ * Single source of truth: `--panel-accent`, set per `.panel` scope.
+ * Consumers reference it directly (`var(--panel-accent)`) or with an
+ * `--accent` fallback for non-panel contexts.
+ *
+ * Tunables (apply to every accent surface — keep this loud-knob count
+ * small so the experience stays consistent):
+ *
+ *   --hued-accent-l       OKLCH lightness applied across the UI
+ *   --hued-accent-c       OKLCH chroma applied across the UI
+ *   --hued-fallback-parent fallback HUE source for un-themed parents
+ *   --hued-fallback-subagent fallback HUE source for un-themed subagents
+ *                         (only the hue survives — L/C come from above)
+ *
+ * ----- Sweep preset (pendulum) -----
+ *
+ * The waiting-on-model title-bar sweep is fully parameterized via the
+ * `--sweep-*` vars below. The active preset is chosen by
+ * `[data-sweep-preset="<name>"]` on the document root; default is
+ * `pendulum`. To add a new preset, define new @keyframes + a
+ * `[data-sweep-preset="<name>"]` rule that overrides any subset of:
+ *
+ *   --sweep-opacity / --sweep-opacity-light  tint→band opacity
+ *   --sweep-duration / --sweep-duration-sub  one-leg duration
+ *   --sweep-easing       animation-timing-function
+ *   --sweep-direction    animation-direction (alternate / normal / reverse)
+ *   --sweep-keyframes    @keyframes name driving the travel path
+ *   --sweep-blend / --sweep-blend-light  mix-blend-mode per theme
+ *   --sweep-band-angle   linear-gradient angle
+ *   --sweep-band-edge-stop / --sweep-band-mid-stop — gradient stops
+ *
+ * `pendulum`: bounces edge-to-edge, ease-in-out + alternate gives a
+ * pendulum feel — slows at the edges, accelerates through the middle.
+ */
+:root {
+  /* Normalized accent — everything except hue. */
+  --hued-accent-l: 0.68;
+  --hued-accent-c: 0.26;
+  /* Kind-based hue sources (no-theme panels only). Only the *hue* of
+   * these survives — L/C are overridden. Pick a different shade of
+   * purple/orange to shift hue without changing brightness. */
+  --hued-fallback-parent: #a78bfa; /* hue ~290deg */
+  --hued-fallback-subagent: #f97316; /* hue ~50deg */
+  /* Sweep-specific (everything below applies only to the title-bar
+   * sweep, not to other accent surfaces). */
+  --sweep-opacity: 0.55;
+  --sweep-opacity-light: 0.35;
+  --sweep-duration: 1.6s;
+  --sweep-duration-sub: 1.4s;
+  --sweep-easing: ease-in-out;
+  --sweep-direction: alternate;
+  --sweep-keyframes: panel-title-sweep-edges;
+  --sweep-blend: screen;
+  --sweep-blend-light: multiply;
+  --sweep-band-angle: 105deg;
+  --sweep-band-edge-stop: 35%;
+  --sweep-band-mid-stop: 50%;
+}
+
+/* Per-panel accent. Parent vs. subagent differ only in the hue
+ * fallback used when no `.hued` theme is set — themed panels source
+ * the hue from `--panel-theme-bg`. */
+.panel {
+  --panel-accent: oklch(
+    from var(--panel-theme-bg, var(--hued-fallback-parent)) var(--hued-accent-l)
+      var(--hued-accent-c) h
+  );
+}
+.panel-subagent {
+  --panel-accent: oklch(
+    from var(--panel-theme-bg, var(--hued-fallback-subagent)) var(--hued-accent-l)
+      var(--hued-accent-c) h
+  );
+}
+
+.panel.waiting .panel-header,
+.panel-subagent.status-live .panel-header {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.panel.waiting .panel-header::after,
+.panel-subagent.status-live .panel-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  /* Composite the panel's accent (OKLCH-normalized to the project's
+   * hue) at the preset's opacity to produce the band peak color. */
+  --sweep-color: color-mix(
+    in srgb,
+    var(--panel-accent) calc(var(--sweep-opacity) * 100%),
+    transparent
+  );
+  /* The gradient lives inside a pseudo-element exactly the size of the
+   * header. Animation slides the *whole pseudo* horizontally via
+   * `transform: translate3d`, which the compositor runs on the GPU
+   * with zero per-frame paint — vs. the old `background-position`
+   * animation which forced the gradient to re-rasterize every tick.
+   * Combined with overflow:hidden on the header, the visible portion
+   * of the gradient changes as the pseudo slides past the cut.
+   *
+   * Peak sits at `--sweep-band-mid-stop` (default 50%). Tight bounce
+   * keyframes (±50%) put the peak exactly at each header edge at the
+   * extremes — same visual as the old background-position bounce, but
+   * compositor-only. */
+  background: linear-gradient(
+    var(--sweep-band-angle),
+    transparent var(--sweep-band-edge-stop),
+    color-mix(in srgb, var(--sweep-color) 50%, transparent)
+      calc(var(--sweep-band-mid-stop) - 3%),
+    var(--sweep-color) var(--sweep-band-mid-stop),
+    color-mix(in srgb, var(--sweep-color) 50%, transparent)
+      calc(var(--sweep-band-mid-stop) + 3%),
+    transparent calc(100% - var(--sweep-band-edge-stop))
+  );
+  /* Debug minimal: all values literal, no vars, no blend-mode. If this
+   * doesn't animate, the issue is somewhere besides the animation
+   * declaration itself. Restore mix-blend-mode + preset vars once
+   * motion is confirmed. */
+  animation: panel-title-sweep-edges 1.6s ease-in-out infinite alternate;
+  will-change: transform;
+}
+/* Ensure the header's own children sit above the sweep. */
+.panel.waiting .panel-header > *,
+.panel-subagent.status-live .panel-header > * {
+  position: relative;
+  z-index: 1;
+}
+.panel-subagent.status-live .panel-header::after {
+  animation-duration: var(--sweep-duration-sub);
+}
+/* Light theme: the screen blend washes out — switch to a softer tint
+ * + multiply so the band is still visible without being garish. */
+@media (prefers-color-scheme: light) {
+  .panel.waiting .panel-header::after,
+  .panel-subagent.status-live .panel-header::after {
+    --sweep-opacity: var(--sweep-opacity-light);
+    mix-blend-mode: var(--sweep-blend-light);
+  }
+}
+/* Travel paths — one @keyframes per preset shape. Add new ones for
+ * future presets. */
+/* Tight bounce — band peak just kisses each header edge. translateX
+ * percentages are relative to the pseudo's OWN width (= header width
+ * here, since pseudo is `inset: 0`), so ±50% maps the gradient peak
+ * (sitting at `--sweep-band-mid-stop`, default 50%) to the right /
+ * left edge of the visible header. Compositor-only animation — no
+ * paint per frame. */
+/* DEBUG: temporarily animate opacity to verify the animation engine
+ * fires at all on this pseudo. If you see the sweep flicker between
+ * 1 → 0.2 → 1, the keyframes ARE applying — issue is specifically
+ * with transform on ::after. If it stays solid, animations aren't
+ * running on this element period, which means we need a different
+ * carrier (e.g. a real child div instead of a pseudo). Restore the
+ * translate3d version once we know which branch we're on. */
+@keyframes panel-title-sweep-edges {
+  0% {
+    opacity: 1;
+    transform: translate3d(50%, 0, 0);
+  }
+  50% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel.waiting .panel-header::after,
+  .panel-subagent.status-live .panel-header::after {
+    animation: none;
+    /* Fall back to a static centered band so the visual cue persists
+     * without motion. Pseudo is already centered (transform default),
+     * so the gradient peak sits at 50% of the header. */
+    transform: none;
+    opacity: 0.5;
   }
 }
 /* Idle (status: 'done') panels just look slightly less saturated — no
@@ -840,7 +1099,7 @@ body.hide-context .panel-context {
 .panel.status-mini .panel-header {
   align-items: flex-start;
 }
-.panel.status-mini .panel-titles {
+.panel.status-mini .panel-header > .title-bar-body {
   flex: 1 1 100%;
   width: 100%;
   min-width: 0;
@@ -964,40 +1223,144 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   }
 }
 
-/* ---- panel header ---- */
-.panel-header {
+/* ---- TitleBar (shared session + project widget header) ----
+ *
+ * Geometry only. Status light + content composition is done by the
+ * caller via slots. PanelHeader (session) and ProjectWidgetCard
+ * (project) both render through `<TitleBar>` with their own
+ * `className` ("panel-header" / "project-widget-header"). Status
+ * cascade rules (.status-live etc.) still live on the outer .panel
+ * article so they reach into both the title bar and the body.
+ *
+ * Layout: flush — no outer padding, no inter-column gap. The body
+ * supplies its own padding so the leading column can sit flush against
+ * the left edge (matching the project-widget treatment the user
+ * pinned the design on). When the leading column has a single child
+ * (status light only) it just hugs the body's left edge; with 2+
+ * children, the column grows a right border and the children get a
+ * horizontal divider between them — the rotated-T divider used by
+ * project widgets. */
+.title-bar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 0.4rem 0.6rem;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
   border-bottom: 1px solid var(--panel-border);
   background: var(--header-bg);
   flex-shrink: 0;
   cursor: pointer;
 }
-.panel-titles {
+.title-bar-leading {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 0 0 auto;
+}
+/* Stacked leading (status light + actions): adopt the project-widget
+ * column geometry. Single-child leading skips this so the status light
+ * sits inline against the body without a wall. */
+.title-bar-leading:has(> * + *) {
+  width: 26px;
+  margin: 2px;
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
+}
+.title-bar-leading:has(> * + *) > * {
+  flex: 1 1 0;
+  min-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Drop the slot's intrinsic 1.4rem dimensions when it's stacked so
+   * the icon-bearing element can shrink with the row instead of
+   * clipping at the top edge on tight (e.g. mini-panel) headers. The
+   * dot itself stays a fixed 9px and centers in whatever space we get. */
+  width: auto;
+  height: auto;
+}
+/* Divider between stacked leading items — drawn as an inset box-shadow
+ * so any button's own `border: none` (or border-radius) doesn't clobber
+ * it. Renders identically to a 1px top border. */
+.title-bar-leading:has(> * + *) > * + * {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.title-bar-body {
   display: flex;
   flex-direction: column;
   min-width: 0;
   flex: 1;
-  gap: 0.18rem;
-  margin-left: 0.35rem;
+  gap: 0.25rem;
+  justify-content: center;
+  padding: 0.4rem 0.6rem;
 }
-.panel-title {
+/* Each row is split into LEFT (title/subtitle) and RIGHT (.title-bar-
+ * aside group) halves. The only gap in a row is between those two
+ * halves — the row itself uses space-between with gap: 0, and the
+ * right group has its own internal gap so badges sit tight against
+ * each other on the right edge. */
+.title-bar-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0;
+  min-width: 0;
+}
+.title-bar-aside {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+}
+.title-bar-title-row .title-bar-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+/* When the worktree chip lives on the title row, allow its label to
+ * wrap rather than truncate — long worktree names ("repo/feature/
+ * long-branch-name") should fall to a second line cleanly. */
+.title-bar-title-row .panel-worktree-chip {
+  white-space: normal;
+  word-break: break-word;
+  flex: 0 1 auto;
+}
+.title-bar-title {
   font-weight: 600;
   font-size: 0.85rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.panel-subtitle-row {
+.title-bar-subtitle-row {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  justify-content: space-between;
+  gap: 0;
   min-width: 0;
 }
-.panel-subtitle-row .panel-subtitle {
+.title-bar-subtitle-row .title-bar-subtitle {
   flex: 0 1 auto;
+}
+.title-bar-subtitle {
+  font-size: 0.65rem;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Compatibility shims for code paths that still emit the .panel-*
+ * names (PanelCard's title node carries .panel-title for the flash
+ * animation, .panel-subtitle for the cwd label, etc.). The TitleBar
+ * itself uses .title-bar-* selectors; inner spans continue to use
+ * the .panel-* names for unchanged styling. */
+.panel-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .panel-subtitle {
   font-size: 0.65rem;
@@ -1015,12 +1378,6 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   letter-spacing: 0.04em;
   font-weight: 600;
   color: color-mix(in srgb, var(--fg) 72%, transparent);
-}
-.panel-meta {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.15rem;
 }
 .panel-meta-row {
   display: inline-flex;
@@ -1280,7 +1637,7 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
 }
 .checklist-progress-fill {
   height: 100%;
-  background: var(--accent);
+  background: var(--panel-accent, var(--accent));
   transition: width 240ms ease-out;
 }
 .checklist {
@@ -1307,15 +1664,15 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   width: 1ch;
 }
 .checklist .check.done {
-  color: var(--accent);
+  color: var(--panel-accent, var(--accent));
   opacity: 1;
 }
 .checklist .check.in-progress {
-  color: var(--accent);
+  color: var(--panel-accent, var(--accent));
   opacity: 1;
 }
 .checklist li.in-progress .label {
-  color: var(--accent);
+  color: var(--panel-accent, var(--accent));
 }
 .checklist li.done .label {
   text-decoration: line-through;
@@ -2940,6 +3297,62 @@ body.view-conversation
   font-size: 0.82rem;
   margin: 0.4rem 0;
 }
+.prefs-blacklist-textarea {
+  display: block;
+  width: 100%;
+  min-height: 8rem;
+  padding: 0.5rem 0.6rem;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  color: var(--fg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  resize: vertical;
+}
+.prefs-blacklist-textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* Blacklist confirmation modal — opens inside the lightbox when the
+ * user shift-clicks the × on a title bar. */
+.blacklist-confirm {
+  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.blacklist-confirm-body {
+  color: color-mix(in srgb, var(--fg) 85%, transparent);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.blacklist-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+.blacklist-confirm-cancel,
+.blacklist-confirm-go {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.blacklist-confirm-go {
+  background: color-mix(in srgb, var(--accent) 85%, transparent);
+  border-color: transparent;
+}
+.blacklist-confirm-cancel:hover {
+  border-color: var(--accent);
+}
+.blacklist-confirm-go:hover {
+  background: var(--accent);
+}
 .prefs-actions {
   display: flex;
   justify-content: flex-end;
@@ -3447,18 +3860,19 @@ body.replay-drop-target::after {
   color: #166534;
 }
 
-/* Debug-mode global animation kill-switch — when ?debug=1 sets data-debug
- * on <body>, freeze every animated transition so the static state is what
- * you actually see. The debug tile itself is excluded so its hover/scroll
- * interactions remain responsive. */
-body[data-debug] *,
-body[data-debug] *::before,
-body[data-debug] *::after {
+/* Global animation kill-switch — when ?freeze=1 sets data-freeze on
+ * <body>, freeze every animated transition so the static state is
+ * what you actually see. Useful for inspecting layout / styling
+ * without motion fighting you. The debug tile is excluded so its
+ * hover/scroll interactions remain responsive. */
+body[data-freeze] *,
+body[data-freeze] *::before,
+body[data-freeze] *::after {
   animation: none !important;
   transition: none !important;
 }
-body[data-debug] .debug-tile,
-body[data-debug] .debug-tile * {
+body[data-freeze] .debug-tile,
+body[data-freeze] .debug-tile * {
   /* Re-enable transitions inside the debug tile itself so e.g. <details>
    * disclosure feels normal. Empty rule body intentional — the !important
    * above is the override; this selector exists for future-proofing if we
@@ -3488,68 +3902,25 @@ body[data-debug] .debug-tile * {
   background: color-mix(in oklch, var(--panel-bg), var(--panel-theme-bg) 6%);
   border-color: color-mix(in oklch, var(--panel-border), var(--panel-theme-bg) 35%);
 }
-.project-widget-header {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  padding: 0;
-}
-.project-widget-header-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem 0.75rem;
-}
-/* Two stacked action buttons, full-height of the title bar, evenly
- * split, separated from the header content by a right border and from
- * each other by a middle border. */
-.project-widget-actions {
-  display: flex;
-  flex-direction: column;
-  width: 26px;
-  flex: 0 0 auto;
-  margin: 2px;
-  border-right: 1px solid rgba(255, 255, 255, 0.3);
-}
-.project-widget-action {
-  flex: 1 1 0;
-  min-height: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
+/* × button in the leading column — sits below the status light on
+ * project widgets and mini session panels. The base TitleBar CSS
+ * handles column geometry + the box-shadow divider; this rule gives
+ * the button itself its hover wash + visual weight. */
+.project-widget-action-close,
+.panel-leading-close {
   border: none;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 0.8rem;
-  line-height: 1;
-}
-.project-widget-action + .project-widget-action {
-  border-top: 1px solid rgba(255, 255, 255, 0.3);
-}
-.project-widget-action:hover {
-  background: color-mix(in oklch, var(--panel-bg), var(--accent) 14%);
-  color: inherit;
-}
-.project-widget-action-pin.is-active {
-  color: var(--accent);
-  background: color-mix(in oklch, var(--panel-bg), var(--accent) 10%);
-}
-.project-widget-action-close {
   font-size: 1.2rem;
   font-weight: 500;
+  line-height: 1;
+  padding: 0;
 }
-.project-widget-action-close:hover {
+.project-widget-action-close:hover,
+.panel-leading-close:hover {
+  background: color-mix(in oklch, var(--panel-bg), var(--accent) 14%);
   color: var(--warn, #e0a93b);
-}
-.project-widget-header-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
 }
 .project-widget-title {
   font-weight: 600;
@@ -3561,12 +3932,14 @@ body[data-debug] .debug-tile * {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-.project-widget-meta-row {
-  display: flex;
+/* Project-widget body sits a touch larger than the session header. */
+.project-widget-header > .title-bar-body > .title-bar-subtitle-row {
   align-items: baseline;
-  justify-content: space-between;
   gap: 0.5rem;
   font-size: 0.7rem;
+}
+.project-widget-header > .title-bar-body > .title-bar-title-row {
+  align-items: baseline;
 }
 .project-widget-path {
   color: var(--muted);
@@ -4007,7 +4380,8 @@ body.hide-thinking .event-thought-agent {
   flex-direction: column;
   gap: 0.6rem;
   width: 100%;
-  min-height: 320px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .timeline-toolbar {
   display: flex;
@@ -4033,8 +4407,32 @@ body.hide-thinking .event-thought-agent {
   user-select: none;
   cursor: crosshair;
 }
+.timeline-chart-vertical {
+  flex: 1 1 auto;
+  min-height: 280px;
+}
 .timeline-svg {
   display: block;
+}
+.timeline-scrubber {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  overflow: hidden;
+  user-select: none;
+  flex: 0 0 auto;
+}
+.timeline-scrubber-mark {
+  opacity: 0.65;
+}
+.timeline-scrubber-window {
+  fill: color-mix(in srgb, var(--accent, #a78bfa) 14%, transparent);
+  stroke: color-mix(in srgb, var(--accent, #a78bfa) 60%, transparent);
+  stroke-width: 1;
+}
+.timeline-scrubber-handle {
+  fill: color-mix(in srgb, var(--accent, #a78bfa) 75%, transparent);
 }
 .timeline-lane-label {
   font-size: 0.62rem;
@@ -4105,6 +4503,120 @@ body.hide-thinking .event-thought-agent {
 .timeline-mark[data-lane='cleared'],
 .timeline-mark[data-lane='day-divider'],
 .timeline-mark[data-lane='interrupt-divider'] {
+  --mark-color: #ef4444;
+}
+
+/* ----- Vertical timeline capsules -----
+ * Marks in the vertical chart render as HTML capsules via <foreignObject>
+ * so they pick up the same visual language as inline ToolCapsules. The
+ * `--mark-color` cascade from .timeline-mark[data-lane='…'] also flows
+ * to .timeline-capsule[data-lane='…'] (declared separately below). */
+.timeline-capsule-host {
+  overflow: visible;
+}
+.timeline-capsule {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--mark-color, var(--fg)) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mark-color, var(--fg)) 12%, var(--panel-bg, transparent));
+  cursor: pointer;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--fg);
+  box-sizing: border-box;
+  user-select: none;
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
+}
+.timeline-capsule[data-state='hovered'] {
+  background: color-mix(in srgb, var(--mark-color, var(--fg)) 22%, var(--panel-bg, transparent));
+}
+.timeline-capsule[data-state='selected'] {
+  background: color-mix(in srgb, var(--accent, #a78bfa) 30%, var(--panel-bg, transparent));
+  border-color: var(--accent, #a78bfa);
+}
+.timeline-capsule[data-status='pending'] {
+  border-style: dashed;
+}
+.timeline-capsule[data-status='error'] {
+  border-color: rgba(239, 68, 68, 0.7);
+}
+.timeline-capsule-icon {
+  flex: 0 0 auto;
+  width: 0.95em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.timeline-capsule-icon .svg-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95em;
+  height: 0.95em;
+}
+.timeline-capsule-icon .svg-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+.timeline-capsule-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.timeline-capsule-status {
+  flex: 0 0 auto;
+  font-size: 0.7em;
+}
+.timeline-capsule-status.status-ok {
+  color: rgb(132, 204, 22);
+}
+.timeline-capsule-status.status-error {
+  color: rgb(239, 68, 68);
+}
+
+/* Inherit per-lane `--mark-color` for the capsule background tint. */
+.timeline-capsule[data-lane='user_text'],
+.timeline-capsule[data-lane='bubble'] {
+  --mark-color: #60a5fa;
+}
+.timeline-capsule[data-lane='assistant_text'] {
+  --mark-color: #a78bfa;
+}
+.timeline-capsule[data-lane='thinking'] {
+  --mark-color: #c084fc;
+}
+.timeline-capsule[data-lane='tool_use'],
+.timeline-capsule[data-lane='tool'] {
+  --mark-color: #34d399;
+}
+.timeline-capsule[data-lane='tool_result'] {
+  --mark-color: #10b981;
+}
+.timeline-capsule[data-lane='file-change'] {
+  --mark-color: #fbbf24;
+}
+.timeline-capsule[data-lane='op-strip'] {
+  --mark-color: #f59e0b;
+}
+.timeline-capsule[data-lane='resource_usage'] {
+  --mark-color: #94a3b8;
+}
+.timeline-capsule[data-lane='system'] {
+  --mark-color: #64748b;
+}
+.timeline-capsule[data-lane='meta'] {
+  --mark-color: #475569;
+}
+.timeline-capsule[data-lane='cleared'],
+.timeline-capsule[data-lane='day-divider'],
+.timeline-capsule[data-lane='interrupt-divider'] {
   --mark-color: #ef4444;
 }
 .timeline-selection {

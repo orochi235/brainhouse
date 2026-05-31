@@ -586,10 +586,24 @@ export class Store {
     return row ?? null;
   }
 
-  sessionsForProject(cwd: string, limit = 100): SessionSummaryRow[] {
+  /** Sessions whose stored `cwd` sits at or under `root`. Prefix-matches
+   * so a project widget keyed on `repo_root` picks up sessions that ran
+   * from any subdir of the repo, not just the repo root itself. Pass
+   * `parentOnly: true` to exclude subagent rows (the project widget UI
+   * counts parent sessions only). */
+  sessionsForProject(
+    root: string,
+    opts: { limit?: number; parentOnly?: boolean } = {},
+  ): SessionSummaryRow[] {
+    const limit = opts.limit ?? 100;
+    const kindClause = opts.parentOnly ? "AND kind = 'parent'" : '';
     return this.db
-      .prepare('SELECT * FROM session_summary WHERE cwd = ? ORDER BY started_at DESC LIMIT ?')
-      .all(cwd, limit) as SessionSummaryRow[];
+      .prepare(
+        `SELECT * FROM session_summary
+         WHERE (cwd = ? OR cwd LIKE ? || '/%') ${kindClause}
+         ORDER BY started_at DESC LIMIT ?`,
+      )
+      .all(root, root, limit) as SessionSummaryRow[];
   }
 
   // ---- bootstrap_offsets ----
