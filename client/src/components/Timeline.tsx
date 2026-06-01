@@ -96,7 +96,7 @@ export function Timeline({ events, startedAt, precomputedItems }: TimelineProps)
 
   const items = useMemo<ViewItem[]>(() => {
     if (precomputedItems) return precomputedItems;
-    return preprocessEvents(events).items;
+    return preprocessEvents(events, { view: 'timeline' }).items;
   }, [events, precomputedItems]);
 
   const marks = useMemo(

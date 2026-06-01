@@ -47,10 +47,22 @@ export interface ViewContext {
   scratch: ViewPipelineScratch;
 }
 
+/** Which view consumes a transform's output. Today: the conversation
+ * flow (`PanelCard` body, lightboxes) and the timeline (`Timeline.tsx`).
+ * Transforms omit `views` to opt into every view — that's the default
+ * for stage-1 work that's universally desirable (bubble emission, tool
+ * capsule assembly). Stage-2 transforms that reshape the rendered flow
+ * (coalescing runs into op-strips, inserting day dividers) typically
+ * pin to `['conversation']` so the timeline keeps raw per-event detail. */
+export type ViewName = 'conversation' | 'timeline';
+
 interface BaseTransform {
   key: string;
   name: string;
   description: string;
+  /** Restrict this transform to the listed views. Omitted = runs in all
+   * views. */
+  views?: ViewName[];
 }
 
 export interface Stage1Transform extends BaseTransform {

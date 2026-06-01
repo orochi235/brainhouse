@@ -10,7 +10,13 @@
 import type { Event } from '@server/parser.ts';
 import type { PreprocessResult, ViewItem } from '../lib/pipeline-types.ts';
 import { VIEW_TRANSFORMS } from './registry.ts';
-import type { Stage1Transform, Stage2Transform, ViewContext, ViewTransform } from './types.ts';
+import type {
+  Stage1Transform,
+  Stage2Transform,
+  ViewContext,
+  ViewName,
+  ViewTransform,
+} from './types.ts';
 
 function isStage1(t: ViewTransform): t is Stage1Transform {
   return t.stage === 1;
@@ -19,10 +25,23 @@ function isStage2(t: ViewTransform): t is Stage2Transform {
   return t.stage === 2;
 }
 
+export interface RunViewPipelineOpts {
+  /** Filter transforms to those that opt into this view (or are unspecified,
+   * meaning "runs everywhere"). Omitted = no filter; every transform runs.
+   * Used by `Timeline` to skip conversation-flow rewriting and by lightboxes
+   * to pick a specific view. */
+  view?: ViewName;
+}
+
 export function runViewPipeline(
   events: Event[],
+  opts: RunViewPipelineOpts = {},
   transforms: ViewTransform[] = VIEW_TRANSFORMS,
 ): PreprocessResult {
+  const view = opts.view;
+  const eligible = view
+    ? transforms.filter((t) => !t.views || t.views.includes(view))
+    : transforms;
   const ctx: ViewContext = {
     allEvents: events,
     scratch: {
@@ -34,8 +53,8 @@ export function runViewPipeline(
       pendingBtwAssistant: false,
     },
   };
-  const stage1 = transforms.filter(isStage1);
-  const stage2 = transforms.filter(isStage2);
+  const stage1 = eligible.filter(isStage1);
+  const stage2 = eligible.filter(isStage2);
   let items: ViewItem[] = [];
 
   for (const event of events) {

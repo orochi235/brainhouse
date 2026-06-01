@@ -2166,6 +2166,17 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   background: color-mix(in srgb, var(--bubble-assistant-fg) 12%, transparent);
 }
 
+/* Struck-out text inside a user bubble — the user typed something,
+ * hit ctrl-c before it was answered, then sent a revision. The
+ * abandoned text stays visible so the message reads as a revision
+ * history, but is struck through to signal it never reached the model.
+ * Dims slightly so the revision (un-struck) reads as primary. */
+.bubble-text-struck {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  opacity: 0.6;
+}
+
 /* sawtooth divider inside merged user bubbles */
 .interrupt-sawtooth {
   height: 6px;

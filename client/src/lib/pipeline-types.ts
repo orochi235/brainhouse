@@ -11,7 +11,17 @@
 import type { Event } from '@server/parser.ts';
 import type { ToolResultPayload, ToolUsePayload } from './tools.ts';
 
-export type BubblePart = { kind: 'text'; text: string } | { kind: 'sawtooth' };
+export type BubblePart =
+  | {
+      kind: 'text';
+      text: string;
+      /** Strike-through this run. Used when the user revises a draft via
+       * ctrl-c before the assistant ever responded — the abandoned text
+       * stays visible (so the revision history reads naturally) but is
+       * struck out to signal it never reached the model. */
+      struck?: boolean;
+    }
+  | { kind: 'sawtooth' };
 
 export interface ToolItem {
   type: 'tool';

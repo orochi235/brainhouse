@@ -6,12 +6,17 @@
  *   background=#320053
  *
  * Returns null if the file is missing, malformed, or lacks a `background`
- * key. Results are cached per cwd since the file shouldn't change often
- * during a single brainhouse run.
+ * key.
+ *
+ * Caching uses the `.hued` file's mtime so subsequent reads short-circuit
+ * when the file hasn't changed, but a real edit (or a `.hued` that didn't
+ * exist before and now does) is picked up on the next call. This is what
+ * makes the monitor's periodic theme poll cheap: hitting the same file
+ * 10× a minute is one stat per call when nothing's changed.
  */
 
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -24,27 +29,54 @@ export interface PanelTheme {
   foreground: string;
 }
 
-// Cache only successful reads — caching misses would prevent picking up a
-// `.hued` that gets added after the first attempt within one process
-// lifetime.
-const cache = new Map<string, PanelTheme>();
+interface CacheEntry {
+  /** mtime in milliseconds. -1 means "the file didn't exist" — so a future
+   * stat that finds the file present (or with a fresh mtime) invalidates.*/
+  mtime: number;
+  theme: PanelTheme | null;
+}
+
+// Cache keyed by the absolute path to the `.hued` file, not the cwd, so
+// many cwds that share a single repo-level `.hued` collapse to one entry.
+const cache = new Map<string, CacheEntry>();
 
 export async function readPanelTheme(cwd: string): Promise<PanelTheme | null> {
   if (!cwd) return null;
-  const hit = cache.get(cwd);
-  if (hit) return hit;
 
-  // Try the cwd first; if there's no `.hued` there, fall back to the main
-  // worktree (git common-dir's parent). Worktrees are typically siblings
-  // of the main repo, so a plain walk-up wouldn't reach the shared
-  // `.hued`. This is the only fallback location we consider — `.hued`
-  // sitting outside both cwd and the main worktree isn't a thing.
-  let text = await readHued(cwd);
-  if (text === null) {
-    const mainRoot = await mainWorktreeRoot(cwd);
-    if (mainRoot && mainRoot !== cwd) text = await readHued(mainRoot);
+  // Resolve which `.hued` to consult — cwd first; then main-worktree
+  // fallback for sibling worktree checkouts. We accept the first one that
+  // actually exists on disk; missing intermediates aren't cached here
+  // (the per-path cache below handles that).
+  const candidates = [path.join(cwd, '.hued')];
+  const mainRoot = await mainWorktreeRoot(cwd);
+  if (mainRoot && mainRoot !== cwd) candidates.push(path.join(mainRoot, '.hued'));
+
+  for (const huedPath of candidates) {
+    const theme = await readThemeFromPath(huedPath);
+    if (theme) return theme;
   }
-  if (text === null) return null;
+  return null;
+}
+
+async function readThemeFromPath(huedPath: string): Promise<PanelTheme | null> {
+  let mtime: number;
+  try {
+    const st = await stat(huedPath);
+    mtime = st.mtimeMs;
+  } catch {
+    cache.set(huedPath, { mtime: -1, theme: null });
+    return null;
+  }
+  const cached = cache.get(huedPath);
+  if (cached && cached.mtime === mtime) return cached.theme;
+
+  let text: string;
+  try {
+    text = await readFile(huedPath, 'utf8');
+  } catch {
+    cache.set(huedPath, { mtime: -1, theme: null });
+    return null;
+  }
 
   let theme: PanelTheme | null = null;
   for (const rawLine of text.split('\n')) {
@@ -58,17 +90,8 @@ export async function readPanelTheme(cwd: string): Promise<PanelTheme | null> {
       theme = buildTheme(value);
     }
   }
-
-  if (theme) cache.set(cwd, theme);
+  cache.set(huedPath, { mtime, theme });
   return theme;
-}
-
-async function readHued(dir: string): Promise<string | null> {
-  try {
-    return await readFile(path.join(dir, '.hued'), 'utf8');
-  } catch {
-    return null;
-  }
 }
 
 async function mainWorktreeRoot(cwd: string): Promise<string | null> {

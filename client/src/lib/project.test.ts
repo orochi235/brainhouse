@@ -12,9 +12,29 @@ describe('projectLabel', () => {
     expect(projectLabel('/Users/mike/src/brainhouse')).toBe('brainhouse');
   });
 
-  it('keeps two segments for nested ~/src projects', () => {
+  it('keeps two segments for nested ~/src projects when there is no repo root', () => {
     expect(projectLabel('/Users/mike/src/pw/template')).toBe('pw/template');
     expect(projectLabel('/Users/jane/src/a/b/c')).toBe('b/c');
+  });
+
+  it('uses the repo leaf when a repo root is supplied', () => {
+    // `pw/cke` and `pw/screener` are their own git repos — labels should
+    // read as `cke` and `screener`, not `pw/cke` and `pw/screener`.
+    expect(projectLabel('/Users/mike/src/pw/cke', '/Users/mike/src/pw/cke')).toBe('cke');
+    expect(projectLabel('/Users/mike/src/pw/screener', '/Users/mike/src/pw/screener')).toBe(
+      'screener',
+    );
+    // Subdir of the repo collapses to the repo's leaf — the cwd tooltip
+    // still has the full path for disambiguation.
+    expect(
+      projectLabel('/Users/mike/src/pw/cke/packages/api', '/Users/mike/src/pw/cke'),
+    ).toBe('cke');
+  });
+
+  it('ignores empty / nullish repo root', () => {
+    expect(projectLabel('/Users/mike/src/brainhouse', null)).toBe('brainhouse');
+    expect(projectLabel('/Users/mike/src/brainhouse', '')).toBe('brainhouse');
+    expect(projectLabel('/Users/mike/src/brainhouse', undefined)).toBe('brainhouse');
   });
 
   it('home folder collapses to ~', () => {

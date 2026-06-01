@@ -208,7 +208,7 @@ export function PanelCard({
   }, [panel.status]);
 
   const { items, checklist, pending, subagentSpawns } = useMemo(
-    () => preprocessEvents(panel.events),
+    () => preprocessEvents(panel.events, { view: 'conversation' }),
     [panel.events],
   );
   const waiting = pending && panel.status === 'live';
@@ -579,7 +579,9 @@ function PanelHeader({
       <span className="panel-subtitle">{panel.agent_type}</span>
     ) : panel.cwd ? (
       <TruncationTooltip text={panel.cwd}>
-        <span className="panel-subtitle panel-subtitle-cwd">{projectLabel(panel.cwd)}</span>
+        <span className="panel-subtitle panel-subtitle-cwd">
+          {projectLabel(panel.cwd, panel.repo_root)}
+        </span>
       </TruncationTooltip>
     ) : undefined;
 

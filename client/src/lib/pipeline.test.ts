@@ -85,7 +85,7 @@ describe('preprocessEvents', () => {
     expect(items[1]).toMatchObject({ type: 'bubble', role: 'assistant' });
   });
 
-  it('queued interrupt (<3s gap) grafts the follow-up onto the prior user bubble', () => {
+  it('draft revision (no assistant reply before ctrl-c) strikes the prior text and merges in the same bubble', () => {
     const { items } = preprocessEvents([
       userText('write a poem', '2026-05-19T00:00:00Z'),
       userText('[Request interrupted by user]', '2026-05-19T00:00:05Z'),
@@ -95,26 +95,24 @@ describe('preprocessEvents', () => {
     const bubble = items[0];
     if (bubble?.type !== 'bubble') throw new Error('expected bubble');
     expect(bubble.parts).toEqual([
-      { kind: 'text', text: 'write a poem' },
-      { kind: 'sawtooth' },
+      { kind: 'text', text: 'write a poem', struck: true },
       { kind: 'text', text: 'actually, a haiku' },
     ]);
   });
 
-  it('full interrupt (>=3s gap) emits a divider then a fresh user bubble', () => {
+  it('draft revision applies regardless of gap (the load-bearing signal is "never answered")', () => {
     const { items } = preprocessEvents([
       userText('write a poem', '2026-05-19T00:00:00Z'),
       userText('[Request interrupted by user]', '2026-05-19T00:00:05Z'),
       userText('actually, a haiku', '2026-05-19T00:00:30Z'),
     ]);
-    expect(items.map((i) => i.type)).toEqual(['bubble', 'interrupt-divider', 'bubble']);
-    const first = items[0];
-    const second = items[2];
-    if (first?.type !== 'bubble' || second?.type !== 'bubble') {
-      throw new Error('expected bubbles');
-    }
-    expect(first.parts).toEqual([{ kind: 'text', text: 'write a poem' }]);
-    expect(second.parts).toEqual([{ kind: 'text', text: 'actually, a haiku' }]);
+    expect(items).toHaveLength(1);
+    const bubble = items[0];
+    if (bubble?.type !== 'bubble') throw new Error('expected bubble');
+    expect(bubble.parts).toEqual([
+      { kind: 'text', text: 'write a poem', struck: true },
+      { kind: 'text', text: 'actually, a haiku' },
+    ]);
   });
 
   it('pending=true after user_text awaiting assistant', () => {

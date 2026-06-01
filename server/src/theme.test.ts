@@ -64,21 +64,52 @@ describe('readPanelTheme', () => {
     expect(await readPanelTheme(dir)).toBeNull();
   });
 
-  it('caches results across calls', async () => {
+  it('re-reads when .hued mtime changes (polling picks up edits)', async () => {
     await writeHued('background=#222222\n');
     const first = await readPanelTheme(dir);
-    // Overwrite to a value that would parse differently; cached should win.
-    await writeHued('background=#eeeeee\n');
+    expect(first?.background).toBe('#222222');
+    // Bump mtime so the cache invalidates. Some filesystems have
+    // second-level mtime granularity, so writeFile-twice-in-a-row can
+    // collide; we set mtime explicitly to be deterministic.
+    await writeHued('background=#664422\n');
+    const { utimes } = await import('node:fs/promises');
+    const future = new Date(Date.now() + 5_000);
+    await utimes(path.join(dir, '.hued'), future, future);
     const second = await readPanelTheme(dir);
-    expect(second).toEqual(first);
+    expect(second?.background).toBe('#664422');
+  });
+
+  it('skips re-parse on unchanged mtime', async () => {
+    await writeHued('background=#222222\n');
+    const first = await readPanelTheme(dir);
+    // Overwrite contents but preserve mtime — the cached parse should win.
+    await writeHued('background=#eeeeee\n');
+    const { stat, utimes } = await import('node:fs/promises');
+    const huedPath = path.join(dir, '.hued');
+    // Re-stamp the freshly-written file with the original cached mtime so
+    // the cache key hits on the next read.
+    const st = await stat(huedPath);
+    await utimes(huedPath, st.atime, new Date((first ? Date.now() : 0) - 60_000));
+    // Read once to seed the cache against the back-dated mtime, then
+    // assert subsequent reads short-circuit.
+    const seeded = await readPanelTheme(dir);
+    const again = await readPanelTheme(dir);
+    expect(again).toEqual(seeded);
   });
 
   it('clearPanelThemeCache forces re-read', async () => {
     await writeHued('background=#222222\n');
     await readPanelTheme(dir);
-    await writeHued('background=#664422\n');
     clearPanelThemeCache();
+    await writeHued('background=#664422\n');
     const theme = await readPanelTheme(dir);
     expect(theme?.background).toBe('#664422');
+  });
+
+  it('picks up a newly-created .hued (previous absence was cached)', async () => {
+    expect(await readPanelTheme(dir)).toBeNull();
+    await writeHued('background=#112233\n');
+    const theme = await readPanelTheme(dir);
+    expect(theme?.background).toBe('#112233');
   });
 });

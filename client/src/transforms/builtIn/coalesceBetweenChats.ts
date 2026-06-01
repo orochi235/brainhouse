@@ -18,6 +18,7 @@ export const coalesceBetweenChats: Stage2Transform = {
   name: 'coalesceBetweenChats',
   description:
     'A run of ≥2 non-bubble items (tool calls, file-changes, thinking) between two bubbles compresses into an `op-strip` row; click expands the lightbox.',
+  views: ['conversation'],
   run(items) {
     const out: ViewItem[] = [];
     let run: ViewItem[] = [];

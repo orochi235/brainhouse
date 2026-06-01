@@ -15,7 +15,7 @@ import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents
 import type { Event } from './parser.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
-import { readPanelTheme } from './theme.js';
+import { type PanelTheme, readPanelTheme } from './theme.js';
 import { TranscriptWatcher } from './watcher.js';
 
 export interface MonitorOptions {
@@ -143,6 +143,20 @@ export class TranscriptMonitor {
     if (this.hookWatcher) await this.hookWatcher.start();
     this.startTick();
     this.startPruneLoop();
+    this.startThemePoll();
+  }
+
+  private themePollHandle: NodeJS.Timeout | null = null;
+  /** How often to re-stat every active panel's `.hued`. 10s is the sweet
+   * spot: a single stat per panel cwd, cheap enough to run on every
+   * iteration, but slow enough that editing `.hued` and saving feels
+   * near-immediate. Tied to the same lifecycle as the lifecycle tick. */
+  private readonly themePollMs = 10_000;
+  private startThemePoll(): void {
+    if (this.themePollHandle) clearInterval(this.themePollHandle);
+    this.themePollHandle = setInterval(() => {
+      void this.pollThemes();
+    }, this.themePollMs);
   }
 
   /** Drop events_index rows older than the retention window. Runs on
@@ -199,6 +213,8 @@ export class TranscriptMonitor {
     this.tickHandle = null;
     if (this.pruneHandle) clearInterval(this.pruneHandle);
     this.pruneHandle = null;
+    if (this.themePollHandle) clearInterval(this.themePollHandle);
+    this.themePollHandle = null;
     await this.watcher.stop();
     if (this.hookWatcher) await this.hookWatcher.stop();
   }
@@ -439,9 +455,42 @@ export class TranscriptMonitor {
 
   private async loadThemeFor(panelId: string, cwd: string): Promise<void> {
     const theme = await readPanelTheme(cwd);
-    if (!theme) return;
+    // Compare against the panel's current theme — `.hued` polling fires
+    // every poll-interval seconds and we don't want to emit an upsert
+    // delta when nothing actually changed. A null→null pass (no `.hued`
+    // present, never has been) is also a no-op.
+    const current = this.themeOf(panelId);
+    if (themesEqual(current, theme)) return;
     for (const delta of this.store.setTheme(panelId, theme)) {
       this.emitter.emit('delta', delta);
     }
   }
+
+  /** Look up the panel's currently-stamped theme without exposing the
+   * store's private `panels` map. snapshot() returns DTOs, which carry
+   * `theme`. */
+  private themeOf(panelId: string): PanelTheme | null {
+    for (const p of this.store.snapshot()) {
+      if (p.id === panelId) return p.theme ?? null;
+    }
+    return null;
+  }
+
+  /** Walks every active panel and re-checks its `.hued` for changes.
+   * The read is cheap when nothing changed (one stat per `.hued` path,
+   * cached parse), and edits/additions/deletions surface as theme
+   * deltas to all clients. Removed `.hued` clears the theme back to
+   * null so the panel returns to its default tint. */
+  private async pollThemes(): Promise<void> {
+    const panels = this.store.snapshot();
+    await Promise.all(
+      panels.map((p) => (p.cwd ? this.loadThemeFor(p.id, p.cwd) : Promise.resolve())),
+    );
+  }
+}
+
+function themesEqual(a: PanelTheme | null, b: PanelTheme | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.background === b.background && a.foreground === b.foreground;
 }

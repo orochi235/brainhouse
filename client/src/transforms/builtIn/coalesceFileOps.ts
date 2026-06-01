@@ -22,6 +22,7 @@ export const coalesceFileOps: Stage2Transform = {
   name: 'coalesceFileOps',
   description:
     'Successive Read/Edit/Write/MultiEdit ops on the same file collapse into a single `file-change` row whose lightbox shows the cumulative diff.',
+  views: ['conversation'],
   run(items) {
     const out: ViewItem[] = [];
     let run: ToolItem[] = [];

@@ -1,17 +1,36 @@
 /**
  * Derive a short, human-friendly project label from a working directory.
  *
- *   /Users/mike/src/brainhouse        → brainhouse
- *   /Users/mike/src/pw/template       → pw/template
- *   /Users/mike/src                   → ~/src
- *   /Users/mike                       → ~
- *   /tmp/foo                          → /tmp/foo
+ * When `repoRoot` is supplied (server-stamped, set when `cwd` is inside a
+ * git checkout), the label is just the repo's leaf segment — `pw/cke` and
+ * `pw/screener` are real standalone repos, not "pw subdirs", so they
+ * should read as `cke` and `screener`. Subdir-under-repo info is dropped
+ * intentionally; the panel header already shows the full cwd in its
+ * tooltip when needed.
+ *
+ * When `repoRoot` is missing (non-git scratch dirs), the two-segment
+ * fallback survives because there's no other way to distinguish nested
+ * non-repo paths.
+ *
+ *   /Users/mike/src/pw/cke         repoRoot=/Users/mike/src/pw/cke  → cke
+ *   /Users/mike/src/brainhouse     repoRoot=/Users/mike/src/brainhouse → brainhouse
+ *   /Users/mike/src/pw/template    (no repoRoot)                   → pw/template
+ *   /Users/mike/src                                                → ~/src
+ *   /Users/mike                                                    → ~
+ *   /tmp/foo                                                       → /tmp/foo
  */
 
 const HOME_RE = /^\/Users\/[^/]+(\/|$)/;
 
-export function projectLabel(cwd: string | null | undefined): string {
+export function projectLabel(
+  cwd: string | null | undefined,
+  repoRoot?: string | null,
+): string {
   if (!cwd) return '';
+  if (repoRoot) {
+    const leaf = repoRoot.split('/').filter(Boolean).pop();
+    if (leaf) return leaf;
+  }
   const collapsed = cwd.replace(HOME_RE, '~/').replace(/\/$/, '') || '~';
   // For deeply-nested src paths, prefer the last two segments past ~/src/.
   const srcIdx = collapsed.indexOf('~/src/');

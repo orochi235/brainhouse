@@ -23,6 +23,7 @@ export const insertDayDividers: Stage2Transform = {
   name: 'insertDayDividers',
   description:
     'Inserts a date heading (styled like the session-ended terminator) between two items that fall on different local-calendar days.',
+  views: ['conversation'],
   run(items) {
     const out: ViewItem[] = [];
     let prevDate: string | null = null;

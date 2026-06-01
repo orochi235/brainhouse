@@ -30,7 +30,10 @@ interface EventListProps {
 }
 
 export function EventList({ events, startedAt, cwd, onBubbleClick }: EventListProps) {
-  const { items } = useMemo(() => preprocessEvents(events), [events]);
+  const { items } = useMemo(
+    () => preprocessEvents(events, { view: 'conversation' }),
+    [events],
+  );
   const { prefs } = usePrefs();
   const template = prefs.editor?.urlTemplate ?? DEFAULT_EDITOR_TEMPLATE;
   return (
@@ -396,6 +399,13 @@ function GroupIcon({ icon }: { icon: ToolIcon }) {
 
 function BubblePartView({ part, escape }: { part: BubblePart; escape: boolean }) {
   if (part.kind === 'sawtooth') return <div className="interrupt-sawtooth" />;
+  if (part.struck) {
+    return (
+      <div className="bubble-text-struck">
+        <Markdown text={part.text} escape={escape} />
+      </div>
+    );
+  }
   return <Markdown text={part.text} escape={escape} />;
 }
 

@@ -42,6 +42,20 @@ export const userTextBubble: Stage1Transform = {
     const text = event.payload.text ?? '';
     const interrupt = findPrecedingInterrupt(ctx.allEvents, event);
     if (interrupt) {
+      // Draft-revision case: the prior user bubble was never answered
+      // before the ctrl-c. Strike its existing text and append the new
+      // text into the same bubble — the message reads as one revision
+      // history, no sawtooth, no divider. Timing-independent because
+      // "I never got a reply" is the load-bearing signal, not "I came
+      // back quickly."
+      const lastItem = items[items.length - 1];
+      if (lastItem?.type === 'bubble' && lastItem.role === 'user') {
+        for (const part of lastItem.parts) {
+          if (part.kind === 'text') part.struck = true;
+        }
+        lastItem.parts.push({ kind: 'text', text });
+        return true;
+      }
       const gapMs = tsDeltaMs(interrupt.ts, event.ts);
       if (gapMs !== null && gapMs < QUEUED_INTERRUPT_THRESHOLD_MS) {
         const prev = findLastBubble(items, 'user');

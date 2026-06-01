@@ -13,6 +13,7 @@
 import type { Event } from '@server/parser.ts';
 import { extractLastChecklist } from '../transforms/builtIn/scanChecklist.ts';
 import { runViewPipeline } from '../transforms/runner.ts';
+import type { ViewName } from '../transforms/types.ts';
 import type { PreprocessResult } from './pipeline-types.ts';
 
 export type {
@@ -27,7 +28,18 @@ export type {
 } from './pipeline-types.ts';
 export { FILE_TOOLS } from './pipeline-types.ts';
 export { extractLastChecklist };
+export type { ViewName };
 
-export function preprocessEvents(events: Event[]): PreprocessResult {
-  return runViewPipeline(events);
+export interface PreprocessOpts {
+  /** Restrict the transform set to those that opt into the named view.
+   * Omitted = run every transform (legacy callers + non-view-aware
+   * consumers like the subagent progress scanner). */
+  view?: ViewName;
+}
+
+export function preprocessEvents(
+  events: Event[],
+  opts: PreprocessOpts = {},
+): PreprocessResult {
+  return runViewPipeline(events, opts);
 }
