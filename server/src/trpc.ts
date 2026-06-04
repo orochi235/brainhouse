@@ -20,6 +20,7 @@ import { collectDebugState } from './debugState.js';
 import { aggregateFlows } from './flows.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
+import type { ProcessTracker, ProcessRow } from './processes/index.js';
 import {
   isReplayPathAllowed,
   loadJsonlAsPanel,
@@ -37,7 +38,19 @@ export interface AppContext {
   /** Persistence layer. Nullable so prefs.storage.persistEnabled=false
    * (or test contexts) just skips the read/write paths. */
   store: Store | null;
+  /** Process tracker. Nullable so tests / contexts without a tracker
+   * just return empty subscriptions and 4xx on `kill`. */
+  tracker: ProcessTracker | null;
 }
+
+export type ProcessDelta =
+  | { op: 'process_upsert'; process: ProcessRow }
+  | { op: 'process_delete'; process_id: string }
+  | { op: 'process_ports'; process_id: string; ports: ProcessRow['ports'] };
+
+export type ProcessEvent =
+  | { kind: 'snapshot'; rows: ProcessRow[] }
+  | { kind: 'delta'; delta: ProcessDelta };
 
 const t = initTRPC.context<AppContext>().create();
 
@@ -71,6 +84,71 @@ export const appRouter = t.router({
     const deltas = ctx.monitor.store.bin(input.panelId);
     for (const d of deltas) ctx.monitor.emitter.emit('delta', d);
     return { ok: true, deltas: deltas.length };
+  }),
+
+  processes: t.router({
+    subscribe: t.procedure.subscription(async function* ({
+      ctx,
+      signal,
+    }): AsyncGenerator<ProcessEvent> {
+      const tracker = ctx.tracker;
+      if (!tracker) return;
+      tracker.addSubscriber();
+      // Buffered queue + waker so a single async generator can fan in
+      // three event names without juggling multiple AsyncIterators.
+      const queue: ProcessEvent[] = [];
+      let wake: (() => void) | null = null;
+      const notify = () => {
+        if (wake) {
+          const w = wake;
+          wake = null;
+          w();
+        }
+      };
+      const onUpsert = (r: ProcessRow) => {
+        queue.push({ kind: 'delta', delta: { op: 'process_upsert', process: r } });
+        notify();
+      };
+      const onDelete = (id: string) => {
+        queue.push({ kind: 'delta', delta: { op: 'process_delete', process_id: id } });
+        notify();
+      };
+      const onPorts = (p: { process_id: string; ports: ProcessRow['ports'] }) => {
+        queue.push({
+          kind: 'delta',
+          delta: { op: 'process_ports', process_id: p.process_id, ports: p.ports },
+        });
+        notify();
+      };
+      tracker.on('upsert', onUpsert);
+      tracker.on('delete', onDelete);
+      tracker.on('ports', onPorts);
+      const onAbort = () => notify();
+      signal?.addEventListener('abort', onAbort);
+      try {
+        yield { kind: 'snapshot', rows: tracker.snapshot() };
+        while (!signal?.aborted) {
+          while (queue.length) yield queue.shift()!;
+          if (signal?.aborted) break;
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+      } finally {
+        tracker.off('upsert', onUpsert);
+        tracker.off('delete', onDelete);
+        tracker.off('ports', onPorts);
+        signal?.removeEventListener('abort', onAbort);
+        tracker.removeSubscriber();
+      }
+    }),
+    kill: t.procedure
+      .input(z.object({ process_id: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.tracker) throw new Error('tracker not configured');
+        await ctx.tracker.kill(input.process_id);
+        return { ok: true };
+      }),
   }),
 
   bin: t.router({

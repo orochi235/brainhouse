@@ -13,6 +13,7 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
 import type { Event } from './parser.js';
+import type { ProcessTracker } from './processes/index.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
 import { type PanelTheme, readPanelTheme } from './theme.js';
@@ -43,6 +44,10 @@ export interface MonitorOptions {
    * false, the supersede still dims/ends the panel but lets the normal
    * done→mini timer take over. */
   autoMinimizeOnClear?: boolean;
+  /** Optional process tracker. Hook events of kind session_pid /
+   * bash_intent / bash_id_map are forwarded here; stop / session_end
+   * are forwarded as well (in addition to the panel-lifecycle handling). */
+  tracker?: ProcessTracker | null;
 }
 
 const DEFAULT_EVENTS_RETENTION_DAYS = 30;
@@ -78,6 +83,7 @@ export class TranscriptMonitor {
   private pruneHandle: NodeJS.Timeout | null = null;
   private eventsIndexRetentionDays: number;
   private autoMinimizeOnClear: boolean;
+  private tracker: ProcessTracker | null = null;
   /** rootPath → label. Used to translate watcher "sourceRoot" into a
    * human-readable account name on each ingest. */
   private readonly accountLabels: Map<string, string>;
@@ -106,6 +112,7 @@ export class TranscriptMonitor {
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
     this.eventsIndexRetentionDays = opts.eventsIndexRetentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS;
     this.autoMinimizeOnClear = opts.autoMinimizeOnClear ?? true;
+    this.tracker = opts.tracker ?? null;
     const dir = opts.hookEventsDir === undefined ? defaultEventsDir() : opts.hookEventsDir;
     if (dir) {
       this.hookWatcher = new HookEventWatcher(dir, (e) => this.applyHookEvent(e));
@@ -286,6 +293,20 @@ export class TranscriptMonitor {
    * live subagents under that parent. */
   applyHookEvent(event: HookEvent): void {
     const sid = event.session_id;
+    if (this.tracker) {
+      if (
+        event.kind === 'session_pid' ||
+        event.kind === 'bash_intent' ||
+        event.kind === 'bash_id_map'
+      ) {
+        this.tracker.handleHookRecord(event);
+        return;
+      }
+      if (event.kind === 'stop' || event.kind === 'session_end') {
+        this.tracker.handleHookRecord(event);
+        // fall through to existing handling
+      }
+    }
     if (event.kind === 'stop') {
       for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
       // Materialize a session_summary with hook_stop provenance, but do
