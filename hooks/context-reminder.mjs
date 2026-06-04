@@ -76,8 +76,10 @@ async function main() {
 
   const message =
     `⚠️ Context is high (~${formatThousands(tokens)} tokens, threshold ${formatThousands(threshold)}). ` +
-    'Before answering, ask whether this prompt actually needs prior conversation context. ' +
-    'If not, suggest the user run `/clear` (or `/branch` to fork) and start the task fresh.';
+    'If this prompt is starting a substantial new chunk of work (a multi-step task, a new feature, a fresh plan) ' +
+    'AND prior conversation context isn\'t needed, suggest the user run `/clear` (or `/branch` to fork). ' +
+    'For trivial questions, quick follow-ups, status checks, or anything continuing in-flight work, ' +
+    'just answer normally — do NOT mention the suggestion. Save it for the moments where a fresh session would actually help.';
 
   process.stdout.write(
     `${JSON.stringify({
