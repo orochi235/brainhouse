@@ -695,7 +695,7 @@ body.loading-quiet .panel {
   animation-name: panel-title-sweep-pulse;
   animation-direction: normal;
   animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  animation-duration: 0.9s;
+  animation-duration: 1.4s;
 }
 /* Light theme: the screen blend washes out — switch to a softer tint
  * + multiply so the band is still visible without being garish. */
@@ -753,8 +753,8 @@ body.loading-quiet .panel {
   --sweep-direction: normal;
   /* Parabolic-feel deceleration: fast launch, drawn-out tail. */
   --sweep-easing: cubic-bezier(0.16, 1, 0.3, 1);
-  --sweep-duration: 0.9s;
-  --sweep-duration-sub: 0.9s;
+  --sweep-duration: 1.4s;
+  --sweep-duration-sub: 1.4s;
 }
 @media (prefers-reduced-motion: reduce) {
   .panel.waiting .panel-header::after,
@@ -1308,9 +1308,13 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   /* Drop the slot's intrinsic 1.4rem dimensions when it's stacked so
    * the icon-bearing element can shrink with the row instead of
    * clipping at the top edge on tight (e.g. mini-panel) headers. The
-   * dot itself stays a fixed 9px and centers in whatever space we get. */
+   * dot itself stays a fixed 9px and centers in whatever space we get.
+   * align-self: stretch overrides .panel-status-slot's `align-self:
+   * center` so the status-slot's box spans the full column width and
+   * its inner content centers exactly like the close button below it. */
   width: auto;
   height: auto;
+  align-self: stretch;
 }
 /* Divider between stacked leading items — drawn as an inset box-shadow
  * so any button's own `border: none` (or border-radius) doesn't clobber
@@ -4797,6 +4801,13 @@ body.hide-thinking .event-thought-agent {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.processes-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.9em;
+  flex-wrap: wrap;
 }
 
 .processes-filter {

@@ -4,15 +4,16 @@ import type { ProcessRow as Row } from '../useProcesses.ts';
 import { useProcesses } from '../useProcesses.ts';
 import { ProcessRow } from './ProcessRow.tsx';
 
-/** Storage key for the show-all toggle. Default behavior (key absent
- * or '0') is Claude-linked-only — the noisy host-wide listing requires
- * the user opt-in. */
-const SHOW_ALL_KEY = 'brainhouse:processes:showAll';
+/** localStorage keys for the three visibility toggles. Defaults: Claude
+ * on, network off, raw off. Each axis is independent. */
+const SHOW_CLAUDE_KEY = 'brainhouse:processes:showClaude';
+const SHOW_NETWORK_KEY = 'brainhouse:processes:showNetwork';
+const SHOW_RAW_KEY = 'brainhouse:processes:showRaw';
 
 /** Commands Claude Code (or its harness) spawns for housekeeping —
  * keep-alive shims, sleep prevention, etc. They're real descendants
  * but provide no signal about *what work* the session is doing, so
- * we hide them when the show-all toggle is off. */
+ * we always hide them. */
 const HOUSEKEEPING_HEADS = new Set(['caffeinate']);
 
 function isHousekeeping(row: Row): boolean {
@@ -21,40 +22,78 @@ function isHousekeeping(row: Row): boolean {
   return HOUSEKEEPING_HEADS.has(head);
 }
 
+/** A row is "Claude-related" when it's either the Claude binary itself
+ * or a tracked descendant of a Claude session (any non-discovered
+ * provenance tier). Network rows are everything else. */
+function isClaudeRelated(row: Row): boolean {
+  return row.runtime === 'claude' || row.provenance !== 'discovered';
+}
+
 export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelState> }) {
   const all = useProcesses().slice().sort((a, b) => b.uptime_s - a.uptime_s);
-  const [showAll, setShowAll] = useState<boolean>(() => {
-    try { return localStorage.getItem(SHOW_ALL_KEY) === '1'; } catch { return false; }
+  const [showClaude, setShowClaude] = useState<boolean>(() => {
+    try { return localStorage.getItem(SHOW_CLAUDE_KEY) !== '0'; } catch { return true; }
+  });
+  const [showNetwork, setShowNetwork] = useState<boolean>(() => {
+    try { return localStorage.getItem(SHOW_NETWORK_KEY) === '1'; } catch { return false; }
+  });
+  const [showRaw, setShowRaw] = useState<boolean>(() => {
+    try { return localStorage.getItem(SHOW_RAW_KEY) === '1'; } catch { return false; }
   });
   useEffect(() => {
-    try { localStorage.setItem(SHOW_ALL_KEY, showAll ? '1' : '0'); } catch {}
-  }, [showAll]);
+    try { localStorage.setItem(SHOW_CLAUDE_KEY, showClaude ? '1' : '0'); } catch {}
+  }, [showClaude]);
+  useEffect(() => {
+    try { localStorage.setItem(SHOW_NETWORK_KEY, showNetwork ? '1' : '0'); } catch {}
+  }, [showNetwork]);
+  useEffect(() => {
+    try { localStorage.setItem(SHOW_RAW_KEY, showRaw ? '1' : '0'); } catch {}
+  }, [showRaw]);
 
   if (all.length === 0) return null;
-  // Default view: Claude-linked rows only. Filter out `discovered`
-  // host-wide listeners and Claude's own housekeeping spawns
-  // (caffeinate, etc.) — but always keep the Claude binary itself
-  // visible since it's the process the session is running, even when
-  // brainhouse didn't witness the session start (e.g. session predates
-  // hook installation). Toggle on to see everything.
-  const rows = showAll
-    ? all
-    : all.filter(r => (r.runtime === 'claude' || r.provenance !== 'discovered') && !isHousekeeping(r));
+  // Two category axes (Claude / Network), with a separate "raw" toggle
+  // that bypasses the housekeeping / noise filter so things like
+  // caffeinate are visible when explicitly opted in.
+  const rows = all.filter(r => {
+    if (!showRaw && isHousekeeping(r)) return false;
+    const claudeish = isClaudeRelated(r);
+    if (claudeish && !showClaude) return false;
+    if (!claudeish && !showNetwork) return false;
+    return true;
+  });
 
   return (
     <section className="processes-panel">
       <header>
         <h2>
-          Processes <span className="processes-count">({rows.length}{!showAll && all.length !== rows.length ? ` of ${all.length}` : ''})</span>
+          Processes <span className="processes-count">({rows.length}{rows.length !== all.length ? ` of ${all.length}` : ''})</span>
         </h2>
-        <label className="processes-filter" title="Include host-wide listening services (postgres, redis, system apps, etc.) and Claude's own housekeeping processes.">
-          <input
-            type="checkbox"
-            checked={showAll}
-            onChange={e => setShowAll(e.target.checked)}
-          />
-          Show all processes
-        </label>
+        <div className="processes-filter-group">
+          <label className="processes-filter" title="Show Claude sessions: the claude binary itself plus any process attributed to a Claude session by the tree walker or hook records.">
+            <input
+              type="checkbox"
+              checked={showClaude}
+              onChange={e => setShowClaude(e.target.checked)}
+            />
+            Claude sessions
+          </label>
+          <label className="processes-filter" title="Show host-wide network listeners: anything bound to a TCP port (postgres, redis, system services, other people's dev servers, etc.) that isn't attributed to a Claude session.">
+            <input
+              type="checkbox"
+              checked={showNetwork}
+              onChange={e => setShowNetwork(e.target.checked)}
+            />
+            Network processes
+          </label>
+          <label className="processes-filter" title="Bypass the noise filter: include Claude's own housekeeping spawns (caffeinate, etc.) that we'd normally hide because they don't carry signal about what work the session is doing.">
+            <input
+              type="checkbox"
+              checked={showRaw}
+              onChange={e => setShowRaw(e.target.checked)}
+            />
+            Show all
+          </label>
+        </div>
       </header>
       {rows.length > 0 && (
         <table className="processes-table">
@@ -93,9 +132,9 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
           ))}</tbody>
         </table>
       )}
-      {!showAll && rows.length === 0 && (
+      {rows.length === 0 && all.length > 0 && (
         <p className="processes-filter-empty">
-          No processes are currently linked to a Claude Code session.
+          No processes match the current filters. Toggle a checkbox above to broaden the view.
         </p>
       )}
     </section>

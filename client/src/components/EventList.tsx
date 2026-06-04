@@ -66,7 +66,11 @@ export function ViewItemList({
 function itemKey(item: ViewItem): string {
   if (item.type === 'tool') return `tool:${item.anchorUuid}`;
   if (item.type === 'file-change') return `file:${item.anchorUuid}`;
-  if (item.type === 'op-strip') return `strip:${item.anchorUuid}`;
+  // op-strip can collide on `anchorUuid` alone when two strips happen
+  // to share their first item (e.g. multiple coalesce passes anchored
+  // on the same auto-title meta event). Include `ts` + length so
+  // distinct strip *contents* always produce a distinct key.
+  if (item.type === 'op-strip') return `strip:${item.anchorUuid}:${item.ts}:${item.items.length}`;
   if (item.type === 'interrupt-divider') return `int:${item.anchorUuid}`;
   if (item.type === 'day-divider') return `day:${item.date}:${item.anchorUuid}`;
   return `${item.type}:${item.event.uuid}`;

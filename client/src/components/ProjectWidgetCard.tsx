@@ -19,6 +19,7 @@
  */
 
 import classNames from 'classnames';
+import { CloseGlyph } from '../lib/CloseGlyph.tsx';
 import { type CSSProperties, useEffect, useMemo, useState } from 'react';
 import {
   aggregateProjectStatus,
@@ -314,7 +315,7 @@ function ProjectWidgetCloseButton({
         onClose();
       }}
     >
-      ×
+      <CloseGlyph />
     </button>
   );
 }

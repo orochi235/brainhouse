@@ -42,9 +42,9 @@ const SWEEPS: SweepDef[] = [
     keyframes: 'panel-title-sweep-pulse',
     direction: 'normal',
     easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-    duration: '0.9s',
+    duration: '1.4s',
     description:
-      'Used for subagent panels (and selectable as a parent preset via [data-sweep-preset="pulse"]). Band shoots left→right, then warps back and shoots again. Opacity fades in at 0–10% and out at 90–100% so the warp is invisible. 0.9s with a parabolic-feel deceleration — fast launch, drawn-out tail.',
+      'Used for subagent panels (and selectable as a parent preset via [data-sweep-preset="pulse"]). Band shoots left→right, then warps back and shoots again. Opacity fades in at 0–10% and out at 90–100% so the warp is invisible. 1.4s with a parabolic-feel deceleration — fast launch, drawn-out tail.',
   },
 ];
 

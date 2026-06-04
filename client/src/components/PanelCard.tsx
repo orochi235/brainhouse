@@ -1,5 +1,6 @@
 import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
+import { CloseGlyph } from '../lib/CloseGlyph.tsx';
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import trashIcon from '../assets/icons/trash.svg?raw';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
@@ -727,7 +728,7 @@ function BlacklistableCloseButton({
         onClose();
       }}
     >
-      ×
+      <CloseGlyph />
     </button>
   );
 }
