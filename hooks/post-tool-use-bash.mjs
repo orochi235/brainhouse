@@ -24,6 +24,8 @@ const rec = {
   bash_id: bashId,
   ts: Date.now() / 1000,
 };
+const transcriptPath = p?.transcript_path ?? p?.transcriptPath;
+if (typeof transcriptPath === 'string') rec.transcript_path = transcriptPath;
 
 try {
   const dir = eventsDir();

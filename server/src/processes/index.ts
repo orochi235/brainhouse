@@ -48,9 +48,22 @@ export class ProcessTracker extends EventEmitter {
         command: rec.command ?? '', run_in_background: rec.run_in_background ?? false,
         cwd: rec.cwd ?? '', ts: rec.ts,
       });
+    } else if (rec.kind === 'bash_id_map') {
+      this.rec.recordBashId(rec.session_id, rec.bash_id);
+      if (typeof rec.transcript_path === 'string') {
+        this.rec.setTranscriptPath(rec.session_id, rec.transcript_path);
+      }
     } else if (rec.kind === 'session_end' || rec.kind === 'stop') {
       this.rec.unregisterSession(rec.session_id);
     }
+    // Opportunistically capture transcript_path on any hook with it.
+    if (typeof rec.transcript_path === 'string' && typeof rec.session_id === 'string') {
+      this.rec.setTranscriptPath(rec.session_id, rec.transcript_path);
+    }
+  }
+
+  getTranscriptPath(sessionId: string): string | undefined {
+    return this.rec.getTranscriptPath(sessionId);
   }
 
   async tickOnce() {

@@ -13,6 +13,7 @@ export type ProcessRow = {
   ports: Array<{ proto: 'TCP'; addr: string; port: number }>;
   ended_ts: number | null; ended_reason: string | null;
   uptime_s: number;
+  bash_id: string | null;
 };
 
 export type ProcessDelta =

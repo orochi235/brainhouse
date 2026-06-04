@@ -13,6 +13,7 @@
  */
 
 import { type EventEmitter, on } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
@@ -148,6 +149,20 @@ export const appRouter = t.router({
         if (!ctx.tracker) throw new Error('tracker not configured');
         await ctx.tracker.kill(input.process_id);
         return { ok: true };
+      }),
+    /** Scan the session's transcript JSONL from the end and return the
+     * tail of the most recent tool_result whose body contains `bash_id`.
+     * Returns the empty string when the tracker isn't configured, the row
+     * has no `bash_id`, or no matching tool_result has been written yet. */
+    tailStdout: t.procedure
+      .input(z.object({ process_id: z.string(), lines: z.number().default(40) }))
+      .query(({ ctx, input }) => {
+        if (!ctx.tracker) return { content: '' };
+        const row = ctx.tracker.snapshot().find((r) => r.process_id === input.process_id);
+        if (!row?.bash_id || !row.session_id) return { content: '' };
+        const transcriptPath = ctx.tracker.getTranscriptPath(row.session_id);
+        if (!transcriptPath) return { content: '' };
+        return { content: tailBashOutput(transcriptPath, row.bash_id, input.lines) };
       }),
   }),
 
@@ -405,6 +420,38 @@ export const appRouter = t.router({
     }
   }),
 });
+
+/** Walk a transcript JSONL backwards looking for the most recent
+ * `tool_result` whose body mentions `bashId`. Returns the trailing
+ * `lines` lines of that body. Best-effort: file-missing or malformed
+ * lines are swallowed and yield an empty string. Exported for test. */
+export function tailBashOutput(transcriptPath: string, bashId: string, lines: number): string {
+  try {
+    const raw = readFileSync(transcriptPath, 'utf8').split('\n');
+    for (let i = raw.length - 1; i >= 0; i--) {
+      const line = raw[i];
+      if (!line) continue;
+      try {
+        const rec = JSON.parse(line);
+        if (rec.type === 'user' && Array.isArray(rec.message?.content)) {
+          for (const c of rec.message.content) {
+            if (c.type === 'tool_result' && c.content) {
+              const body = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
+              if (body.includes(bashId)) {
+                return body.split('\n').slice(-lines).join('\n');
+              }
+            }
+          }
+        }
+      } catch {
+        /* skip malformed line */
+      }
+    }
+  } catch {
+    /* file missing */
+  }
+  return '';
+}
 
 function sameList(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;

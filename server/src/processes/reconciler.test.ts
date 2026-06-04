@@ -35,6 +35,18 @@ describe('Reconciler', () => {
     expect(row.run_in_background).toBe(true);
   });
 
+  it('attaches bash_id to backgrounded run_in_background row', () => {
+    const r = new Reconciler();
+    r.registerSession('s1', { pid: 50, cwd: '/p' });
+    r.recordBashIntent('s1', { command: 'npm run dev', run_in_background: true, cwd: '/p', ts: 4.9 });
+    r.recordBashId('s1', 'bg_1');
+    const { upserts } = r.tick([
+      baseProc({ pid: 50, ppid: 1, command: 'claude' }),
+      baseProc({ pid: 100, ppid: 50, start_ts: 5_000_000_000, command: 'node vite' }),
+    ], 5);
+    expect(upserts.find(u => u.pid === 100)?.bash_id).toBe('bg_1');
+  });
+
   it('does not emit deltas for sub-3s commands with no port and no run_in_background', () => {
     const r = new Reconciler();
     r.registerSession('s1', { pid: 50, cwd: '/p' });

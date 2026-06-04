@@ -18,6 +18,11 @@ export interface ProcessRow {
   ports: Array<{ proto: 'TCP'; addr: string; port: number }>;
   ended_ts: number | null; ended_reason: string | null;
   uptime_s: number;
+  /** Claude Code background bash id (`bash_1` style) when this row was
+   * matched to a `run_in_background: true` Bash invocation via the
+   * PostToolUse `bash_id_map` hook record. Lets the UI query
+   * `processes.tailStdout` to fetch the latest captured stdout. */
+  bash_id: string | null;
 }
 
 interface SessionInfo { pid: number; cwd: string; }
@@ -34,9 +39,28 @@ export class Reconciler {
   private rows = new Map<string, ProcessRow>();
   private missingTicks = new Map<string, number>();
   private broadcasted = new Set<string>();
+  private bashIdsBySession = new Map<string, string[]>();
+  private transcriptPathBySession = new Map<string, string>();
 
   registerSession(sessionId: string, info: SessionInfo) { this.sessions.set(sessionId, info); }
-  unregisterSession(sessionId: string) { this.sessions.delete(sessionId); this.intents.delete(sessionId); }
+  unregisterSession(sessionId: string) {
+    this.sessions.delete(sessionId);
+    this.intents.delete(sessionId);
+    this.bashIdsBySession.delete(sessionId);
+    this.transcriptPathBySession.delete(sessionId);
+  }
+  recordBashId(sessionId: string, bashId: string) {
+    const arr = this.bashIdsBySession.get(sessionId) ?? [];
+    arr.push(bashId);
+    while (arr.length > 20) arr.shift();
+    this.bashIdsBySession.set(sessionId, arr);
+  }
+  setTranscriptPath(sessionId: string, transcriptPath: string) {
+    this.transcriptPathBySession.set(sessionId, transcriptPath);
+  }
+  getTranscriptPath(sessionId: string): string | undefined {
+    return this.transcriptPathBySession.get(sessionId);
+  }
   recordBashIntent(sessionId: string, intent: BashIntent) {
     const arr = this.intents.get(sessionId) ?? [];
     arr.push(intent);
@@ -106,6 +130,12 @@ export class Reconciler {
           row.provenance = 'hooked';
           row.hook_command = match.command;
           row.run_in_background = match.run_in_background;
+          if (match.run_in_background && row.bash_id === null) {
+            const arr = this.bashIdsBySession.get(row.session_id) ?? [];
+            const id = arr.shift();
+            if (id) row.bash_id = id;
+            this.bashIdsBySession.set(row.session_id, arr);
+          }
         }
       }
 
@@ -174,6 +204,7 @@ export class Reconciler {
       ports: [],
       ended_ts: null, ended_reason: null,
       uptime_s: 0,
+      bash_id: null,
     };
   }
 }
