@@ -1,6 +1,14 @@
 import { useState } from 'react';
+import { CLI_ICONS } from '../lib/tools.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { trpc } from '../trpc.ts';
+
+/** Map a detected runtime to the same SVG asset used by Bash tool
+ * capsules. Falls back to null so the caller can render text only. */
+function runtimeIcon(runtime: string | null): string | null {
+  if (!runtime) return null;
+  return CLI_ICONS[runtime] ?? null;
+}
 
 const PROVENANCE_DOT: Record<Row['provenance'], string> = {
   hooked: '●', observed: '●', heuristic: '●', discovered: '○',
@@ -63,16 +71,27 @@ export function ProcessRow({ row }: { row: Row }) {
           </span>
         </td>
         <td>{row.pid}</td>
-        {row.runtime || row.framework ? (
-          <>
-            <td>{runtimeText}</td>
-            <td>{frameworkText}</td>
-          </>
-        ) : (
-          <td colSpan={2} className="process-command-cell">
-            <span className="process-command" title={row.command}>{row.command}</span>
-          </td>
-        )}
+        <td className="process-runtime">
+          {(() => {
+            const svg = runtimeIcon(row.runtime);
+            if (svg) return (
+              <>
+                <span
+                  className="runtime-icon"
+                  aria-hidden="true"
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG.
+                  dangerouslySetInnerHTML={{ __html: svg }}
+                />
+                {row.runtime_version && <span className="runtime-version">{row.runtime_version}</span>}
+              </>
+            );
+            return runtimeText;
+          })()}
+        </td>
+        <td>{frameworkText}</td>
+        <td className="process-command-cell">
+          <span className="process-command" title={row.command}>{row.command}</span>
+        </td>
         <td>
           {row.ports.length === 0 ? '—' : row.ports.map((p, i) => (
             <span key={`${p.proto}-${p.addr}-${p.port}-${i}`}>
@@ -99,7 +118,7 @@ export function ProcessRow({ row }: { row: Row }) {
       </tr>
       {tail !== null && (
         <tr className="process-tail">
-          <td colSpan={9}><pre>{tail}</pre></td>
+          <td colSpan={10}><pre>{tail}</pre></td>
         </tr>
       )}
     </>

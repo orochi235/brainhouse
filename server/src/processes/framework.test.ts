@@ -21,6 +21,10 @@ describe('detectFrameworkFromArgv', () => {
     const r = detectFrameworkFromArgv(['ruby', 'bin/rails', 'server']);
     expect(r?.framework).toBe('rails');
   });
+  it('playwright via @playwright scope', () => {
+    expect(detectFrameworkFromArgv(['node', '/x/node_modules/@playwright/test/cli.js'])?.framework).toBe('playwright');
+    expect(detectFrameworkFromArgv(['npx', '@playwright/mcp@latest'])?.framework).toBe('playwright');
+  });
   it('astro / nuxt / remix / webpack-dev-server', () => {
     expect(detectFrameworkFromArgv(['node', '/p/node_modules/astro/astro.js'])?.framework).toBe('astro');
     expect(detectFrameworkFromArgv(['node', '/p/node_modules/nuxt/bin/nuxt.mjs'])?.framework).toBe('nuxt');

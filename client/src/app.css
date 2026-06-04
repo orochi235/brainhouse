@@ -4753,6 +4753,33 @@ body.hide-thinking .event-thought-agent {
   font-variant-numeric: tabular-nums;
 }
 
+/* Resizable columns (v1): table-layout: fixed so cell widths come from
+ * the header row; each <th> is itself resizable via the browser's
+ * built-in `resize` UI. Handle sits in the bottom-right corner of the
+ * cell (CSS-only — drag-from-edge handle would need JS). Widths reset
+ * on reload; persistence can be added later via localStorage. */
+.processes-table { table-layout: fixed; }
+
+.processes-table th {
+  position: relative;
+  resize: horizontal;
+  overflow: hidden;
+  min-width: 3ch;
+}
+
+/* A faint vertical bar at the right edge of each header to telegraph
+ * the resize affordance — purely visual. The corner handle is the
+ * active drag area; this just helps users discover it. */
+.processes-table th .th-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 4px;
+  border-right: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  pointer-events: none;
+}
+
 .processes-panel th {
   text-align: left;
   font-weight: 500;
@@ -4795,6 +4822,31 @@ body.hide-thinking .event-thought-agent {
   color: color-mix(in srgb, var(--fg) 60%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.95em;
+}
+
+/* Runtime cell: SVG icon (reuses the existing CLI_ICONS palette used
+ * by Bash tool capsules) followed by version. Falls back to plain
+ * text when we have no icon for the detected runtime. */
+.process-runtime {
+  white-space: nowrap;
+}
+
+.processes-panel .runtime-icon {
+  display: inline-flex;
+  align-items: center;
+  width: 1em;
+  height: 1em;
+  vertical-align: -2px;
+  margin-right: 0.3em;
+}
+
+.processes-panel .runtime-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.runtime-version {
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
 }
 
 .process-row a:hover { text-decoration: underline; }

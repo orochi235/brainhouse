@@ -13,6 +13,10 @@ const PATTERNS: Array<{ framework: string; re: RegExp; pkgGroup?: number }> = [
   { framework: 'rails',               re: /(?:^|\/|\s)bin\/rails(\s|$)/ },
   { framework: 'django',              re: /manage\.py(\s|$)/ },
   { framework: 'flask',               re: /flask(\s|$)/ },
+  // Playwright distributes everything under @playwright/* (test, mcp,
+  // browser bundles). Match the scope prefix so any of them surface as
+  // playwright without a per-package list.
+  { framework: 'playwright',          re: /@playwr/ },
 ];
 
 export function detectFrameworkFromArgv(argv: string[]): FrameworkHit | null {

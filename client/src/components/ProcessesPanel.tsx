@@ -7,11 +7,19 @@ export function ProcessesPanel() {
   return (
     <section className="processes-panel">
       <header><h2>Processes <span className="processes-count">({rows.length})</span></h2></header>
-      <table>
+      <table className="processes-table">
         <thead>
           <tr>
-            <th></th><th>PID</th><th>Runtime</th><th>Framework</th>
-            <th>Ports</th><th>cwd</th><th>Session</th><th>Uptime</th><th></th>
+            <th aria-label="status"><span className="th-resize" /></th>
+            <th>PID<span className="th-resize" /></th>
+            <th>Runtime<span className="th-resize" /></th>
+            <th>Framework<span className="th-resize" /></th>
+            <th>Command<span className="th-resize" /></th>
+            <th>Ports<span className="th-resize" /></th>
+            <th>cwd<span className="th-resize" /></th>
+            <th>Session<span className="th-resize" /></th>
+            <th>Uptime<span className="th-resize" /></th>
+            <th aria-label="actions" />
           </tr>
         </thead>
         <tbody>{rows.map(r => <ProcessRow key={r.process_id} row={r} />)}</tbody>
