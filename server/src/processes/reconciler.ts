@@ -39,6 +39,11 @@ const INTENT_MATCH_WINDOW_S = 2;
  * the wider signal-strong filter. Applied to BOTH the broadcast path
  * and the snapshot path so subscribers never see noise rows. */
 export function qualifiesForBroadcast(row: ProcessRow): boolean {
+  // Claude sessions themselves are always interesting, even when they
+  // aren't tied to a brainhouse-known session_id (typical when brainhouse
+  // started after the user's existing Claude sessions). The 'claude'
+  // runtime label is set in runtime.ts → ARGV0_KNOWN.
+  if (row.runtime === 'claude') return true;
   if (row.provenance === 'discovered') return row.ports.length > 0;
   return row.run_in_background || row.uptime_s >= SIGNAL_MIN_UPTIME_S || row.ports.length > 0;
 }
@@ -85,6 +90,10 @@ export class Reconciler {
   ): { upserts: ProcessRow[]; deletes: string[] } {
     const sessionOf = new Map<number, string>();
     for (const [sid, info] of this.sessions) {
+      // Attribute the session's root PID itself so the Claude process
+      // shows up in the panel alongside its descendants. Without this,
+      // the user can't see "the process this session is running."
+      sessionOf.set(info.pid, sid);
       const stack = [info.pid];
       const seen = new Set<number>([info.pid]);
       while (stack.length) {

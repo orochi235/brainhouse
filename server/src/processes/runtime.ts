@@ -39,6 +39,10 @@ const ARGV0_KNOWN: Record<string, string> = {
   // Wrappers that always shell into node: surface as node so the icon
   // and color match Bash tool capsules.
   npm: 'node', npx: 'node', yarn: 'node', pnpm: 'node',
+  // Claude Code itself — the binary that wraps session processes. We
+  // identify it as its own runtime so it surfaces in the panel even
+  // when it has no listening port (see qualifiesForBroadcast).
+  claude: 'claude',
 };
 
 export function detectRuntimeFromArgv(argv: string[]): Runtime | null {

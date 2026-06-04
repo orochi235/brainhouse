@@ -687,7 +687,15 @@ body.loading-quiet .panel {
   z-index: 1;
 }
 .panel-subagent.status-live .panel-header::after {
-  animation-duration: var(--sweep-duration-sub);
+  /* Subagent headers use the pulse preset (one-way, fades at endpoints)
+   * regardless of which preset the user picked for parent panels. Gives
+   * subagents a visibly different motion language from their parents.
+   * Faster and with a parabolic-feel deceleration so it reads as a
+   * quick injection rather than a steady status indicator. */
+  animation-name: panel-title-sweep-pulse;
+  animation-direction: normal;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-duration: 0.9s;
 }
 /* Light theme: the screen blend washes out — switch to a softer tint
  * + multiply so the band is still visible without being garish. */
@@ -730,18 +738,23 @@ body.loading-quiet .panel {
 /* Pulse preset — band shoots from one end to the other, then resets
  * and shoots again from the same end. Used with direction: normal so
  * each cycle is a one-way pass; opacity fades in at start and out at
- * end so the warp-back from the left edge to the right is invisible. */
+ * end so the warp-back is invisible. Travels left→right; the
+ * parabolic easing decelerates as the band crosses, like a thrown
+ * object slowing under drag. */
 @keyframes panel-title-sweep-pulse {
-  0%   { opacity: 0; transform: translate3d(70%, 0, 0); }
+  0%   { opacity: 0; transform: translate3d(-70%, 0, 0); }
   10%  { opacity: 1; }
   90%  { opacity: 1; }
-  100% { opacity: 0; transform: translate3d(-70%, 0, 0); }
+  100% { opacity: 0; transform: translate3d(70%, 0, 0); }
 }
 
 [data-sweep-preset='pulse'] {
   --sweep-keyframes: panel-title-sweep-pulse;
   --sweep-direction: normal;
-  --sweep-easing: linear;
+  /* Parabolic-feel deceleration: fast launch, drawn-out tail. */
+  --sweep-easing: cubic-bezier(0.16, 1, 0.3, 1);
+  --sweep-duration: 0.9s;
+  --sweep-duration-sub: 0.9s;
 }
 @media (prefers-reduced-motion: reduce) {
   .panel.waiting .panel-header::after,
@@ -4862,7 +4875,7 @@ body.hide-thinking .event-thought-agent {
 
 .processes-panel td {
   padding: 0.25rem 0.5rem;
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .process-row:hover {

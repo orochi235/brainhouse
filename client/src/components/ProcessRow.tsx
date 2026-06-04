@@ -18,6 +18,19 @@ const PROVENANCE_DOT: Record<Row['provenance'], string> = {
   hooked: '●', observed: '●', heuristic: '●', discovered: '○',
 };
 
+/** Human-readable explanation of each provenance tier — surfaced as
+ * a title attribute on the status dot. */
+const PROVENANCE_TOOLTIP: Record<Row['provenance'], string> = {
+  hooked:
+    'hooked — the process is a descendant of a known Claude session and we have a matching Bash intent record. Highest confidence: we know which agent command spawned it.',
+  observed:
+    'observed — the process is a descendant of a known Claude session via the ps tree, but no PreToolUse Bash hook record matched it. Common for sub-shells or processes spawned outside the Bash tool.',
+  heuristic:
+    "heuristic — the process isn't in any session's tree but its cwd matches a session's cwd. Best-effort attribution; can be wrong if multiple sessions share a directory.",
+  discovered:
+    'discovered — the process is bound to a listening port and was found by the host-wide lsof sweep. No Claude session attribution.',
+};
+
 const PROVENANCE_CLASS: Record<Row['provenance'], string> = {
   hooked: 'process-dot process-dot-hooked',
   observed: 'process-dot process-dot-observed',
@@ -86,7 +99,7 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
     <>
       <tr className="process-row">
         <td>
-          <span className={PROVENANCE_CLASS[row.provenance]} title={row.provenance}>
+          <span className={PROVENANCE_CLASS[row.provenance]} title={PROVENANCE_TOOLTIP[row.provenance]}>
             {PROVENANCE_DOT[row.provenance]}
           </span>
         </td>
