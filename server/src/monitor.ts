@@ -302,7 +302,7 @@ export class TranscriptMonitor {
         this.tracker.handleHookRecord(event);
         return;
       }
-      if (event.kind === 'stop' || event.kind === 'session_end') {
+      if (event.kind === 'session_end') {
         this.tracker.handleHookRecord(event);
         // fall through to existing handling
       }

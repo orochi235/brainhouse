@@ -53,7 +53,11 @@ export class ProcessTracker extends EventEmitter {
       if (typeof rec.transcript_path === 'string') {
         this.rec.setTranscriptPath(rec.session_id, rec.transcript_path);
       }
-    } else if (rec.kind === 'session_end' || rec.kind === 'stop') {
+    } else if (rec.kind === 'session_end') {
+      // `stop` is a per-turn idle marker, NOT a session terminator —
+      // it fires after every assistant message. Only `session_end`
+      // means the Claude session has actually exited; unregistering
+      // on `stop` would drop attribution on every turn.
       this.rec.unregisterSession(rec.session_id);
     }
     // Opportunistically capture transcript_path on any hook with it.
