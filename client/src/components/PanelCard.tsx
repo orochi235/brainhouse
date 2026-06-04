@@ -686,14 +686,14 @@ function PanelHeader({
       leading={leading}
       title={titleNode}
       titleAside={titleAside}
-      subtitleLeading={
+      subtitle={subtitleNode}
+      subtitleTrailing={
         account ? (
           <span className="panel-account" title={`account: ${account}`}>
             {account}
           </span>
         ) : undefined
       }
-      subtitle={subtitleNode}
       subtitleAside={subtitleAside}
     />
   );

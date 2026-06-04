@@ -23,14 +23,17 @@ import type { MouseEvent, ReactNode } from 'react';
 
 export type TitleBarProps = {
   leading?: ReactNode;
-  /** Inline content rendered to the left of the title text (e.g. an
-   * account badge that should prefix the project name). */
-  titleLeading?: ReactNode;
   title: ReactNode;
+  /** Inline content rendered to the right of the title text but still
+   * in the row's left half (e.g. an account badge that should sit
+   * adjacent to the project name without joining the far-right aside
+   * group). */
+  titleTrailing?: ReactNode;
   titleAside?: ReactNode;
-  /** Inline content rendered to the left of the subtitle text. */
-  subtitleLeading?: ReactNode;
   subtitle?: ReactNode;
+  /** Inline content rendered to the right of the subtitle text but
+   * still in the row's left half. */
+  subtitleTrailing?: ReactNode;
   subtitleAside?: ReactNode;
   trailing?: ReactNode;
   className?: string;
@@ -39,11 +42,11 @@ export type TitleBarProps = {
 
 export function TitleBar({
   leading,
-  titleLeading,
   title,
+  titleTrailing,
   titleAside,
-  subtitleLeading,
   subtitle,
+  subtitleTrailing,
   subtitleAside,
   trailing,
   className,
@@ -55,8 +58,8 @@ export function TitleBar({
       <div className="title-bar-body">
         <div className="title-bar-title-row">
           <span className="title-bar-row-left">
-            {titleLeading}
             <span className="title-bar-title">{title}</span>
+            {titleTrailing}
           </span>
           {titleAside !== undefined && (
             <span className="title-bar-aside">{titleAside}</span>
@@ -65,10 +68,10 @@ export function TitleBar({
         {(subtitle !== undefined || subtitleAside !== undefined) && (
           <div className="title-bar-subtitle-row">
             <span className="title-bar-row-left">
-              {subtitleLeading}
               {subtitle !== undefined && (
                 <span className="title-bar-subtitle">{subtitle}</span>
               )}
+              {subtitleTrailing}
             </span>
             {subtitleAside !== undefined && (
               <span className="title-bar-aside">{subtitleAside}</span>

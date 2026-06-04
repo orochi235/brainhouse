@@ -120,17 +120,17 @@ export function ProjectWidgetCard({
         leading={leading}
         title={<span className="project-widget-title">{widget.repo}</span>}
         titleAside={<span className="project-widget-kind">project</span>}
-        subtitleLeading={
+        subtitle={
+          <span className="project-widget-path" title={widget.cwd}>
+            {widget.cwd}
+          </span>
+        }
+        subtitleTrailing={
           account_label ? (
             <span className="panel-account" title={`account: ${account_label}`}>
               {account_label}
             </span>
           ) : undefined
-        }
-        subtitle={
-          <span className="project-widget-path" title={widget.cwd}>
-            {widget.cwd}
-          </span>
         }
       />
       <div className="project-widget-stats">
