@@ -1,12 +1,40 @@
+import { useEffect, useState } from 'react';
 import { useProcesses } from '../useProcesses.ts';
 import { ProcessRow } from './ProcessRow.tsx';
 
+const ONLY_KEY = 'brainhouse:processes:onlyClaudeLinked';
+
 export function ProcessesPanel() {
-  const rows = useProcesses().slice().sort((a, b) => b.uptime_s - a.uptime_s);
-  if (rows.length === 0) return null;
+  const all = useProcesses().slice().sort((a, b) => b.uptime_s - a.uptime_s);
+  const [onlyClaudeLinked, setOnlyClaudeLinked] = useState<boolean>(() => {
+    try { return localStorage.getItem(ONLY_KEY) === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(ONLY_KEY, onlyClaudeLinked ? '1' : '0'); } catch {}
+  }, [onlyClaudeLinked]);
+
+  if (all.length === 0) return null;
+  // A row is "Claude-linked" when we've attributed it to a session by
+  // any tier — discovered rows are the host-wide listening services.
+  const rows = onlyClaudeLinked
+    ? all.filter(r => r.provenance !== 'discovered')
+    : all;
+
   return (
     <section className="processes-panel">
-      <header><h2>Processes <span className="processes-count">({rows.length})</span></h2></header>
+      <header>
+        <h2>
+          Processes <span className="processes-count">({rows.length}{onlyClaudeLinked && all.length !== rows.length ? ` of ${all.length}` : ''})</span>
+        </h2>
+        <label className="processes-filter" title="Hide host-wide listeners; show only processes we've linked to a Claude Code session">
+          <input
+            type="checkbox"
+            checked={onlyClaudeLinked}
+            onChange={e => setOnlyClaudeLinked(e.target.checked)}
+          />
+          Claude-linked only
+        </label>
+      </header>
       <table className="processes-table">
         <colgroup>
           <col style={{ width: '30px' }} />
@@ -36,6 +64,11 @@ export function ProcessesPanel() {
         </thead>
         <tbody>{rows.map(r => <ProcessRow key={r.process_id} row={r} />)}</tbody>
       </table>
+      {onlyClaudeLinked && rows.length === 0 && (
+        <p className="processes-filter-empty">
+          No processes are currently linked to a Claude Code session.
+        </p>
+      )}
     </section>
   );
 }
