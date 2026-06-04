@@ -149,6 +149,13 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
             >
               <CopyableId id={row.session_id} length={8} />
             </span>
+          ) : row.project ? (
+            // No single session pinned, but cwd matches a Claude project.
+            // Show the project basename with a leading folder glyph so it's
+            // visually distinct from a session id. Title carries full path.
+            <span className="session-chip-wrap session-chip-project" title={row.project}>
+              <span className="project-chip">📁 {row.project.split('/').filter(Boolean).pop()}</span>
+            </span>
           ) : (
             '(discovered)'
           )}

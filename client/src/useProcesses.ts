@@ -14,6 +14,11 @@ export type ProcessRow = {
   ended_ts: number | null; ended_reason: string | null;
   uptime_s: number;
   bash_id: string | null;
+  /** Project path (= a registered session's cwd) when we can pin the
+   * process to a Claude project but not to a single specific session.
+   * Mutually exclusive with session_id in the natural sense — both
+   * can be set simultaneously, but the UI prefers session_id. */
+  project: string | null;
 };
 
 export type ProcessDelta =

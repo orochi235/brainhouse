@@ -23,6 +23,13 @@ export interface ProcessRow {
    * PostToolUse `bash_id_map` hook record. Lets the UI query
    * `processes.tailStdout` to fetch the latest captured stdout. */
   bash_id: string | null;
+  /** Project path (a known Claude session's cwd) when we can pin the
+   * process to a project but not to a single specific session. Set
+   * either because multiple sessions share the cwd (ambiguous), or
+   * because the process's cwd is inside a known project root but no
+   * session is an exact match. The UI shows this as a project chip
+   * in the Session column when session_id is null. */
+  project: string | null;
   /** Ancestor PIDs (immediate parent → root, exclusive of self) snapshotted
    * the first time we saw this row in ps. Used to retroactively attribute
    * a process to a Claude session that registers AFTER the process has
@@ -177,12 +184,33 @@ export class Reconciler {
           }
         }
       }
-      // Heuristic cwd attribution if not in tree
-      if (!row.session_id && cwdLookup) {
+      // cwd-based attribution if not in tree. Two tiers:
+      //   - Exactly one registered session has cwd === process cwd →
+      //     attribute to that session (heuristic tier).
+      //   - Process cwd is the same as, or a descendant of, multiple
+      //     registered session cwds, OR exactly one but the cwds aren't
+      //     identical (descendant only) → attribute to the project (the
+      //     shared/parent cwd). UI shows a project chip in place of a
+      //     session id; dot stays at 'heuristic' confidence.
+      if (!row.session_id && !row.project && cwdLookup) {
         const cwd = cwdLookup(p.pid);
         if (cwd) {
+          const exactMatches: string[] = [];
+          const projectMatches: string[] = []; // session cwds that contain process cwd
           for (const [s, info] of this.sessions) {
-            if (info.cwd === cwd) { row.session_id = s; row.provenance = 'heuristic'; break; }
+            if (info.cwd === cwd) exactMatches.push(s);
+            else if (info.cwd && cwd.startsWith(`${info.cwd}/`)) projectMatches.push(info.cwd);
+          }
+          if (exactMatches.length === 1) {
+            row.session_id = exactMatches[0] ?? null;
+            if (row.provenance === 'discovered') row.provenance = 'heuristic';
+          } else if (exactMatches.length > 1) {
+            row.project = cwd;
+            if (row.provenance === 'discovered') row.provenance = 'heuristic';
+          } else if (projectMatches.length > 0) {
+            // Pick the longest project root (most specific ancestor).
+            row.project = projectMatches.sort((a, b) => b.length - a.length)[0] ?? null;
+            if (row.provenance === 'discovered') row.provenance = 'heuristic';
           }
         }
       }
@@ -280,6 +308,7 @@ export class Reconciler {
       ended_ts: null, ended_reason: null,
       uptime_s: 0,
       bash_id: null,
+      project: null,
       original_ancestors: originalAncestors,
     };
   }

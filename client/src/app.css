@@ -3942,6 +3942,14 @@ body.replay-drop-target::after {
   background: color-mix(in srgb, var(--bg) 60%, transparent);
 }
 
+.project-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  padding: 1px 4px;
+  display: inline-block;
+}
+
 /* Global animation kill-switch — when ?freeze=1 sets data-freeze on
  * <body>, freeze every animated transition so the static state is
  * what you actually see. Useful for inspecting layout / styling
