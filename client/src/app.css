@@ -74,7 +74,11 @@ body {
   background: var(--bg);
   color: var(--fg);
   display: grid;
-  grid-template-rows: auto 1fr;
+  /* Rows: topbar (auto) | optional bars like .processes-panel (auto, 0 when
+   * absent) | session-grid (1fr). Three explicit tracks so the 1fr
+   * always belongs to the session-grid regardless of how many auto bars
+   * sit above it. */
+  grid-template-rows: auto auto 1fr;
   /* The session-dock column auto-sizes: collapses to 0 when empty (aside is not
    * rendered) and grows to fit its content otherwise. */
   grid-template-columns: minmax(0, 1fr) auto;
@@ -4695,4 +4699,124 @@ body.hide-thinking .event-thought-agent {
   font-size: 0.85em;
   cursor: help;
   user-select: none;
+}
+
+/* ─── Processes panel ─────────────────────────────────────────────
+ * Top-of-grid dashboard listing every live OS process spawned by a
+ * Claude session, plus already-listening services on the host.
+ * Tiered provenance dot at left, kill / tail buttons at right.
+ */
+
+.processes-panel {
+  /* Body is a 2-col grid (main | dock); span both so this is a full-width
+   * strip beneath the topbar. The body's row track is `auto 1fr`; this
+   * element naturally creates an additional `auto` row when present, so
+   * the session-grid (1fr) shrinks to make room rather than overlapping. */
+  grid-column: 1 / -1;
+  margin: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 90%, var(--fg) 4%);
+  font-size: 0.85em;
+  max-height: 40vh;
+  overflow: auto;
+  /* Keep above the session-grid in case any transform/z-index from the
+   * grid creates a new stacking context. */
+  position: relative;
+  z-index: 1;
+}
+
+.processes-count {
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  font-weight: 400;
+  font-size: 0.9em;
+  margin-left: 0.3em;
+}
+
+.processes-panel > header > h2 {
+  font-size: 0.95em;
+  margin: 0 0 0.4rem 0;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+}
+
+.processes-panel > p.empty {
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  font-style: italic;
+  margin: 0.4rem 0;
+}
+
+.processes-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.processes-panel th {
+  text-align: left;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  padding: 0.2rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.processes-panel td {
+  padding: 0.25rem 0.5rem;
+  vertical-align: middle;
+}
+
+.process-row:hover {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+
+.process-row a {
+  color: var(--accent, #a78bfa);
+  text-decoration: none;
+}
+
+.process-row a:hover { text-decoration: underline; }
+
+.process-row button {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  border-radius: 3px;
+  padding: 0.05rem 0.4rem;
+  margin-left: 0.25rem;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  font-size: 0.95em;
+}
+
+.process-row button:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+
+.process-dot {
+  display: inline-block;
+  font-size: 0.8em;
+  line-height: 1;
+}
+
+.process-dot-hooked     { color: #4ade80; }   /* confident: in-tree + intent match */
+.process-dot-observed   { color: #facc15; }   /* in-tree, no intent match */
+.process-dot-heuristic  { color: #fb923c; }   /* cwd-matched fallback */
+.process-dot-discovered { color: color-mix(in srgb, var(--fg) 45%, transparent); }
+
+.process-tail > td {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.process-tail pre {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
 }

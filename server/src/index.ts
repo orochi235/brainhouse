@@ -7,6 +7,8 @@ import Fastify from 'fastify';
 import { TranscriptMonitor } from './monitor.js';
 import { checkOnboarding, ONBOARDING_WARNING_LINES } from './onboarding.js';
 import { PrefsStore } from './prefs.js';
+import { ProcessTracker } from './processes/index.js';
+import { runStartupDiscovery } from './processes/discovery.js';
 import { resolveRoots } from './roots.js';
 import { Store } from './store.js';
 import { appRouter } from './trpc.js';
@@ -21,6 +23,7 @@ async function main() {
 
   const { timings, roots: configuredRoots, storage, workspace } = prefs.get();
   const store = storage.persistEnabled ? Store.open() : null;
+  const tracker = new ProcessTracker();
   const monitor = new TranscriptMonitor({
     roots,
     accounts: configuredRoots,
@@ -31,8 +34,11 @@ async function main() {
     store,
     eventsIndexRetentionDays: storage.eventsIndexRetentionDays,
     autoMinimizeOnClear: workspace.autoMinimizeOnClear,
+    tracker,
   });
   await monitor.start();
+  tracker.start();
+  await runStartupDiscovery(tracker);
 
   // pino-pretty's default ANSI emission (color resets, attribute clears)
   // visibly wipes terminal background tints in some terminals — opt out
@@ -50,7 +56,7 @@ async function main() {
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
-      createContext: () => ({ monitor, prefs, store }),
+      createContext: () => ({ monitor, prefs, store, tracker }),
     },
   });
 
@@ -72,6 +78,7 @@ async function main() {
 
   app.addHook('onClose', async () => {
     await monitor.stop();
+    tracker.stop();
     store?.close();
   });
 

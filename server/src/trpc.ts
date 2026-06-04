@@ -13,6 +13,7 @@
  */
 
 import { type EventEmitter, on } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
@@ -20,6 +21,7 @@ import { collectDebugState } from './debugState.js';
 import { aggregateFlows } from './flows.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
+import type { ProcessTracker, ProcessRow } from './processes/index.js';
 import {
   isReplayPathAllowed,
   loadJsonlAsPanel,
@@ -37,7 +39,19 @@ export interface AppContext {
   /** Persistence layer. Nullable so prefs.storage.persistEnabled=false
    * (or test contexts) just skips the read/write paths. */
   store: Store | null;
+  /** Process tracker. Nullable so tests / contexts without a tracker
+   * just return empty subscriptions and 4xx on `kill`. */
+  tracker: ProcessTracker | null;
 }
+
+export type ProcessDelta =
+  | { op: 'process_upsert'; process: ProcessRow }
+  | { op: 'process_delete'; process_id: string }
+  | { op: 'process_ports'; process_id: string; ports: ProcessRow['ports'] };
+
+export type ProcessEvent =
+  | { kind: 'snapshot'; rows: ProcessRow[] }
+  | { kind: 'delta'; delta: ProcessDelta };
 
 const t = initTRPC.context<AppContext>().create();
 
@@ -71,6 +85,85 @@ export const appRouter = t.router({
     const deltas = ctx.monitor.store.bin(input.panelId);
     for (const d of deltas) ctx.monitor.emitter.emit('delta', d);
     return { ok: true, deltas: deltas.length };
+  }),
+
+  processes: t.router({
+    subscribe: t.procedure.subscription(async function* ({
+      ctx,
+      signal,
+    }): AsyncGenerator<ProcessEvent> {
+      const tracker = ctx.tracker;
+      if (!tracker) return;
+      tracker.addSubscriber();
+      // Buffered queue + waker so a single async generator can fan in
+      // three event names without juggling multiple AsyncIterators.
+      const queue: ProcessEvent[] = [];
+      let wake: (() => void) | null = null;
+      const notify = () => {
+        if (wake) {
+          const w = wake;
+          wake = null;
+          w();
+        }
+      };
+      const onUpsert = (r: ProcessRow) => {
+        queue.push({ kind: 'delta', delta: { op: 'process_upsert', process: r } });
+        notify();
+      };
+      const onDelete = (id: string) => {
+        queue.push({ kind: 'delta', delta: { op: 'process_delete', process_id: id } });
+        notify();
+      };
+      const onPorts = (p: { process_id: string; ports: ProcessRow['ports'] }) => {
+        queue.push({
+          kind: 'delta',
+          delta: { op: 'process_ports', process_id: p.process_id, ports: p.ports },
+        });
+        notify();
+      };
+      tracker.on('upsert', onUpsert);
+      tracker.on('delete', onDelete);
+      tracker.on('ports', onPorts);
+      const onAbort = () => notify();
+      signal?.addEventListener('abort', onAbort);
+      try {
+        yield { kind: 'snapshot', rows: tracker.snapshot() };
+        while (!signal?.aborted) {
+          while (queue.length) yield queue.shift()!;
+          if (signal?.aborted) break;
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+      } finally {
+        tracker.off('upsert', onUpsert);
+        tracker.off('delete', onDelete);
+        tracker.off('ports', onPorts);
+        signal?.removeEventListener('abort', onAbort);
+        tracker.removeSubscriber();
+      }
+    }),
+    kill: t.procedure
+      .input(z.object({ process_id: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.tracker) throw new Error('tracker not configured');
+        await ctx.tracker.kill(input.process_id);
+        return { ok: true };
+      }),
+    /** Scan the session's transcript JSONL from the end and return the
+     * tail of the most recent tool_result whose body contains `bash_id`.
+     * Returns the empty string when the tracker isn't configured, the row
+     * has no `bash_id`, or no matching tool_result has been written yet. */
+    tailStdout: t.procedure
+      .input(z.object({ process_id: z.string(), lines: z.number().default(40) }))
+      .query(({ ctx, input }) => {
+        if (!ctx.tracker) return { content: '' };
+        const row = ctx.tracker.snapshot().find((r) => r.process_id === input.process_id);
+        if (!row?.bash_id || !row.session_id) return { content: '' };
+        const transcriptPath = ctx.tracker.getTranscriptPath(row.session_id);
+        if (!transcriptPath) return { content: '' };
+        return { content: tailBashOutput(transcriptPath, row.bash_id, input.lines) };
+      }),
   }),
 
   bin: t.router({
@@ -327,6 +420,38 @@ export const appRouter = t.router({
     }
   }),
 });
+
+/** Walk a transcript JSONL backwards looking for the most recent
+ * `tool_result` whose body mentions `bashId`. Returns the trailing
+ * `lines` lines of that body. Best-effort: file-missing or malformed
+ * lines are swallowed and yield an empty string. Exported for test. */
+export function tailBashOutput(transcriptPath: string, bashId: string, lines: number): string {
+  try {
+    const raw = readFileSync(transcriptPath, 'utf8').split('\n');
+    for (let i = raw.length - 1; i >= 0; i--) {
+      const line = raw[i];
+      if (!line) continue;
+      try {
+        const rec = JSON.parse(line);
+        if (rec.type === 'user' && Array.isArray(rec.message?.content)) {
+          for (const c of rec.message.content) {
+            if (c.type === 'tool_result' && c.content) {
+              const body = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
+              if (body.includes(bashId)) {
+                return body.split('\n').slice(-lines).join('\n');
+              }
+            }
+          }
+        }
+      } catch {
+        /* skip malformed line */
+      }
+    }
+  } catch {
+    /* file missing */
+  }
+  return '';
+}
 
 function sameList(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;

@@ -34,6 +34,46 @@ describe('HookEventSchema', () => {
   });
 });
 
+describe('HookEventSchema — process kinds', () => {
+  test('parses session_pid', () => {
+    const r = HookEventSchema.parse({
+      kind: 'session_pid',
+      session_id: 's1',
+      pid: 123,
+      ppid: 1,
+      cwd: '/x',
+      start_ts: 999,
+      ts: 1.5,
+    });
+    expect(r.kind).toBe('session_pid');
+    expect(r.pid).toBe(123);
+  });
+
+  test('parses bash_intent', () => {
+    const r = HookEventSchema.parse({
+      kind: 'bash_intent',
+      session_id: 's1',
+      command: 'npm run dev',
+      run_in_background: true,
+      cwd: '/x',
+      ts: 1.5,
+    });
+    expect(r.command).toBe('npm run dev');
+    expect(r.run_in_background).toBe(true);
+  });
+
+  test('parses bash_id_map', () => {
+    const r = HookEventSchema.parse({
+      kind: 'bash_id_map',
+      session_id: 's1',
+      tool_use_id: 'tu1',
+      bash_id: 'bg1',
+      ts: 1.5,
+    });
+    expect(r.bash_id).toBe('bg1');
+  });
+});
+
 describe('HookEventWatcher', () => {
   let dir: string;
   let received: HookEvent[];

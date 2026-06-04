@@ -801,7 +801,7 @@ export class SessionStore {
       const text = (event.payload as { text?: string }).text ?? '';
       const m = text.match(/<!--\s*bh-title:\s*([\s\S]*?)\s*-->/);
       if (!m) return null;
-      const candidate = m[1].trim();
+      const candidate = (m[1] ?? '').trim();
       if (!candidate || /^keep$/i.test(candidate)) return null;
       const cleaned = candidate.replace(/^["'`]+|["'`]+$/g, '').trim();
       if (!cleaned) return null;

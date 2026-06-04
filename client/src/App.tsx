@@ -7,6 +7,7 @@ import { FlowsModal } from './components/FlowsModal.tsx';
 import { HoverPopover } from './components/HoverPopover.tsx';
 import { PanelCard } from './components/PanelCard.tsx';
 import { PrefsModal } from './components/PrefsModal.tsx';
+import { ProcessesPanel } from './components/ProcessesPanel.tsx';
 import { ProjectWidgetCard, ProjectWidgetChip } from './components/ProjectWidgetCard.tsx';
 import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
@@ -660,6 +661,7 @@ function AppMain() {
           </span>
         </span>
       </header>
+      <ProcessesPanel />
       <LayoutGroup>
         <main
           className="session-grid"

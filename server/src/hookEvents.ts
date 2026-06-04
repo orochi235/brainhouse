@@ -27,6 +27,9 @@ export const HookEventSchema = z.object({
     'session_start',
     'auto_title',
     'hook_overhead',
+    'session_pid',
+    'bash_intent',
+    'bash_id_map',
   ]),
   session_id: z.string().min(1),
   /** Absolute path of the transcript that triggered the hook, if Claude
@@ -48,6 +51,22 @@ export const HookEventSchema = z.object({
   /** hook_overhead only. Estimated tokens added to the next turn's
    * context by this hook's output (chars/4 proxy). */
   tokens: z.number().optional(),
+  /** session_pid only. PID of the Claude Code process. */
+  pid: z.number().optional(),
+  /** session_pid only. Parent PID. */
+  ppid: z.number().optional(),
+  /** session_pid / bash_intent. Working directory at event time. */
+  cwd: z.string().optional(),
+  /** session_pid only. Unix seconds when the process started. */
+  start_ts: z.number().optional(),
+  /** bash_intent only. The Bash tool command string. */
+  command: z.string().optional(),
+  /** bash_intent only. Whether the Bash tool was invoked with run_in_background. */
+  run_in_background: z.boolean().optional(),
+  /** bash_id_map only. Claude tool_use id. */
+  tool_use_id: z.string().optional(),
+  /** bash_id_map only. Background bash id assigned by Claude Code. */
+  bash_id: z.string().optional(),
   /** Unix seconds, set by the dispatcher. */
   ts: z.number(),
 });
