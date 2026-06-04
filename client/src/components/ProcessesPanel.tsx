@@ -51,15 +51,17 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
   }, [showRaw]);
 
   if (all.length === 0) return null;
-  // Two category axes (Claude / Network), with a separate "raw" toggle
-  // that bypasses the housekeeping / noise filter so things like
-  // caffeinate are visible when explicitly opted in.
+  // Filter semantics:
+  //   - Claude-related rows: shown when showClaude.
+  //   - Non-Claude network listeners: shown only when BOTH showNetwork
+  //     AND showRaw are on. They're noisy enough that a single toggle
+  //     isn't a strong enough signal of intent; the second checkbox is
+  //     a "yes really" confirmation.
+  //   - Housekeeping spawns (caffeinate, etc.): hidden unless showRaw.
   const rows = all.filter(r => {
     if (!showRaw && isHousekeeping(r)) return false;
-    const claudeish = isClaudeRelated(r);
-    if (claudeish && !showClaude) return false;
-    if (!claudeish && !showNetwork) return false;
-    return true;
+    if (isClaudeRelated(r)) return showClaude;
+    return showNetwork && showRaw;
   });
 
   return (
@@ -77,7 +79,7 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
             />
             Claude sessions
           </label>
-          <label className="processes-filter" title="Show host-wide network listeners: anything bound to a TCP port (postgres, redis, system services, other people's dev servers, etc.) that isn't attributed to a Claude session.">
+          <label className="processes-filter" title="Show host-wide network listeners: anything bound to a TCP port (postgres, redis, system services, other people's dev servers, etc.) that isn't attributed to a Claude session. Requires 'Show all' to also be checked — these listeners can be very noisy so we ask for two opt-ins.">
             <input
               type="checkbox"
               checked={showNetwork}
