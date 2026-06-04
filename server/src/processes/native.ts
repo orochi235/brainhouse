@@ -88,6 +88,42 @@ export async function listListeningPorts(): Promise<PortRow[]> {
   }
 }
 
+/** Parse `lsof -d cwd -Fpn` output into a pid → cwd map. The -F format
+ * emits records as `p<pid>` followed by `n<path>` lines. */
+export function parseLsofCwdOutput(out: string): Map<number, string> {
+  const map = new Map<number, string>();
+  let curPid: number | null = null;
+  for (const line of out.split('\n')) {
+    if (line.length === 0) continue;
+    const tag = line[0];
+    const val = line.slice(1);
+    if (tag === 'p') {
+      const pid = parseInt(val, 10);
+      curPid = Number.isFinite(pid) ? pid : null;
+    } else if (tag === 'n' && curPid !== null) {
+      // Only keep the first 'n' line per pid (the cwd entry).
+      if (!map.has(curPid)) map.set(curPid, val);
+    }
+  }
+  return map;
+}
+
+/** Process cwds for every process the user can see. Used for the
+ * heuristic cwd-match attribution tier — pairs an unattributed process
+ * with a registered Claude session whose cwd matches. Single shell-out
+ * per tick; we cache nothing because cwds can change (cd in a shell). */
+export async function listCwds(): Promise<Map<number, string>> {
+  try {
+    const { stdout } = await execFileAsync(
+      'lsof', ['-d', 'cwd', '-Fpn'],
+      { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+    );
+    return parseLsofCwdOutput(stdout);
+  } catch {
+    return new Map();
+  }
+}
+
 export async function signalProcess(pid: number, sig: 'TERM' | 'KILL'): Promise<void> {
   if (pid <= 1000) throw new Error(`refused: pid ${pid} is system-reserved`);
   try { process.kill(pid, sig === 'TERM' ? 'SIGTERM' : 'SIGKILL'); }

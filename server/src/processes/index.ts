@@ -1,12 +1,18 @@
 import { EventEmitter } from 'node:events';
 import { Reconciler, type ProcessRow } from './reconciler.js';
-import { listProcesses as realListProcesses, listListeningPorts as realListPorts, signalProcess } from './native.js';
+import {
+  listCwds as realListCwds,
+  listListeningPorts as realListPorts,
+  listProcesses as realListProcesses,
+  signalProcess,
+} from './native.js';
 
 export type { ProcessRow } from './reconciler.js';
 
 export type TrackerDeps = {
   listProcesses?: typeof realListProcesses;
   listListeningPorts?: typeof realListPorts;
+  listCwds?: typeof realListCwds;
   now?: () => number;
 };
 
@@ -15,6 +21,7 @@ export class ProcessTracker extends EventEmitter {
   private subscribers = 0;
   private listProcesses: typeof realListProcesses;
   private listPorts: typeof realListPorts;
+  private listCwds: typeof realListCwds;
   private now: () => number;
   private tickTimer?: NodeJS.Timeout;
   private portTimer?: NodeJS.Timeout;
@@ -23,6 +30,7 @@ export class ProcessTracker extends EventEmitter {
     super();
     this.listProcesses = deps.listProcesses ?? realListProcesses;
     this.listPorts = deps.listListeningPorts ?? realListPorts;
+    this.listCwds = deps.listCwds ?? realListCwds;
     this.now = deps.now ?? (() => Date.now() / 1000);
   }
 
@@ -72,8 +80,9 @@ export class ProcessTracker extends EventEmitter {
 
   async tickOnce() {
     try {
-      const ps = await this.listProcesses();
-      const { upserts, deletes } = this.rec.tick(ps, this.now());
+      const [ps, cwds] = await Promise.all([this.listProcesses(), this.listCwds()]);
+      const cwdLookup = (pid: number) => cwds.get(pid) ?? null;
+      const { upserts, deletes } = this.rec.tick(ps, this.now(), cwdLookup);
       for (const r of upserts) this.emit('upsert', r);
       for (const id of deletes) this.emit('delete', id);
     } catch (e) {
