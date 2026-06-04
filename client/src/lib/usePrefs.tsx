@@ -64,6 +64,7 @@ export interface ClientPrefs {
     miniSeconds: number;
     removeAfterSeconds: number;
     tickIntervalMs: number;
+    layoutIdleSeconds: number;
   };
   roots: Array<{ path: string; label?: string; color?: string }>;
   storage: {
@@ -116,7 +117,7 @@ const DEFAULT_PREFS: ClientPrefs = {
     groupByWorktree: false,
     slotCount: 4,
   },
-  timings: { idleSeconds: 60, miniSeconds: 300, removeAfterSeconds: 86400, tickIntervalMs: 5000 },
+  timings: { idleSeconds: 60, miniSeconds: 300, removeAfterSeconds: 86400, tickIntervalMs: 5000, layoutIdleSeconds: 3 },
   roots: [],
   storage: { persistEnabled: false, eventsIndexRetentionDays: 30 },
   editor: { urlTemplate: 'cursor://file/{path}:{line}' },

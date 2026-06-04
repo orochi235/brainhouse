@@ -59,6 +59,7 @@ interface PrefsDraft {
     miniSeconds: number;
     removeAfterSeconds: number;
     tickIntervalMs: number;
+    layoutIdleSeconds: number;
   };
   workspace: {
     minCols: number;
@@ -483,6 +484,12 @@ function LifecycleSection({ draft, setDraft }: SectionProps) {
         label="Lifecycle tick (ms)"
         value={draft.timings.tickIntervalMs}
         onChange={(v) => set({ tickIntervalMs: v })}
+      />
+      <NumberField
+        label="Layout idle gate (seconds)"
+        hint="Holds macro layout (grid rearrangement, project widget regrouping) until you've been idle this many seconds. Per-row content stays live. 0 disables."
+        value={draft.timings.layoutIdleSeconds}
+        onChange={(v) => set({ layoutIdleSeconds: v })}
       />
     </Section>
   );

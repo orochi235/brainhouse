@@ -75,6 +75,12 @@ export const TimingsSchema = z.object({
     .default(24 * 60 * 60),
   /** Server ticks the lifecycle this often (milliseconds). */
   tickIntervalMs: z.number().int().positive().default(5000),
+  /** Client-side idle gate for macro-layout updates: a slot reallocation
+   * (panel grid rearrangement, project widget regrouping) is held back
+   * until the user has been idle this many seconds. 0 disables the
+   * gate. Per-row content updates (uptime, status, tokens) are never
+   * deferred. */
+  layoutIdleSeconds: z.number().int().min(0).default(3),
 });
 export type Timings = z.infer<typeof TimingsSchema>;
 

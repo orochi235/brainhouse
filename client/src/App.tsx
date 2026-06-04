@@ -27,6 +27,7 @@ import { useTheme } from './lib/preferences.ts';
 import { clearScrollPosition } from './lib/scrollMemory.ts';
 import { withViewTransition } from './lib/viewTransition.ts';
 import { buildProjectRollups } from './lib/projectWidgets.ts';
+import { useIdleDeferred, useUserActive } from './lib/useIdleDeferred.ts';
 import { allocateSlots } from './lib/slotAllocator.ts';
 import { useAwaitingNotifications } from './lib/useAwaitingNotifications.ts';
 import { useIntentions } from './lib/useIntentions.ts';
@@ -220,6 +221,13 @@ function AppMain() {
     for (const id of blocked) out.delete(id);
     return out;
   }, [allPanels, prefs.blacklist.sessionIds]);
+
+  // Idle-defer macro layout: while the user is interacting with the page,
+  // hold the previous `panels` snapshot so the grid + project widgets
+  // don't reflow under their cursor. Small-update consumers (per-row
+  // content, notifications, click handlers) still see the live `panels`.
+  const userActive = useUserActive((prefs.timings.layoutIdleSeconds ?? 0) * 1000);
+  const stablePanels = useIdleDeferred(panels, userActive);
   useAwaitingNotifications(panels, prefs.notifications);
 
   // Suppress mount animations during the initial render burst — when the
@@ -405,7 +413,7 @@ function AppMain() {
     trayPanels: allTrayPanels,
     subsByParent: allSubsByParent,
     placeholdersByParent,
-  } = layoutPanels(panels, brokenOut);
+  } = layoutPanels(stablePanels, brokenOut);
   // Pinned panels always stay in the grid, never dim, never demote — they
   // override hidden / clientMini / server-mini routing.
   const isPinned = (p: PanelState) => pinned.has(p.id);
@@ -517,7 +525,7 @@ function AppMain() {
   // stats + recent sessions. Render after session cards in the grid.
   // Auto-derived from `panels` — not allocator-managed (widgets have
   // self-contained visibility rules, TBD).
-  const allProjectRollups = buildProjectRollups(panels).filter((r) =>
+  const allProjectRollups = buildProjectRollups(stablePanels).filter((r) =>
     // Widgets reuse the panel hidden_at intentions namespace (their ids are
     // `project:<repo>`). The widget's `last_event_at` advances on new project
     // activity, so a hidden widget re-appears automatically when a session
