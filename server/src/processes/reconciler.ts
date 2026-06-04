@@ -184,32 +184,36 @@ export class Reconciler {
           }
         }
       }
-      // cwd-based attribution if not in tree. Two tiers:
-      //   - Exactly one registered session has cwd === process cwd →
-      //     attribute to that session (heuristic tier).
-      //   - Process cwd is the same as, or a descendant of, multiple
-      //     registered session cwds, OR exactly one but the cwds aren't
-      //     identical (descendant only) → attribute to the project (the
-      //     shared/parent cwd). UI shows a project chip in place of a
-      //     session id; dot stays at 'heuristic' confidence.
+      // cwd-based attribution if not in tree. We treat exact and
+      // descendant matches the same way: a session's cwd is either
+      // identical to the process's cwd, or an ancestor of it. The
+      // attribution outcome depends on how many sessions qualify.
+      //   - One session qualifies → attribute to that session
+      //     (heuristic). Also set project so the UI can still surface
+      //     the project context if needed.
+      //   - Multiple qualify → can't pin a session; attribute to the
+      //     deepest shared project root.
       if (!row.session_id && !row.project && cwdLookup) {
         const cwd = cwdLookup(p.pid);
         if (cwd) {
-          const exactMatches: string[] = [];
-          const projectMatches: string[] = []; // session cwds that contain process cwd
-          for (const [s, info] of this.sessions) {
-            if (info.cwd === cwd) exactMatches.push(s);
-            else if (info.cwd && cwd.startsWith(`${info.cwd}/`)) projectMatches.push(info.cwd);
+          const matches: Array<{ sid: string; cwd: string }> = [];
+          for (const [sid, info] of this.sessions) {
+            if (!info.cwd) continue;
+            if (info.cwd === cwd || cwd.startsWith(`${info.cwd}/`)) {
+              matches.push({ sid, cwd: info.cwd });
+            }
           }
-          if (exactMatches.length === 1) {
-            row.session_id = exactMatches[0] ?? null;
+          if (matches.length === 1) {
+            const only = matches[0]!;
+            row.session_id = only.sid;
+            row.project = only.cwd;
             if (row.provenance === 'discovered') row.provenance = 'heuristic';
-          } else if (exactMatches.length > 1) {
-            row.project = cwd;
-            if (row.provenance === 'discovered') row.provenance = 'heuristic';
-          } else if (projectMatches.length > 0) {
-            // Pick the longest project root (most specific ancestor).
-            row.project = projectMatches.sort((a, b) => b.length - a.length)[0] ?? null;
+          } else if (matches.length > 1) {
+            // Multiple sessions are candidates. Use the deepest cwd as
+            // the project root (most specific). Don't set session_id —
+            // we genuinely can't tell which session it belongs to.
+            const deepest = matches.sort((a, b) => b.cwd.length - a.cwd.length)[0]!;
+            row.project = deepest.cwd;
             if (row.provenance === 'discovered') row.provenance = 'heuristic';
           }
         }
