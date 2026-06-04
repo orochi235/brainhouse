@@ -8,6 +8,18 @@ export function ProcessesPanel() {
     <section className="processes-panel">
       <header><h2>Processes <span className="processes-count">({rows.length})</span></h2></header>
       <table className="processes-table">
+        <colgroup>
+          <col style={{ width: '30px' }} />
+          <col style={{ width: '60px' }} />
+          <col style={{ width: '100px' }} />
+          <col style={{ width: '150px' }} />
+          <col style={{ width: '500px' }} />
+          <col style={{ width: '130px' }} />
+          <col style={{ width: '110px' }} />
+          <col style={{ width: '140px' }} />
+          <col style={{ width: '90px' }} />
+          <col style={{ width: '40px' }} />
+        </colgroup>
         <thead>
           <tr>
             <th aria-label="status"><span className="th-resize" /></th>
