@@ -49,6 +49,22 @@ export function parseLsofOutput(out: string): PortRow[] {
     }
   }
   if (cur) rows.push(cur);
+  // Collapse IPv4/IPv6 dual-stack entries: a process listening on the
+  // same port via 0.0.0.0 and :: emits two records; UI cares about one.
+  // Dedupe by (proto, port); prefer loopback/wildcard over per-iface.
+  for (const r of rows) {
+    const byKey = new Map<string, { proto: 'TCP'; addr: string; port: number }>();
+    for (const p of r.ports) {
+      const key = `${p.proto}:${p.port}`;
+      const prev = byKey.get(key);
+      if (!prev) { byKey.set(key, p); continue; }
+      // Prefer entries that yield a clickable URL.
+      const prevLoop = prev.addr === '127.0.0.1' || prev.addr === '*' || prev.addr === '::1' || prev.addr === '0.0.0.0';
+      const curLoop = p.addr === '127.0.0.1' || p.addr === '*' || p.addr === '::1' || p.addr === '0.0.0.0';
+      if (curLoop && !prevLoop) byKey.set(key, p);
+    }
+    r.ports = Array.from(byKey.values());
+  }
   return rows;
 }
 

@@ -90,9 +90,11 @@ describe('Reconciler', () => {
     r.tick([baseProc({ pid: 50 }), baseProc({ pid: 100, ppid: 50, start_ts: 1, command: 'node a' })], 5);
     r.tick([baseProc({ pid: 50 }), baseProc({ pid: 100, ppid: 50, start_ts: 1, command: 'node a' })], 6);
     const result = r.tick([baseProc({ pid: 50 }), baseProc({ pid: 100, ppid: 50, start_ts: 999, command: 'node b' })], 7);
-    expect(result.deletes.length + result.upserts.length).toBeGreaterThanOrEqual(2);
+    // New row appears with the new process_id (start_ts disambiguates).
     const newRow = result.upserts.find(u => u.command === 'node b');
     expect(newRow).toBeDefined();
-    expect(newRow!.process_id).not.toBe('p_local_100_1');
+    expect(newRow!.process_id).toBe('p_local_100_999');
+    // Old row is dropped from the table outright (not a 2-tick absence).
+    expect(r.getRow('p_local_100_1')).toBeUndefined();
   });
 });

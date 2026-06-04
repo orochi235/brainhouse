@@ -67,7 +67,7 @@ export function ProcessRow({ row }: { row: Row }) {
         <td>{frameworkText}</td>
         <td>
           {row.ports.length === 0 ? '—' : row.ports.map((p, i) => (
-            <span key={`${p.proto}-${p.port}`}>
+            <span key={`${p.proto}-${p.addr}-${p.port}-${i}`}>
               {i > 0 && ' '}
               {isLoopback(p.addr) ? (
                 <a href={`http://localhost:${p.port}`} target="_blank" rel="noreferrer">:{p.port}</a>

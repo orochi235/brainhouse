@@ -38,7 +38,7 @@ export class ProcessTracker extends EventEmitter {
   addSubscriber() { this.subscribers++; }
   removeSubscriber() { this.subscribers = Math.max(0, this.subscribers - 1); }
 
-  snapshot(): ProcessRow[] { return this.rec.getRows(); }
+  snapshot(): ProcessRow[] { return this.rec.getQualifyingRows(); }
 
   handleHookRecord(rec: any) {
     if (rec.kind === 'session_pid') {

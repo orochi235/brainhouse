@@ -33,6 +33,16 @@ const INTENT_TTL_S = 30;
 const INTENT_BUFFER_SIZE = 50;
 const INTENT_MATCH_WINDOW_S = 2;
 
+/** Discovered rows (no Claude session attribution) only qualify if they
+ * bind a port — otherwise every long-running system process (launchd,
+ * kernel_task, etc.) drowns the dashboard. Session-attributed rows keep
+ * the wider signal-strong filter. Applied to BOTH the broadcast path
+ * and the snapshot path so subscribers never see noise rows. */
+export function qualifiesForBroadcast(row: ProcessRow): boolean {
+  if (row.provenance === 'discovered') return row.ports.length > 0;
+  return row.run_in_background || row.uptime_s >= SIGNAL_MIN_UPTIME_S || row.ports.length > 0;
+}
+
 export class Reconciler {
   private sessions = new Map<string, SessionInfo>();
   private intents = new Map<string, BashIntent[]>();
@@ -142,8 +152,7 @@ export class Reconciler {
       row.uptime_s = nowS - p.start_ts / 1_000_000_000;
       this.missingTicks.delete(processId);
 
-      const qualifies = row.run_in_background || row.uptime_s >= SIGNAL_MIN_UPTIME_S || row.ports.length > 0;
-      if (qualifies) {
+      if (qualifiesForBroadcast(row)) {
         upserts.push(row);
         this.broadcasted.add(processId);
       }
@@ -180,6 +189,10 @@ export class Reconciler {
 
   getRow(processId: string): ProcessRow | undefined { return this.rows.get(processId); }
   getRows(): ProcessRow[] { return Array.from(this.rows.values()); }
+  /** Rows that would currently broadcast — for snapshot delivery. */
+  getQualifyingRows(): ProcessRow[] {
+    return Array.from(this.rows.values()).filter(qualifiesForBroadcast);
+  }
   rowByPid(pid: number): ProcessRow | undefined {
     for (const r of this.rows.values()) if (r.pid === pid) return r;
     return undefined;

@@ -11,3 +11,6 @@ coverage/
 .env
 .env.local
 .hued
+
+# Playwright MCP traces from local smoke tests
+.playwright-mcp/

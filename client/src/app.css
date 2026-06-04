@@ -74,7 +74,11 @@ body {
   background: var(--bg);
   color: var(--fg);
   display: grid;
-  grid-template-rows: auto 1fr;
+  /* Rows: topbar (auto) | optional bars like .processes-panel (auto, 0 when
+   * absent) | session-grid (1fr). Three explicit tracks so the 1fr
+   * always belongs to the session-grid regardless of how many auto bars
+   * sit above it. */
+  grid-template-rows: auto auto 1fr;
   /* The session-dock column auto-sizes: collapses to 0 when empty (aside is not
    * rendered) and grows to fit its content otherwise. */
   grid-template-columns: minmax(0, 1fr) auto;
@@ -4704,12 +4708,30 @@ body.hide-thinking .event-thought-agent {
  */
 
 .processes-panel {
+  /* Body is a 2-col grid (main | dock); span both so this is a full-width
+   * strip beneath the topbar. The body's row track is `auto 1fr`; this
+   * element naturally creates an additional `auto` row when present, so
+   * the session-grid (1fr) shrinks to make room rather than overlapping. */
+  grid-column: 1 / -1;
   margin: 0.5rem 1rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--fg) 2%, transparent);
+  background: color-mix(in srgb, var(--bg) 90%, var(--fg) 4%);
   font-size: 0.85em;
+  max-height: 40vh;
+  overflow: auto;
+  /* Keep above the session-grid in case any transform/z-index from the
+   * grid creates a new stacking context. */
+  position: relative;
+  z-index: 1;
+}
+
+.processes-count {
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  font-weight: 400;
+  font-size: 0.9em;
+  margin-left: 0.3em;
 }
 
 .processes-panel > header > h2 {
