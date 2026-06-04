@@ -4775,6 +4775,28 @@ body.hide-thinking .event-thought-agent {
   text-decoration: none;
 }
 
+/* When neither runtime nor framework can be detected, those two cells
+ * merge (colSpan=2) and show the process's command line — usually the
+ * most useful identifier for system services. Truncates with ellipsis
+ * inside a block-shaped inner span (td can't truncate without
+ * table-layout: fixed); full string is on the title attribute. */
+.process-command-cell {
+  /* Encourage the browser to size this cell tight to its sibling
+   * columns rather than expanding to fit the long command. */
+  width: 1px;
+  max-width: 30ch;
+  overflow: hidden;
+}
+.process-command {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95em;
+}
+
 .process-row a:hover { text-decoration: underline; }
 
 .process-row button {

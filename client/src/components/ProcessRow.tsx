@@ -63,8 +63,16 @@ export function ProcessRow({ row }: { row: Row }) {
           </span>
         </td>
         <td>{row.pid}</td>
-        <td>{runtimeText}</td>
-        <td>{frameworkText}</td>
+        {row.runtime || row.framework ? (
+          <>
+            <td>{runtimeText}</td>
+            <td>{frameworkText}</td>
+          </>
+        ) : (
+          <td colSpan={2} className="process-command-cell">
+            <span className="process-command" title={row.command}>{row.command}</span>
+          </td>
+        )}
         <td>
           {row.ports.length === 0 ? '—' : row.ports.map((p, i) => (
             <span key={`${p.proto}-${p.addr}-${p.port}-${i}`}>
