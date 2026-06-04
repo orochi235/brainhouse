@@ -18,6 +18,7 @@ function panelDto(overrides: Partial<PanelDto> = {}): PanelDto {
     status_changed_at: 0,
     event_count: 0,
     cwd: null,
+    repo_root: null,
     theme: null,
     binned_at: null,
     awaiting_input: false,
@@ -26,6 +27,7 @@ function panelDto(overrides: Partial<PanelDto> = {}): PanelDto {
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
     context_size: 0,
     hook_overhead_tokens: 0,
+    manually_renamed: false,
     ...overrides,
   };
 }

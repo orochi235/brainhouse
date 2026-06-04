@@ -29,6 +29,6 @@ describe('processesReducer', () => {
   it('ports update merges', () => {
     let s = processesReducer(initialProcessesState, { type: 'snapshot', rows: [baseRow()] });
     s = processesReducer(s, { type: 'delta', delta: { op: 'process_ports', process_id: 'p1', ports: [{ proto: 'TCP', addr: '127.0.0.1', port: 5173 }] } });
-    expect(s.rows.get('p1')?.ports[0].port).toBe(5173);
+    expect(s.rows.get('p1')?.ports[0]?.port).toBe(5173);
   });
 });

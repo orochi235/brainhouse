@@ -4696,3 +4696,105 @@ body.hide-thinking .event-thought-agent {
   cursor: help;
   user-select: none;
 }
+
+/* ─── Processes panel ─────────────────────────────────────────────
+ * Top-of-grid dashboard listing every live OS process spawned by a
+ * Claude session, plus already-listening services on the host.
+ * Tiered provenance dot at left, kill / tail buttons at right.
+ */
+
+.processes-panel {
+  margin: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 2%, transparent);
+  font-size: 0.85em;
+}
+
+.processes-panel > header > h2 {
+  font-size: 0.95em;
+  margin: 0 0 0.4rem 0;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+}
+
+.processes-panel > p.empty {
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  font-style: italic;
+  margin: 0.4rem 0;
+}
+
+.processes-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.processes-panel th {
+  text-align: left;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  padding: 0.2rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.processes-panel td {
+  padding: 0.25rem 0.5rem;
+  vertical-align: middle;
+}
+
+.process-row:hover {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+
+.process-row a {
+  color: var(--accent, #a78bfa);
+  text-decoration: none;
+}
+
+.process-row a:hover { text-decoration: underline; }
+
+.process-row button {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  border-radius: 3px;
+  padding: 0.05rem 0.4rem;
+  margin-left: 0.25rem;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  font-size: 0.95em;
+}
+
+.process-row button:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+
+.process-dot {
+  display: inline-block;
+  font-size: 0.8em;
+  line-height: 1;
+}
+
+.process-dot-hooked     { color: #4ade80; }   /* confident: in-tree + intent match */
+.process-dot-observed   { color: #facc15; }   /* in-tree, no intent match */
+.process-dot-heuristic  { color: #fb923c; }   /* cwd-matched fallback */
+.process-dot-discovered { color: color-mix(in srgb, var(--fg) 45%, transparent); }
+
+.process-tail > td {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.process-tail pre {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
+}
