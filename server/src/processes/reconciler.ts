@@ -23,6 +23,14 @@ export interface ProcessRow {
    * PostToolUse `bash_id_map` hook record. Lets the UI query
    * `processes.tailStdout` to fetch the latest captured stdout. */
   bash_id: string | null;
+  /** Ancestor PIDs (immediate parent → root, exclusive of self) snapshotted
+   * the first time we saw this row in ps. Used to retroactively attribute
+   * a process to a Claude session that registers AFTER the process has
+   * been reparented (e.g. brainhouse spawned via `npm run dev &` from a
+   * Bash tool, then orphaned when the Bash subshell exits). The live ps
+   * tree no longer reaches them from the session root; this remembered
+   * chain still does. */
+  original_ancestors: number[];
 }
 
 interface SessionInfo { pid: number; cwd: string; }
@@ -108,6 +116,16 @@ export class Reconciler {
       }
     }
 
+    // Live ppid lookup for ancestor-chain snapshotting at row creation.
+    const ppidByPid = new Map<number, number>();
+    for (const p of ps) ppidByPid.set(p.pid, p.ppid);
+
+    // Quick lookup: PID → session_id for any registered session root.
+    // Used both by sessionOf BFS (above) and by row-creation/retroactive
+    // attribution (below).
+    const sessionRootByPid = new Map<number, string>();
+    for (const [sid, info] of this.sessions) sessionRootByPid.set(info.pid, sid);
+
     const presentIds = new Set<string>();
     const upserts: ProcessRow[] = [];
 
@@ -124,12 +142,41 @@ export class Reconciler {
             this.missingTicks.delete(oldId);
           }
         }
-        row = this.createRow(processId, p, sessionOf.get(p.pid) ?? null, cwdLookup?.(p.pid) ?? null);
+        // Snapshot the ancestor chain at first observation. After this
+        // row exists, reparenting events (PPID → 1) can't erase the
+        // historical lineage.
+        const ancestors: number[] = [];
+        const seenAnc = new Set<number>();
+        let cur = p.ppid;
+        while (cur > 1 && !seenAnc.has(cur)) {
+          ancestors.push(cur);
+          seenAnc.add(cur);
+          const next = ppidByPid.get(cur);
+          if (next === undefined) break;
+          cur = next;
+        }
+        row = this.createRow(processId, p, sessionOf.get(p.pid) ?? null, cwdLookup?.(p.pid) ?? null, ancestors);
         this.rows.set(processId, row);
       }
 
       const sid = sessionOf.get(p.pid) ?? row.session_id;
-      if (sid && !row.session_id) row.session_id = sid;
+      if (sid && !row.session_id) {
+        row.session_id = sid;
+        if (row.provenance === 'discovered') row.provenance = 'observed';
+      }
+      // Retroactive attribution via the snapshotted ancestor chain.
+      // Survives reparenting: if any captured ancestor is now a
+      // registered session root, attribute to that session.
+      if (!row.session_id) {
+        for (const ancPid of row.original_ancestors) {
+          const ancSid = sessionRootByPid.get(ancPid);
+          if (ancSid) {
+            row.session_id = ancSid;
+            if (row.provenance === 'discovered') row.provenance = 'observed';
+            break;
+          }
+        }
+      }
       // Heuristic cwd attribution if not in tree
       if (!row.session_id && cwdLookup) {
         const cwd = cwdLookup(p.pid);
@@ -207,7 +254,13 @@ export class Reconciler {
     return undefined;
   }
 
-  private createRow(id: string, p: PsRow, sessionId: string | null, cwd: string | null): ProcessRow {
+  private createRow(
+    id: string,
+    p: PsRow,
+    sessionId: string | null,
+    cwd: string | null,
+    originalAncestors: number[],
+  ): ProcessRow {
     const argv = p.command.split(/\s+/);
     const rtPath = detectRuntimeFromPath(argv[0] ?? '');
     const rtArgv = rtPath ? null : detectRuntimeFromArgv(argv);
@@ -227,6 +280,7 @@ export class Reconciler {
       ended_ts: null, ended_reason: null,
       uptime_s: 0,
       bash_id: null,
+      original_ancestors: originalAncestors,
     };
   }
 }

@@ -97,4 +97,48 @@ describe('Reconciler', () => {
     // Old row is dropped from the table outright (not a 2-tick absence).
     expect(r.getRow('p_local_100_1')).toBeUndefined();
   });
+
+  it('retroactive attribution: orphaned descendant stays linked after reparenting', () => {
+    const r = new Reconciler();
+    r.registerSession('s1', { pid: 50, cwd: '/p' });
+    // First tick: full tree. claude (50) → bash (60) → npm (100).
+    r.tick([
+      baseProc({ pid: 50, ppid: 1, command: 'claude' }),
+      baseProc({ pid: 60, ppid: 50, command: 'bash' }),
+      baseProc({ pid: 100, ppid: 60, command: 'node dev-server' }),
+    ], 5);
+    // Confirm initial attribution worked.
+    expect(r.getQualifyingRows().find(u => u.pid === 100)?.session_id).toBe('s1');
+    // Second tick: bash (60) has exited, npm (100) reparented to launchd (ppid=1).
+    // The live BFS from session root 50 no longer reaches pid 100.
+    const result = r.tick([
+      baseProc({ pid: 50, ppid: 1, command: 'claude' }),
+      baseProc({ pid: 100, ppid: 1, command: 'node dev-server' }),
+    ], 10);
+    const stillLinked = result.upserts.find(u => u.pid === 100);
+    expect(stillLinked).toBeDefined();
+    expect(stillLinked!.session_id).toBe('s1');
+  });
+
+  it('retroactive attribution: row created before session registers gets attributed later', () => {
+    const r = new Reconciler();
+    // Tick 1: process tree exists but no sessions registered yet.
+    r.tick([
+      baseProc({ pid: 50, ppid: 1, command: 'claude' }),
+      baseProc({ pid: 60, ppid: 50, command: 'bash' }),
+      baseProc({ pid: 100, ppid: 60, command: 'node x' }),
+    ], 5);
+    const orphan = r.getRow('p_local_100_1000');
+    expect(orphan?.session_id).toBeNull();
+    // Session registers AFTER the row exists.
+    r.registerSession('s1', { pid: 50, cwd: '/p' });
+    // Tick 2: bash already exited, pid 100 reparented. But ancestor chain
+    // remembered from tick 1 still includes pid 50, so attribution lands.
+    r.tick([
+      baseProc({ pid: 50, ppid: 1, command: 'claude' }),
+      baseProc({ pid: 100, ppid: 1, command: 'node x' }),
+    ], 8);
+    expect(r.getRow('p_local_100_1000')?.session_id).toBe('s1');
+    expect(r.getRow('p_local_100_1000')?.provenance).toBe('observed');
+  });
 });
