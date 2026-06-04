@@ -673,11 +673,11 @@ body.loading-quiet .panel {
       calc(var(--sweep-band-mid-stop) + 3%),
     transparent calc(100% - var(--sweep-band-edge-stop))
   );
-  /* Debug minimal: all values literal, no vars, no blend-mode. If this
-   * doesn't animate, the issue is somewhere besides the animation
-   * declaration itself. Restore mix-blend-mode + preset vars once
-   * motion is confirmed. */
-  animation: panel-title-sweep-edges 1.6s ease-in-out infinite alternate;
+  /* Var-driven so [data-sweep-preset] presets on the document root
+   * actually override the animation. Defaults at :root match the
+   * legacy hardcoded values: panel-title-sweep-edges, 1.6s,
+   * ease-in-out, infinite alternate (pendulum). */
+  animation: var(--sweep-keyframes) var(--sweep-duration) var(--sweep-easing) infinite var(--sweep-direction);
   will-change: transform;
 }
 /* Ensure the header's own children sit above the sweep. */
@@ -725,6 +725,23 @@ body.loading-quiet .panel {
     opacity: 1;
     transform: translate3d(-70%, 0, 0);
   }
+}
+
+/* Pulse preset — band shoots from one end to the other, then resets
+ * and shoots again from the same end. Used with direction: normal so
+ * each cycle is a one-way pass; opacity fades in at start and out at
+ * end so the warp-back from the left edge to the right is invisible. */
+@keyframes panel-title-sweep-pulse {
+  0%   { opacity: 0; transform: translate3d(70%, 0, 0); }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(-70%, 0, 0); }
+}
+
+[data-sweep-preset='pulse'] {
+  --sweep-keyframes: panel-title-sweep-pulse;
+  --sweep-direction: normal;
+  --sweep-easing: linear;
 }
 @media (prefers-reduced-motion: reduce) {
   .panel.waiting .panel-header::after,
