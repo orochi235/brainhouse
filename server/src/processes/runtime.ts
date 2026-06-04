@@ -27,8 +27,9 @@ const ARGV0_KNOWN: Record<string, string> = {
 };
 
 export function detectRuntimeFromArgv(argv: string[]): Runtime | null {
-  if (argv.length === 0) return null;
-  const head = argv[0].split('/').pop() ?? argv[0];
+  const first = argv[0];
+  if (!first) return null;
+  const head = first.split('/').pop() ?? first;
   const py = head.match(/^python(\d+\.\d+)?$/);
   if (py) return { runtime: 'python', runtime_version: py[1] ?? null, runtime_source: 'argv' };
   const known = ARGV0_KNOWN[head];

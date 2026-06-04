@@ -19,7 +19,7 @@ export function detectFrameworkFromArgv(argv: string[]): FrameworkHit | null {
   const joined = argv.join(' ');
   for (const p of PATTERNS) {
     const m = joined.match(p.re);
-    if (m) return { framework: p.framework, package_path: p.pkgGroup ? m[p.pkgGroup] : null };
+    if (m) return { framework: p.framework, package_path: p.pkgGroup ? (m[p.pkgGroup] ?? null) : null };
   }
   return null;
 }

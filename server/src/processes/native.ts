@@ -12,8 +12,9 @@ export function parsePsOutput(out: string): PsRow[] {
   const rows: PsRow[] = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
+    if (!line) continue;
     const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+[ \d]\d\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\S+)\s+(.+)$/);
-    if (!m) continue;
+    if (!m || !m[1] || !m[2] || !m[3] || !m[4] || !m[5]) continue;
     rows.push({
       pid: parseInt(m[1], 10),
       ppid: parseInt(m[2], 10),
