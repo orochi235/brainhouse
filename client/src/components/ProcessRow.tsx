@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CopyableId } from '../lib/CopyableId.tsx';
 import { CLI_ICONS } from '../lib/tools.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { trpc } from '../trpc.ts';
@@ -105,7 +106,7 @@ export function ProcessRow({ row }: { row: Row }) {
           ))}
         </td>
         <td>{cwdShort}</td>
-        <td>{row.session_id ?? '(discovered)'}</td>
+        <td>{row.session_id ? <CopyableId id={row.session_id} length={8} /> : '(discovered)'}</td>
         <td>{fmtUptime(row.uptime_s)}</td>
         <td>
           {row.run_in_background && (

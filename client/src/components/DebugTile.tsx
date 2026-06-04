@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { CopyableId } from '../lib/CopyableId.tsx';
 import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
@@ -406,28 +407,8 @@ function ClientContents({
   );
 }
 
-function CopyableId({ id }: { id: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      className={`debug-copy-id${copied ? ' copied' : ''}`}
-      title={`copy ${id}`}
-      onClick={async (e) => {
-        e.stopPropagation();
-        try {
-          await navigator.clipboard.writeText(id);
-        } catch {
-          // clipboard write can fail in non-secure contexts; fall back silently
-        }
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 900);
-      }}
-    >
-      <code>{copied ? 'copied!' : id.slice(0, 10)}</code>
-    </button>
-  );
-}
+// CopyableId moved to ../lib/CopyableId.tsx so the processes panel can
+// reuse the same chip without duplication.
 
 function SortHeader({
   col,

@@ -716,14 +716,14 @@ body.loading-quiet .panel {
 @keyframes panel-title-sweep-edges {
   0% {
     opacity: 1;
-    transform: translate3d(50%, 0, 0);
+    transform: translate3d(70%, 0, 0);
   }
   50% {
     opacity: 0.2;
   }
   100% {
     opacity: 1;
-    transform: translate3d(-50%, 0, 0);
+    transform: translate3d(-70%, 0, 0);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -3869,7 +3869,7 @@ body.replay-drop-target::after {
 .debug-kind-parent { color: color-mix(in srgb, var(--text) 80%, transparent); }
 .debug-kind-subagent { color: var(--muted); }
 .debug-id-cell { text-align: right; }
-.debug-copy-id {
+.copyable-id {
   background: none;
   border: none;
   padding: 1px 4px;
@@ -3880,10 +3880,10 @@ body.replay-drop-target::after {
   border-radius: 3px;
   transition: background 120ms ease;
 }
-.debug-copy-id:hover {
+.copyable-id:hover {
   background: color-mix(in srgb, var(--panel-border) 50%, transparent);
 }
-.debug-copy-id.copied {
+.copyable-id.copied {
   background: color-mix(in srgb, #4ade80 35%, transparent);
   color: #166534;
 }
@@ -3953,6 +3953,8 @@ body[data-freeze] .debug-tile * {
 .project-widget-title {
   font-weight: 600;
   font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .project-widget-kind {
   font-size: 0.6rem;
