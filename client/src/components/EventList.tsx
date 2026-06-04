@@ -54,11 +54,22 @@ export function ViewItemList({
   startedAt?: number;
   onBubbleClick?: (event: Event) => void;
 }) {
+  // Tally each natural key as we go; collisions get suffixed with #2,
+  // #3, etc. so React never sees a duplicate. The transform pipeline
+  // can legitimately produce two op-strips that share an anchor (a
+  // coalesce pass that wraps another coalesce's output), so we treat
+  // intra-list collisions as a routine ordering signal rather than a
+  // bug to track down deep in the transforms.
+  const seen = new Map<string, number>();
   return (
     <ul className="events">
-      {items.map((item) => (
-        <Item key={itemKey(item)} item={item} startedAt={startedAt} onBubbleClick={onBubbleClick} />
-      ))}
+      {items.map((item) => {
+        const base = itemKey(item);
+        const n = (seen.get(base) ?? 0) + 1;
+        seen.set(base, n);
+        const key = n === 1 ? base : `${base}#${n}`;
+        return <Item key={key} item={item} startedAt={startedAt} onBubbleClick={onBubbleClick} />;
+      })}
     </ul>
   );
 }
@@ -66,11 +77,7 @@ export function ViewItemList({
 function itemKey(item: ViewItem): string {
   if (item.type === 'tool') return `tool:${item.anchorUuid}`;
   if (item.type === 'file-change') return `file:${item.anchorUuid}`;
-  // op-strip can collide on `anchorUuid` alone when two strips happen
-  // to share their first item (e.g. multiple coalesce passes anchored
-  // on the same auto-title meta event). Include `ts` + length so
-  // distinct strip *contents* always produce a distinct key.
-  if (item.type === 'op-strip') return `strip:${item.anchorUuid}:${item.ts}:${item.items.length}`;
+  if (item.type === 'op-strip') return `strip:${item.anchorUuid}`;
   if (item.type === 'interrupt-divider') return `int:${item.anchorUuid}`;
   if (item.type === 'day-divider') return `day:${item.date}:${item.anchorUuid}`;
   return `${item.type}:${item.event.uuid}`;
