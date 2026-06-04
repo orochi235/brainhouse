@@ -1,8 +1,21 @@
 import { useEffect, useState } from 'react';
+import type { ProcessRow as Row } from '../useProcesses.ts';
 import { useProcesses } from '../useProcesses.ts';
 import { ProcessRow } from './ProcessRow.tsx';
 
 const ONLY_KEY = 'brainhouse:processes:onlyClaudeLinked';
+
+/** Commands Claude Code (or its harness) spawns for housekeeping —
+ * keep-alive shims, sleep prevention, etc. They're real descendants
+ * but provide no signal about *what work* the session is doing, so
+ * we hide them from Claude-linked-only mode. */
+const HOUSEKEEPING_HEADS = new Set(['caffeinate']);
+
+function isHousekeeping(row: Row): boolean {
+  const first = row.command.split(/\s+/)[0] ?? '';
+  const head = first.split('/').pop() ?? first;
+  return HOUSEKEEPING_HEADS.has(head);
+}
 
 export function ProcessesPanel() {
   const all = useProcesses().slice().sort((a, b) => b.uptime_s - a.uptime_s);
@@ -16,8 +29,10 @@ export function ProcessesPanel() {
   if (all.length === 0) return null;
   // A row is "Claude-linked" when we've attributed it to a session by
   // any tier — discovered rows are the host-wide listening services.
+  // Also hide Claude's own housekeeping spawns (caffeinate, etc.) —
+  // they're descendants but not interesting.
   const rows = onlyClaudeLinked
-    ? all.filter(r => r.provenance !== 'discovered')
+    ? all.filter(r => r.provenance !== 'discovered' && !isHousekeeping(r))
     : all;
 
   return (
