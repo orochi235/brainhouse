@@ -33,8 +33,8 @@ const DISPATCHER_EVENTS = /** @type {const} */ ([
 /** Canonical table of hooks brainhouse manages. Each entry produces one
  * settings.json hook registration tagged `brainhouse: "<role>"`. Add a
  * new hook by appending a row — install/uninstall iterate this list. */
-function hookRegistry(hooksDir) {
-  /** @type {{ role: string, event: string, command: string }[]} */
+export function hookRegistry(hooksDir) {
+  /** @type {{ role: string, event: string, command: string, matcher?: string }[]} */
   const entries = [];
   const dispatcher = path.join(hooksDir, 'dispatcher.mjs');
   for (const [event, kind] of DISPATCHER_EVENTS) {
@@ -56,6 +56,25 @@ function hookRegistry(hooksDir) {
     role: 'context-reminder',
     event: 'UserPromptSubmit',
     command: `node ${quote(path.join(hooksDir, 'context-reminder.mjs'))}`,
+  });
+  // Process-tracking hooks: snapshot running processes per session and
+  // record bash command starts/ends so the UI can show long-running work.
+  entries.push({
+    role: 'procs-session-start',
+    event: 'SessionStart',
+    command: `node ${quote(path.join(hooksDir, 'session-start-procs.mjs'))}`,
+  });
+  entries.push({
+    role: 'procs-pre-bash',
+    event: 'PreToolUse',
+    matcher: 'Bash',
+    command: `node ${quote(path.join(hooksDir, 'pre-tool-use-bash.mjs'))}`,
+  });
+  entries.push({
+    role: 'procs-post-bash',
+    event: 'PostToolUse',
+    matcher: 'Bash',
+    command: `node ${quote(path.join(hooksDir, 'post-tool-use-bash.mjs'))}`,
   });
   return entries;
 }
@@ -110,11 +129,11 @@ function stripBrainhouse(settings) {
 function addBrainhouse(settings, registry) {
   if (!settings.hooks) settings.hooks = {};
   const hooks = settings.hooks;
-  for (const { role, event, command } of registry) {
+  for (const { role, event, command, matcher } of registry) {
     if (!hooks[event]) hooks[event] = [];
     hooks[event].push({
       [MARKER]: role,
-      matcher: '.*',
+      matcher: matcher ?? '.*',
       hooks: [{ type: 'command', command }],
     });
   }
