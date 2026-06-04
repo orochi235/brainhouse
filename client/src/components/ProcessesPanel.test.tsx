@@ -16,7 +16,7 @@ vi.mock('../useProcesses.ts', () => ({
 
 describe('ProcessesPanel', () => {
   it('renders one row per process with key columns', () => {
-    render(<ProcessesPanel />);
+    render(<ProcessesPanel allPanels={new Map()} />);
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.getByText(/vite/)).toBeInTheDocument();
     expect(screen.getByText(/5173/)).toBeInTheDocument();

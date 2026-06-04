@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { useProcesses } from '../useProcesses.ts';
 import { ProcessRow } from './ProcessRow.tsx';
@@ -17,7 +18,7 @@ function isHousekeeping(row: Row): boolean {
   return HOUSEKEEPING_HEADS.has(head);
 }
 
-export function ProcessesPanel() {
+export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelState> }) {
   const all = useProcesses().slice().sort((a, b) => b.uptime_s - a.uptime_s);
   const [onlyClaudeLinked, setOnlyClaudeLinked] = useState<boolean>(() => {
     try { return localStorage.getItem(ONLY_KEY) === '1'; } catch { return false; }
@@ -77,7 +78,13 @@ export function ProcessesPanel() {
             <th aria-label="actions" />
           </tr>
         </thead>
-        <tbody>{rows.map(r => <ProcessRow key={r.process_id} row={r} />)}</tbody>
+        <tbody>{rows.map(r => (
+          <ProcessRow
+            key={r.process_id}
+            row={r}
+            panel={r.session_id ? allPanels.get(r.session_id) ?? null : null}
+          />
+        ))}</tbody>
       </table>
       {onlyClaudeLinked && rows.length === 0 && (
         <p className="processes-filter-empty">

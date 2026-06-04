@@ -661,7 +661,7 @@ function AppMain() {
           </span>
         </span>
       </header>
-      <ProcessesPanel />
+      <ProcessesPanel allPanels={allPanels} />
       <LayoutGroup>
         <main
           className="session-grid"

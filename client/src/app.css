@@ -3888,6 +3888,26 @@ body.replay-drop-target::after {
   color: #166534;
 }
 
+/* Session chip tinting in the processes panel. The wrap carries the
+ * project-or-worktree gradient as a CSS variable from ProcessRow;
+ * the inner .copyable-id button sits on top with a neutral surface
+ * so the text stays readable. When --session-chip-bg isn't set
+ * (discovered rows or unmatched panels) the wrap is invisible and
+ * the button looks identical to the debug-tile case. */
+.session-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  padding: 1px;
+  background: var(--session-chip-bg, transparent);
+}
+.session-chip-wrap .copyable-id {
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+}
+.session-chip-wrap .copyable-id:hover {
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+}
+
 /* Global animation kill-switch — when ?freeze=1 sets data-freeze on
  * <body>, freeze every animated transition so the static state is
  * what you actually see. Useful for inspecting layout / styling
@@ -3951,10 +3971,16 @@ body[data-freeze] .debug-tile * {
   color: var(--warn, #e0a93b);
 }
 .project-widget-title {
+  /* Same font treatment as the session card's subtitle project label
+   * (.panel-subtitle + .panel-subtitle-cwd) — uppercase, tabular nums,
+   * letter-spacing, slightly desaturated foreground — just at the
+   * larger widget-title size. */
   font-weight: 600;
   font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
 }
 .project-widget-kind {
   font-size: 0.6rem;

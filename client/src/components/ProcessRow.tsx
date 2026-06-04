@@ -1,6 +1,9 @@
+import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { CopyableId } from '../lib/CopyableId.tsx';
 import { CLI_ICONS } from '../lib/tools.ts';
+import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
+import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { trpc } from '../trpc.ts';
 
@@ -37,7 +40,23 @@ function isLoopback(addr: string): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '0.0.0.0' || addr === '*';
 }
 
-export function ProcessRow({ row }: { row: Row }) {
+/** Compute the background tint for the session chip. Solid project
+ * color when there's no worktree, or a left-to-right gradient from
+ * project color to worktree color when there is. Returns null when
+ * we don't have enough info (no panel for the session). */
+function sessionChipBackground(panel: PanelState | null): string | null {
+  if (!panel) return null;
+  const repoRoot = panel.repo_root ?? null;
+  if (!repoRoot) return null;
+  const repo = repoRoot.split('/').filter(Boolean).pop() ?? '';
+  if (!repo) return null;
+  const projectColor = worktreeColor(repo);
+  const wt = deriveWorktree(panel.cwd);
+  if (!wt) return projectColor;
+  return `linear-gradient(90deg, ${projectColor}, ${worktreeColor(wt.key)})`;
+}
+
+export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null }) {
   const [tail, setTail] = useState<string | null>(null);
   const [loadingTail, setLoadingTail] = useState(false);
 
@@ -106,7 +125,21 @@ export function ProcessRow({ row }: { row: Row }) {
           ))}
         </td>
         <td>{cwdShort}</td>
-        <td>{row.session_id ? <CopyableId id={row.session_id} length={8} /> : '(discovered)'}</td>
+        <td>
+          {row.session_id ? (
+            <span
+              className="session-chip-wrap"
+              style={(() => {
+                const bg = sessionChipBackground(panel);
+                return bg ? ({ ['--session-chip-bg' as string]: bg } as CSSProperties) : {};
+              })()}
+            >
+              <CopyableId id={row.session_id} length={8} />
+            </span>
+          ) : (
+            '(discovered)'
+          )}
+        </td>
         <td>{fmtUptime(row.uptime_s)}</td>
         <td>
           {row.run_in_background && (
