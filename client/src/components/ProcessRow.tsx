@@ -165,7 +165,17 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
           ))}
         </td>
         <td title={row.project ?? undefined}>
-          {row.project ? row.project.split('/').filter(Boolean).pop() : '—'}
+          {row.project ? (() => {
+            const name = row.project.split('/').filter(Boolean).pop() ?? row.project;
+            return (
+              <span
+                className="project-badge"
+                style={{ ['--project-badge-bg' as string]: worktreeColor(name) } as CSSProperties}
+              >
+                {name}
+              </span>
+            );
+          })() : '—'}
         </td>
         <td>
           {row.session_id ? (

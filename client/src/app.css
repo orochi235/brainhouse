@@ -4906,6 +4906,27 @@ body.hide-thinking .event-thought-agent {
   text-decoration: none;
 }
 
+/* Project badge: a small pill in the Project column tinted with the
+ * project's stable hue (same color the rest of brainhouse uses for
+ * worktree identity). Text is uppercase, monospace, white on the
+ * tinted background. Variable --project-badge-bg is set inline from
+ * worktreeColor(repo). */
+.project-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--project-badge-bg, color-mix(in srgb, var(--fg) 12%, transparent));
+  color: white;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  /* Pull the badge box slightly tighter than the row so it doesn't
+   * push the row height when the project basename is long. */
+  line-height: 1.4;
+}
+
 /* Inherited ports (a port bound by a tracked descendant, surfaced
  * upward on its wrapper processes) render dimmer so it's clear which
  * row actually owns the binding. */
