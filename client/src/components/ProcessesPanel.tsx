@@ -29,8 +29,26 @@ function isClaudeRelated(row: Row): boolean {
   return row.runtime === 'claude' || row.provenance !== 'discovered';
 }
 
+/** Sort rank: higher-confidence attribution first, then uptime desc.
+ * Without this, host-wide system processes (13-hour-old Music.app,
+ * Adobe, Syncthing) dominate the top and the Claude-attributed rows —
+ * usually what the user actually wants to see — get buried below the
+ * fold. */
+const PROVENANCE_RANK: Record<Row['provenance'], number> = {
+  hooked: 0,
+  observed: 1,
+  heuristic: 2,
+  discovered: 3,
+};
+
+function sortRows(a: Row, b: Row): number {
+  const rankDelta = PROVENANCE_RANK[a.provenance] - PROVENANCE_RANK[b.provenance];
+  if (rankDelta !== 0) return rankDelta;
+  return b.uptime_s - a.uptime_s;
+}
+
 export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelState> }) {
-  const all = useProcesses().slice().sort((a, b) => b.uptime_s - a.uptime_s);
+  const all = useProcesses().slice().sort(sortRows);
   const [showClaude, setShowClaude] = useState<boolean>(() => {
     try { return localStorage.getItem(SHOW_CLAUDE_KEY) !== '0'; } catch { return true; }
   });
