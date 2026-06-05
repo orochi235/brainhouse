@@ -14,3 +14,4 @@ coverage/
 
 # Playwright MCP traces from local smoke tests
 .playwright-mcp/
+*.png

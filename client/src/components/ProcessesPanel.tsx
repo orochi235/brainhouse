@@ -22,10 +22,20 @@ function isHousekeeping(row: Row): boolean {
   return HOUSEKEEPING_HEADS.has(head);
 }
 
-/** A row is "Claude-related" when it's either the Claude binary itself
- * or a tracked descendant of a Claude session (any non-discovered
- * provenance tier). Network rows are everything else. */
-function isClaudeRelated(row: Row): boolean {
+/** Bucket assignment is by *what the process is*, not by what we
+ * managed to attribute it to. A vite dev server bound to :5173 is a
+ * network process even when brainhouse pinned it to a Claude session
+ * via the cwd heuristic — the user's mental model is "this thing
+ * listens on a port" vs. "this thing is part of the agent's
+ * thinking". */
+function isNetwork(row: Row): boolean {
+  return row.ports.length > 0;
+}
+
+/** A non-network row that's been attributed to (or IS) a Claude
+ * session. Anything else with no ports gets dropped by the server's
+ * qualifiesForBroadcast filter, so we don't see it on the client. */
+function isClaudeAttributed(row: Row): boolean {
   return row.runtime === 'claude' || row.provenance !== 'discovered';
 }
 
@@ -70,16 +80,20 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
 
   if (all.length === 0) return null;
   // Filter semantics:
-  //   - Claude-related rows: shown when showClaude.
-  //   - Non-Claude network listeners: shown only when BOTH showNetwork
-  //     AND showRaw are on. They're noisy enough that a single toggle
-  //     isn't a strong enough signal of intent; the second checkbox is
-  //     a "yes really" confirmation.
+  //   - Network rows (process has a listening port): shown when
+  //     showNetwork. Non-Claude-attributed ones additionally require
+  //     showRaw — they're host-wide noise unless explicitly opted in.
+  //   - Non-network Claude-attributed rows (claude binary + agent
+  //     shells / scripts): shown when showClaude.
   //   - Housekeeping spawns (caffeinate, etc.): hidden unless showRaw.
   const rows = all.filter(r => {
     if (!showRaw && isHousekeeping(r)) return false;
-    if (isClaudeRelated(r)) return showClaude;
-    return showNetwork && showRaw;
+    if (isNetwork(r)) {
+      if (!showNetwork) return false;
+      if (!isClaudeAttributed(r) && !showRaw) return false;
+      return true;
+    }
+    return showClaude;
   });
 
   return (
