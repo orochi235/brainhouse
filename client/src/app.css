@@ -4906,6 +4906,17 @@ body.hide-thinking .event-thought-agent {
   text-decoration: none;
 }
 
+/* Inherited ports (a port bound by a tracked descendant, surfaced
+ * upward on its wrapper processes) render dimmer so it's clear which
+ * row actually owns the binding. */
+.port-inherited,
+.port-inherited a {
+  color: color-mix(in srgb, var(--fg) 40%, transparent);
+}
+.port-inherited a:hover {
+  color: color-mix(in srgb, var(--accent, #a78bfa) 65%, transparent);
+}
+
 /* When neither runtime nor framework can be detected, those two cells
  * merge (colSpan=2) and show the process's command line — usually the
  * most useful identifier for system services. Truncates with ellipsis

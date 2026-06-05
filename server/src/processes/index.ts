@@ -119,12 +119,20 @@ export class ProcessTracker extends EventEmitter {
         const inherited: ProcessRow['ports'] = [];
         for (const desc of descendantsOf.get(row.pid) ?? []) {
           const dp = ownPorts.get(desc.pid);
-          if (dp) inherited.push(...dp);
+          if (dp) {
+            for (const p of dp) inherited.push({ ...p, inherited: true });
+          }
         }
-        // De-dupe across own + inherited.
+        // De-dupe — own wins, since a process that both binds a port
+        // AND has a descendant binding the same one isn't really
+        // "inheriting" it.
         const seen = new Set<string>();
         const merged: ProcessRow['ports'] = [];
-        for (const p of [...own, ...inherited]) {
+        for (const p of own) {
+          const k = `${p.proto}|${p.addr}|${p.port}`;
+          if (!seen.has(k)) { seen.add(k); merged.push(p); }
+        }
+        for (const p of inherited) {
           const k = `${p.proto}|${p.addr}|${p.port}`;
           if (!seen.has(k)) { seen.add(k); merged.push(p); }
         }
@@ -132,7 +140,7 @@ export class ProcessTracker extends EventEmitter {
         const prev = row.ports;
         const same = prev.length === merged.length && prev.every((p, i) => {
           const m = merged[i];
-          return m && m.proto === p.proto && m.addr === p.addr && m.port === p.port;
+          return m && m.proto === p.proto && m.addr === p.addr && m.port === p.port && !!m.inherited === !!p.inherited;
         });
         if (!same) {
           this.rec.setPorts(row.process_id, merged);

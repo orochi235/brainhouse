@@ -150,7 +150,11 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
         </td>
         <td>
           {row.ports.length === 0 ? '—' : row.ports.map((p, i) => (
-            <span key={`${p.proto}-${p.addr}-${p.port}-${i}`}>
+            <span
+              key={`${p.proto}-${p.addr}-${p.port}-${i}`}
+              className={p.inherited ? 'port-inherited' : undefined}
+              title={p.inherited ? 'inherited from a descendant process' : undefined}
+            >
               {i > 0 && ' '}
               {isLoopback(p.addr) ? (
                 <a href={`http://localhost:${p.port}`} target="_blank" rel="noreferrer">:{p.port}</a>

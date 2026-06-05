@@ -4,11 +4,12 @@ import type { ProcessRow as Row } from '../useProcesses.ts';
 import { useProcesses } from '../useProcesses.ts';
 import { ProcessRow } from './ProcessRow.tsx';
 
-/** localStorage keys for the three visibility toggles. Defaults: Claude
- * on, network off, raw off. Each axis is independent. */
+/** localStorage keys for the four visibility toggles. Defaults: Claude
+ * on, network off, raw off, wrappers off. Each axis is independent. */
 const SHOW_CLAUDE_KEY = 'brainhouse:processes:showClaude';
 const SHOW_NETWORK_KEY = 'brainhouse:processes:showNetwork';
 const SHOW_RAW_KEY = 'brainhouse:processes:showRaw';
+const SHOW_WRAPPERS_KEY = 'brainhouse:processes:showWrappers';
 
 /** Commands Claude Code (or its harness) spawns for housekeeping —
  * keep-alive shims, sleep prevention, etc. They're real descendants
@@ -20,6 +21,33 @@ function isHousekeeping(row: Row): boolean {
   const first = row.command.split(/\s+/)[0] ?? '';
   const head = first.split('/').pop() ?? first;
   return HOUSEKEEPING_HEADS.has(head);
+}
+
+/** Transparent passthrough launchers — npm/yarn/pnpm/npx, run-p/run-s,
+ * concurrently, tsx watch. They show up in `ps` but rarely do the
+ * actual work themselves; collapsing them by default leaves the panel
+ * showing the leaf processes that bind ports / load the code. */
+const WRAPPER_HEADS = new Set([
+  'npm', 'npx', 'yarn', 'pnpm',
+  'run-p', 'run-s', 'npm-run-all',
+  'concurrently',
+  'tsx',
+]);
+
+function isTransparentWrapper(row: Row): boolean {
+  // Walk the first few argv tokens looking for a known wrapper head.
+  // We skip past `node` / `/usr/local/bin/node` etc. so the
+  // `node .../tsx watch ...` style invocations still match.
+  const argv = row.command.split(/\s+/).slice(0, 4);
+  const hasWrapperToken = argv.some(t => {
+    const head = (t.split('/').pop() ?? t).replace(/\.(js|mjs|cjs)$/, '');
+    return WRAPPER_HEADS.has(head);
+  });
+  if (!hasWrapperToken) return false;
+  // A wrapper that doesn't own any ports is transparent. If it has
+  // inherited ports, those came from a descendant we're already
+  // showing — collapsing the wrapper loses no information.
+  return row.ports.length === 0 || row.ports.every(p => p.inherited === true);
 }
 
 /** Bucket assignment is by *what the process is*, not by what we
@@ -68,6 +96,9 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
   const [showRaw, setShowRaw] = useState<boolean>(() => {
     try { return localStorage.getItem(SHOW_RAW_KEY) === '1'; } catch { return false; }
   });
+  const [showWrappers, setShowWrappers] = useState<boolean>(() => {
+    try { return localStorage.getItem(SHOW_WRAPPERS_KEY) === '1'; } catch { return false; }
+  });
   useEffect(() => {
     try { localStorage.setItem(SHOW_CLAUDE_KEY, showClaude ? '1' : '0'); } catch {}
   }, [showClaude]);
@@ -77,6 +108,9 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
   useEffect(() => {
     try { localStorage.setItem(SHOW_RAW_KEY, showRaw ? '1' : '0'); } catch {}
   }, [showRaw]);
+  useEffect(() => {
+    try { localStorage.setItem(SHOW_WRAPPERS_KEY, showWrappers ? '1' : '0'); } catch {}
+  }, [showWrappers]);
 
   if (all.length === 0) return null;
   // Filter semantics:
@@ -86,8 +120,11 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
   //   - Non-network Claude-attributed rows (claude binary + agent
   //     shells / scripts): shown when showClaude.
   //   - Housekeeping spawns (caffeinate, etc.): hidden unless showRaw.
+  //   - Transparent wrappers (npm / run-p / tsx / etc. that don't bind
+  //     their own ports): hidden unless showWrappers.
   const rows = all.filter(r => {
     if (!showRaw && isHousekeeping(r)) return false;
+    if (!showWrappers && isTransparentWrapper(r)) return false;
     if (isNetwork(r)) {
       if (!showNetwork) return false;
       if (!isClaudeAttributed(r) && !showRaw) return false;
@@ -118,6 +155,14 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
               onChange={e => setShowNetwork(e.target.checked)}
             />
             Network processes
+          </label>
+          <label className="processes-filter" title="Show transparent wrapper launchers — npm, run-p, tsx watch, concurrently, etc. — that don't bind their own ports. By default they're collapsed away so the panel shows only the leaf processes that actually do the work.">
+            <input
+              type="checkbox"
+              checked={showWrappers}
+              onChange={e => setShowWrappers(e.target.checked)}
+            />
+            Wrappers
           </label>
           <label className="processes-filter" title="Bypass the noise filter: include Claude's own housekeeping spawns (caffeinate, etc.) that we'd normally hide because they don't carry signal about what work the session is doing.">
             <input

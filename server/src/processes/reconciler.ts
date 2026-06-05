@@ -15,7 +15,12 @@ export interface ProcessRow {
   provenance: Provenance;
   runtime: string | null; runtime_version: string | null; runtime_source: string | null;
   framework: string | null; framework_version: string | null;
-  ports: Array<{ proto: 'TCP'; addr: string; port: number }>;
+  /** Listening sockets the panel surfaces for this row. May include
+   * both ports the process directly binds (no `inherited` flag) and
+   * ports its tracked descendants bind (`inherited: true`). The UI
+   * grays the inherited ones so it's clear which row "owns" the
+   * binding. */
+  ports: Array<{ proto: 'TCP'; addr: string; port: number; inherited?: boolean }>;
   ended_ts: number | null; ended_reason: string | null;
   uptime_s: number;
   /** Claude Code background bash id (`bash_1` style) when this row was
