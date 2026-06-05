@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { CopyableId } from '../lib/CopyableId.tsx';
 import { CLI_ICONS } from '../lib/tools.ts';
-import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
+import { badgeColor, deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { trpc } from '../trpc.ts';
@@ -65,8 +65,11 @@ function sessionChipBackground(panel: PanelState | null): string | null {
   const repo = repoRoot.split('/').filter(Boolean).pop() ?? '';
   if (!repo) return null;
   // Prefer the configured panel theme (e.g. brainhouse's purple) over
-  // the hash-derived worktreeColor fallback.
-  const projectColor = panel.theme?.background ?? worktreeColor(repo);
+  // the hash-derived worktreeColor fallback. Theme backgrounds are
+  // typically dark and desaturated for use as panel backgrounds;
+  // badgeColor() lifts them into vibrant chip-friendly territory while
+  // preserving their hue identity.
+  const projectColor = panel.theme?.background ? badgeColor(panel.theme.background) : worktreeColor(repo);
   const wt = deriveWorktree(panel.cwd);
   if (!wt) return projectColor;
   return `linear-gradient(90deg, ${projectColor}, ${worktreeColor(wt.key)})`;

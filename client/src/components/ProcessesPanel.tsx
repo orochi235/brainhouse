@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { badgeColor } from '../lib/worktree.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { useProcesses } from '../useProcesses.ts';
@@ -153,15 +154,16 @@ function flattenTree(
 export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelState> }) {
   const all = useProcesses();
 
-  // Project-path → theme.background lookup. Built from any panel whose
-  // repo_root or cwd matches the project so the badge can pick up the
-  // configured per-project hue (e.g. brainhouse's purple) instead of
-  // the hash-derived worktreeColor fallback.
+  // Project-path → badge color lookup. Built from any panel whose
+  // repo_root or cwd matches the project; we pull the configured
+  // theme.background and pass it through badgeColor() which preserves
+  // the hue but lifts saturation/lightness to chip-friendly floors
+  // (themes are usually too dark to read on a small badge).
   const projectThemes = new Map<string, string>();
   for (const p of allPanels.values()) {
     const key = p.repo_root ?? p.cwd;
     if (!key || !p.theme) continue;
-    if (!projectThemes.has(key)) projectThemes.set(key, p.theme.background);
+    if (!projectThemes.has(key)) projectThemes.set(key, badgeColor(p.theme.background));
   }
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'sessions'; } catch { return 'sessions'; }

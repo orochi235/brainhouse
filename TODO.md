@@ -630,3 +630,29 @@ Implementation sketch:
   Fall back to current behavior when absent.
 - Decide what to do when `description` and `input` disagree (rare but
   possible) — probably show both, with `description` on top.
+
+## Project hue: take hue from .hued, clamp ranges everywhere
+
+Currently the processes panel uses `badgeColor()` in `lib/worktree.ts`
+to lift dim/desaturated project themes (e.g. brainhouse's `#320053`)
+into vibrant chip-friendly colors by clamping saturation ≥ 65% and
+lightness ≥ 55% while preserving hue. The same pattern should apply
+everywhere we surface a project's identity color in compact form:
+
+- Session chip background gradient (already wired through
+  `sessionChipBackground` in `ProcessRow.tsx` — uses `badgeColor`).
+- ProjectWidgetCard / ProjectWidgetChip accent strokes and
+  highlights.
+- TitleBar account/project chip backgrounds.
+- Any future "compact project identity" surface.
+
+Pattern: read the configured color (`panel.theme.background` or
+equivalent), pass through `badgeColor()` (or a sibling helper with
+view-specific min S/L floors). Pure hex → vibrant HSL. Already-HSL
+strings pass through unchanged.
+
+Could also flip the model: store hue-only at the source (a `.hued`
+mixin / variable already exists elsewhere) and let each consumer
+apply its own clamp range. That avoids the need to "un-darken"
+themes for compact UI surfaces; the source of truth is just `hue`,
+and S/L is chosen at render time per context.
