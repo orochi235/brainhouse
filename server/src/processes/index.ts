@@ -93,12 +93,50 @@ export class ProcessTracker extends EventEmitter {
   async maybeSweepPorts() {
     if (this.subscribers === 0) return;
     try {
-      const rows = await this.listPorts();
-      for (const row of rows) {
-        const procRow = this.rec.rowByPid(row.pid);
-        if (procRow) {
-          this.rec.setPorts(procRow.process_id, row.ports);
-          this.emit('ports', { process_id: procRow.process_id, ports: row.ports });
+      const portRows = await this.listPorts();
+      // Direct-listener ports keyed by pid.
+      const ownPorts = new Map<number, ProcessRow['ports']>();
+      for (const r of portRows) ownPorts.set(r.pid, r.ports);
+
+      // Reverse-ancestor lookup: for each tracked row R, find all
+      // tracked rows D where R.pid ∈ D.original_ancestors. Anyone in
+      // that descendant set with a port "lends" it upward, so a wrapper
+      // process (run-p, tsx watch, npm) reads as serving whatever its
+      // child process is bound to. Falls back to row.ports = [] when no
+      // listener is anywhere in the subtree.
+      const allTracked = this.rec.getRows();
+      const descendantsOf = new Map<number, ProcessRow[]>();
+      for (const r of allTracked) {
+        for (const ancPid of r.original_ancestors) {
+          const list = descendantsOf.get(ancPid);
+          if (list) list.push(r);
+          else descendantsOf.set(ancPid, [r]);
+        }
+      }
+
+      for (const row of allTracked) {
+        const own = ownPorts.get(row.pid) ?? [];
+        const inherited: ProcessRow['ports'] = [];
+        for (const desc of descendantsOf.get(row.pid) ?? []) {
+          const dp = ownPorts.get(desc.pid);
+          if (dp) inherited.push(...dp);
+        }
+        // De-dupe across own + inherited.
+        const seen = new Set<string>();
+        const merged: ProcessRow['ports'] = [];
+        for (const p of [...own, ...inherited]) {
+          const k = `${p.proto}|${p.addr}|${p.port}`;
+          if (!seen.has(k)) { seen.add(k); merged.push(p); }
+        }
+        // Only re-broadcast when something actually changed for the row.
+        const prev = row.ports;
+        const same = prev.length === merged.length && prev.every((p, i) => {
+          const m = merged[i];
+          return m && m.proto === p.proto && m.addr === p.addr && m.port === p.port;
+        });
+        if (!same) {
+          this.rec.setPorts(row.process_id, merged);
+          this.emit('ports', { process_id: row.process_id, ports: merged });
         }
       }
     } catch (e) { console.error('[processes] port sweep failed:', e); }
