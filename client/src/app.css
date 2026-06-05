@@ -4843,6 +4843,37 @@ body.hide-thinking .event-thought-agent {
   border-right: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
 }
 
+.process-status-cell {
+  white-space: nowrap;
+}
+/* The status light doubles as the expand/collapse toggle on tree
+ * roots: clicking it does a 720° spin-and-morph from circle (●) to a
+ * smaller downward triangle (▾), mirroring the panel-status-icon
+ * pin/unpin animation in spirit. transform on a 720° delta gives two
+ * full revolutions per direction; the glyph itself swaps in React
+ * mid-spin. font-size smoothly shrinks while the dot becomes a
+ * triangle, so the "smaller" cue is visible. */
+.process-dot-expandable {
+  display: inline-block;
+  cursor: pointer;
+  padding: 0 0.15em;
+  border-radius: 3px;
+  transform-origin: center;
+  transition:
+    transform 0.5s cubic-bezier(0.2, 0.6, 0.2, 1),
+    font-size 0.5s cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+.process-dot-expandable.is-expanded {
+  transform: rotate(720deg);
+  font-size: 0.75em;
+}
+.process-dot-expandable:hover {
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .process-dot-expandable { transition: none; }
+}
+
 /* Tree rail in the Sessions view PID column: a thin guide indicating
  * the row is nested under its parent. */
 .process-tree-rail {

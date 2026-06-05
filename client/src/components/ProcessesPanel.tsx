@@ -123,25 +123,46 @@ function buildParentLinks(rows: Row[]): {
 }
 
 /** Flatten the tree rooted at `roots` in DFS order, tagging each row
- * with its tree depth. Children are sorted by uptime desc within each
- * sibling group so the longest-running stay at the top. */
+ * with its tree depth and a `hasChildren` flag. Children are sorted by
+ * uptime desc within each sibling group. When a root pid is NOT in the
+ * `expanded` set, its descendants are skipped and only the root is
+ * emitted (with `hasChildren=true` so the row can render its expand
+ * affordance). */
 function flattenTree(
   roots: Row[],
   childrenByPid: Map<number, Row[]>,
-): Array<{ row: Row; depth: number }> {
-  const out: Array<{ row: Row; depth: number }> = [];
-  function visit(r: Row, depth: number) {
-    out.push({ row: r, depth });
-    const kids = (childrenByPid.get(r.pid) ?? []).slice().sort((a, b) => b.uptime_s - a.uptime_s);
-    for (const k of kids) visit(k, depth + 1);
+  expanded: Set<number>,
+): Array<{ row: Row; depth: number; hasChildren: boolean }> {
+  const out: Array<{ row: Row; depth: number; hasChildren: boolean }> = [];
+  function visit(r: Row, depth: number, skipChildren: boolean) {
+    const kids = childrenByPid.get(r.pid) ?? [];
+    out.push({ row: r, depth, hasChildren: kids.length > 0 });
+    if (skipChildren) return;
+    const sorted = kids.slice().sort((a, b) => b.uptime_s - a.uptime_s);
+    for (const k of sorted) visit(k, depth + 1, false);
   }
   const sortedRoots = roots.slice().sort((a, b) => b.uptime_s - a.uptime_s);
-  for (const r of sortedRoots) visit(r, 0);
+  for (const r of sortedRoots) {
+    // Only root-level collapse is supported; nested descendants are
+    // always shown when their root is expanded.
+    visit(r, 0, !expanded.has(r.pid));
+  }
   return out;
 }
 
 export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelState> }) {
   const all = useProcesses();
+
+  // Project-path → theme.background lookup. Built from any panel whose
+  // repo_root or cwd matches the project so the badge can pick up the
+  // configured per-project hue (e.g. brainhouse's purple) instead of
+  // the hash-derived worktreeColor fallback.
+  const projectThemes = new Map<string, string>();
+  for (const p of allPanels.values()) {
+    const key = p.repo_root ?? p.cwd;
+    if (!key || !p.theme) continue;
+    if (!projectThemes.has(key)) projectThemes.set(key, p.theme.background);
+  }
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'sessions'; } catch { return 'sessions'; }
   });
@@ -151,6 +172,18 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
   const [showWrappers, setShowWrappers] = useState<boolean>(() => {
     try { return localStorage.getItem(SHOW_WRAPPERS_KEY) === '1'; } catch { return false; }
   });
+  /** Roots whose subtrees are currently expanded. Default: empty
+   * (everything collapsed). Per-pid so toggling one tree doesn't
+   * disturb the others. Not persisted — collapse state resets when
+   * the page reloads, matching typical OS process-viewer behavior. */
+  const [expandedRoots, setExpandedRoots] = useState<Set<number>>(() => new Set());
+  const toggleRoot = (pid: number) => {
+    setExpandedRoots(prev => {
+      const next = new Set(prev);
+      if (next.has(pid)) next.delete(pid); else next.add(pid);
+      return next;
+    });
+  };
   useEffect(() => {
     try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch {}
   }, [viewMode]);
@@ -170,7 +203,7 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
     return true;
   });
 
-  let display: Array<{ row: Row; depth: number }>;
+  let display: Array<{ row: Row; depth: number; hasChildren?: boolean; isRoot?: boolean }>;
   if (viewMode === 'sessions') {
     // Sessions tree: keep only Claude binaries and their descendants
     // (per ppid + original_ancestors). Roots are the claude-runtime
@@ -186,7 +219,12 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
     });
     const { childrenByPid } = buildParentLinks(inSessionTree);
     const roots = inSessionTree.filter(r => r.runtime === 'claude');
-    display = flattenTree(roots, childrenByPid);
+    display = flattenTree(roots, childrenByPid, expandedRoots).map(n => ({
+      row: n.row,
+      depth: n.depth,
+      hasChildren: n.hasChildren,
+      isRoot: n.depth === 0,
+    }));
   } else {
     // Network: flat list of port-binders, with Show-all gating for
     // non-Claude-attributed listeners (host-wide noise).
@@ -245,39 +283,41 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
         </div>
       </header>
       {rows.length > 0 && (
+        // Widths live on the <th> inline so the browser's `resize:
+        // horizontal` on each <th> actually drives column width. With
+        // <colgroup>, table-layout: fixed snapshots the col widths and
+        // ignores any th resize. PID is generous enough to hold a
+        // 5-digit pid + ~3 levels of tree indent without wrapping.
         <table className="processes-table">
-          <colgroup>
-            <col style={{ width: '30px' }} />
-            <col style={{ width: '60px' }} />
-            <col style={{ width: '100px' }} />
-            <col style={{ width: '150px' }} />
-            <col style={{ width: '110px' }} />
-            <col style={{ width: '500px' }} />
-            <col style={{ width: '130px' }} />
-            <col style={{ width: '140px' }} />
-            <col style={{ width: '90px' }} />
-            <col style={{ width: '40px' }} />
-          </colgroup>
           <thead>
             <tr>
-              <th aria-label="status"><span className="th-resize" /></th>
-              <th>PID<span className="th-resize" /></th>
-              <th>Runtime<span className="th-resize" /></th>
-              <th>Framework<span className="th-resize" /></th>
-              <th>Project<span className="th-resize" /></th>
-              <th>Command<span className="th-resize" /></th>
-              <th>Ports<span className="th-resize" /></th>
-              <th>Session<span className="th-resize" /></th>
-              <th>Uptime<span className="th-resize" /></th>
-              <th aria-label="actions" />
+              <th aria-label="status" style={{ width: '30px' }}><span className="th-resize" /></th>
+              <th style={{ width: '100px' }}>PID<span className="th-resize" /></th>
+              {viewMode === 'network' && (
+                <>
+                  <th style={{ width: '100px' }}>Runtime<span className="th-resize" /></th>
+                  <th style={{ width: '150px' }}>Framework<span className="th-resize" /></th>
+                </>
+              )}
+              <th style={{ width: '110px' }}>Project<span className="th-resize" /></th>
+              <th style={{ width: '500px' }}>{viewMode === 'sessions' ? 'Title' : 'Command'}<span className="th-resize" /></th>
+              <th style={{ width: '130px' }}>Ports<span className="th-resize" /></th>
+              <th style={{ width: '140px' }}>Session<span className="th-resize" /></th>
+              <th style={{ width: '90px' }}>Uptime<span className="th-resize" /></th>
+              <th aria-label="actions" style={{ width: '40px' }} />
             </tr>
           </thead>
-          <tbody>{rows.map(({ row, depth }) => (
+          <tbody>{rows.map(({ row, depth, hasChildren, isRoot }) => (
             <ProcessRow
               key={row.process_id}
               row={row}
               depth={depth}
+              viewMode={viewMode}
               panel={row.session_id ? allPanels.get(row.session_id) ?? null : null}
+              projectColor={row.project ? projectThemes.get(row.project) ?? null : null}
+              expandable={isRoot && hasChildren}
+              expanded={expandedRoots.has(row.pid)}
+              onToggleExpand={isRoot && hasChildren ? () => toggleRoot(row.pid) : undefined}
             />
           ))}</tbody>
         </table>

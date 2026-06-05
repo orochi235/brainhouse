@@ -64,13 +64,43 @@ function sessionChipBackground(panel: PanelState | null): string | null {
   if (!repoRoot) return null;
   const repo = repoRoot.split('/').filter(Boolean).pop() ?? '';
   if (!repo) return null;
-  const projectColor = worktreeColor(repo);
+  // Prefer the configured panel theme (e.g. brainhouse's purple) over
+  // the hash-derived worktreeColor fallback.
+  const projectColor = panel.theme?.background ?? worktreeColor(repo);
   const wt = deriveWorktree(panel.cwd);
   if (!wt) return projectColor;
   return `linear-gradient(90deg, ${projectColor}, ${worktreeColor(wt.key)})`;
 }
 
-export function ProcessRow({ row, panel, depth = 0 }: { row: Row; panel: PanelState | null; depth?: number }) {
+export function ProcessRow({
+  row,
+  panel,
+  depth = 0,
+  viewMode = 'network',
+  projectColor = null,
+  expandable = false,
+  expanded = false,
+  onToggleExpand,
+}: {
+  row: Row;
+  panel: PanelState | null;
+  depth?: number;
+  /** Sessions view hides Runtime + Framework — the tree structure
+   * carries the project-identity work those columns did in the flat
+   * Network view. */
+  viewMode?: 'sessions' | 'network';
+  /** Resolved project theme color (e.g. panel.theme.background for the
+   * matching panel). Falls back to worktreeColor() when null. */
+  projectColor?: string | null;
+  /** True when this row represents a tree root that has children — the
+   * UI renders an expand/collapse caret in the status column. */
+  expandable?: boolean;
+  /** Whether the children are currently visible. Drives the caret
+   * direction. */
+  expanded?: boolean;
+  /** Click handler for the caret. Undefined disables the affordance. */
+  onToggleExpand?: () => void;
+}) {
   const [tail, setTail] = useState<string | null>(null);
   const [loadingTail, setLoadingTail] = useState(false);
 
@@ -98,40 +128,71 @@ export function ProcessRow({ row, panel, depth = 0 }: { row: Row; panel: PanelSt
   return (
     <>
       <tr className="process-row">
-        <td>
-          <span className={PROVENANCE_CLASS[row.provenance]} title={PROVENANCE_TOOLTIP[row.provenance]}>
-            {PROVENANCE_DOT[row.provenance]}
+        <td className="process-status-cell">
+          {/* On expandable tree roots the status light doubles as the
+            * expand/collapse affordance. Clicking it triggers the same
+            * spin-and-morph motion used on panel pin/unpin: the dot
+            * spins 720° while the glyph swaps from a circle to a
+            * smaller downward triangle (or back). */}
+          <span
+            className={[
+              PROVENANCE_CLASS[row.provenance],
+              expandable ? 'process-dot-expandable' : '',
+              expandable && expanded ? 'is-expanded' : '',
+            ].filter(Boolean).join(' ')}
+            title={
+              expandable
+                ? (expanded ? 'collapse subtree' : 'expand subtree')
+                : PROVENANCE_TOOLTIP[row.provenance]
+            }
+            role={expandable ? 'button' : undefined}
+            aria-expanded={expandable ? expanded : undefined}
+            aria-label={expandable ? (expanded ? 'collapse' : 'expand') : undefined}
+            tabIndex={expandable ? 0 : undefined}
+            onClick={expandable && onToggleExpand ? onToggleExpand : undefined}
+            onKeyDown={expandable && onToggleExpand ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onToggleExpand();
+              }
+            } : undefined}
+          >
+            {expandable && expanded ? '▾' : PROVENANCE_DOT[row.provenance]}
           </span>
         </td>
         <td className="process-pid-cell" style={depth > 0 ? { paddingLeft: `calc(0.5rem + ${depth}rem)` } : undefined}>
           {depth > 0 && <span className="process-tree-rail" aria-hidden="true" />}
           {row.pid}
         </td>
-        <td className="process-runtime">
-          {(() => {
-            const svg = runtimeIcon(row.runtime);
-            if (svg) return (
-              <>
-                <span
-                  className="runtime-icon"
-                  aria-hidden="true"
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG.
-                  dangerouslySetInnerHTML={{ __html: svg }}
-                />
-                {row.runtime_version && <span className="runtime-version">{row.runtime_version}</span>}
-              </>
-            );
-            return runtimeText;
-          })()}
-        </td>
-        <td>{frameworkText}</td>
+        {viewMode === 'network' && (
+          <>
+            <td className="process-runtime">
+              {(() => {
+                const svg = runtimeIcon(row.runtime);
+                if (svg) return (
+                  <>
+                    <span
+                      className="runtime-icon"
+                      aria-hidden="true"
+                      // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG.
+                      dangerouslySetInnerHTML={{ __html: svg }}
+                    />
+                    {row.runtime_version && <span className="runtime-version">{row.runtime_version}</span>}
+                  </>
+                );
+                return runtimeText;
+              })()}
+            </td>
+            <td>{frameworkText}</td>
+          </>
+        )}
         <td title={row.project ?? undefined}>
           {row.project ? (() => {
             const name = row.project.split('/').filter(Boolean).pop() ?? row.project;
             return (
               <span
                 className="project-badge"
-                style={{ ['--project-badge-bg' as string]: worktreeColor(name) } as CSSProperties}
+                style={{ ['--project-badge-bg' as string]: projectColor ?? worktreeColor(name) } as CSSProperties}
               >
                 {name}
               </span>
@@ -155,13 +216,16 @@ export function ProcessRow({ row, panel, depth = 0 }: { row: Row; panel: PanelSt
                 )}
                 {row.project && <><dt>Project</dt><dd>{row.project}</dd></>}
                 {row.session_id && <><dt>Session</dt><dd>{row.session_id}</dd></>}
+                {panel?.title && <><dt>Title</dt><dd>{panel.title}</dd></>}
                 {row.hook_command && <><dt>Intent</dt><dd>{row.hook_command}</dd></>}
                 <dt>Provenance</dt><dd>{row.provenance}</dd>
                 <dt>Command</dt><dd className="process-info-command">{row.command}</dd>
               </dl>
             }
           >
-            <span className="process-command">{row.command}</span>
+            <span className="process-command">
+              {viewMode === 'sessions' && panel?.title ? panel.title : row.command}
+            </span>
           </HoverPopover>
         </td>
         <td>
@@ -209,7 +273,7 @@ export function ProcessRow({ row, panel, depth = 0 }: { row: Row; panel: PanelSt
       </tr>
       {tail !== null && (
         <tr className="process-tail">
-          <td colSpan={10}><pre>{tail}</pre></td>
+          <td colSpan={viewMode === 'network' ? 10 : 8}><pre>{tail}</pre></td>
         </tr>
       )}
     </>
