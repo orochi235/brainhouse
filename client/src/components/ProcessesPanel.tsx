@@ -4,12 +4,14 @@ import type { ProcessRow as Row } from '../useProcesses.ts';
 import { useProcesses } from '../useProcesses.ts';
 import { ProcessRow } from './ProcessRow.tsx';
 
-/** localStorage keys for the four visibility toggles. Defaults: Claude
- * on, network off, raw off, wrappers off. Each axis is independent. */
-const SHOW_CLAUDE_KEY = 'brainhouse:processes:showClaude';
-const SHOW_NETWORK_KEY = 'brainhouse:processes:showNetwork';
+/** localStorage keys. View-mode picks the top-level layout (sessions
+ * tree vs. flat network list). Show-all and Wrappers are view-scoped
+ * toggles. */
+const VIEW_MODE_KEY = 'brainhouse:processes:viewMode';
 const SHOW_RAW_KEY = 'brainhouse:processes:showRaw';
 const SHOW_WRAPPERS_KEY = 'brainhouse:processes:showWrappers';
+
+type ViewMode = 'sessions' | 'network';
 
 /** Commands Claude Code (or its harness) spawns for housekeeping —
  * keep-alive shims, sleep prevention, etc. They're real descendants
@@ -85,13 +87,63 @@ function sortRows(a: Row, b: Row): number {
   return b.uptime_s - a.uptime_s;
 }
 
+/** Build a parent → children map for a row set. A row's parent is the
+ * tracked row whose pid matches the row's ppid; if that misses (e.g.
+ * the row was reparented to launchd), we fall back to the deepest
+ * tracked ancestor from original_ancestors. Returns a tuple of
+ * (childrenByParentPid, rootPids) where roots are rows with no
+ * tracked parent. */
+function buildParentLinks(rows: Row[]): {
+  childrenByPid: Map<number, Row[]>;
+  rootPids: Set<number>;
+} {
+  const byPid = new Map<number, Row>();
+  for (const r of rows) byPid.set(r.pid, r);
+  const childrenByPid = new Map<number, Row[]>();
+  const rootPids = new Set<number>();
+  for (const r of rows) {
+    let parent: Row | null = null;
+    const direct = byPid.get(r.ppid);
+    if (direct && direct.pid !== r.pid) parent = direct;
+    else {
+      for (const ancPid of r.original_ancestors) {
+        const cand = byPid.get(ancPid);
+        if (cand && cand.pid !== r.pid) { parent = cand; break; }
+      }
+    }
+    if (parent) {
+      const list = childrenByPid.get(parent.pid);
+      if (list) list.push(r);
+      else childrenByPid.set(parent.pid, [r]);
+    } else {
+      rootPids.add(r.pid);
+    }
+  }
+  return { childrenByPid, rootPids };
+}
+
+/** Flatten the tree rooted at `roots` in DFS order, tagging each row
+ * with its tree depth. Children are sorted by uptime desc within each
+ * sibling group so the longest-running stay at the top. */
+function flattenTree(
+  roots: Row[],
+  childrenByPid: Map<number, Row[]>,
+): Array<{ row: Row; depth: number }> {
+  const out: Array<{ row: Row; depth: number }> = [];
+  function visit(r: Row, depth: number) {
+    out.push({ row: r, depth });
+    const kids = (childrenByPid.get(r.pid) ?? []).slice().sort((a, b) => b.uptime_s - a.uptime_s);
+    for (const k of kids) visit(k, depth + 1);
+  }
+  const sortedRoots = roots.slice().sort((a, b) => b.uptime_s - a.uptime_s);
+  for (const r of sortedRoots) visit(r, 0);
+  return out;
+}
+
 export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelState> }) {
-  const all = useProcesses().slice().sort(sortRows);
-  const [showClaude, setShowClaude] = useState<boolean>(() => {
-    try { return localStorage.getItem(SHOW_CLAUDE_KEY) !== '0'; } catch { return true; }
-  });
-  const [showNetwork, setShowNetwork] = useState<boolean>(() => {
-    try { return localStorage.getItem(SHOW_NETWORK_KEY) === '1'; } catch { return false; }
+  const all = useProcesses();
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'sessions'; } catch { return 'sessions'; }
   });
   const [showRaw, setShowRaw] = useState<boolean>(() => {
     try { return localStorage.getItem(SHOW_RAW_KEY) === '1'; } catch { return false; }
@@ -100,11 +152,8 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
     try { return localStorage.getItem(SHOW_WRAPPERS_KEY) === '1'; } catch { return false; }
   });
   useEffect(() => {
-    try { localStorage.setItem(SHOW_CLAUDE_KEY, showClaude ? '1' : '0'); } catch {}
-  }, [showClaude]);
-  useEffect(() => {
-    try { localStorage.setItem(SHOW_NETWORK_KEY, showNetwork ? '1' : '0'); } catch {}
-  }, [showNetwork]);
+    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch {}
+  }, [viewMode]);
   useEffect(() => {
     try { localStorage.setItem(SHOW_RAW_KEY, showRaw ? '1' : '0'); } catch {}
   }, [showRaw]);
@@ -113,25 +162,42 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
   }, [showWrappers]);
 
   if (all.length === 0) return null;
-  // Filter semantics:
-  //   - Network rows (process has a listening port): shown when
-  //     showNetwork. Non-Claude-attributed ones additionally require
-  //     showRaw — they're host-wide noise unless explicitly opted in.
-  //   - Non-network Claude-attributed rows (claude binary + agent
-  //     shells / scripts): shown when showClaude.
-  //   - Housekeeping spawns (caffeinate, etc.): hidden unless showRaw.
-  //   - Transparent wrappers (npm / run-p / tsx / etc. that don't bind
-  //     their own ports): hidden unless showWrappers.
-  const rows = all.filter(r => {
+
+  // Common noise gate — applies to both views.
+  const baseFiltered = all.filter(r => {
     if (!showRaw && isHousekeeping(r)) return false;
     if (!showWrappers && isTransparentWrapper(r)) return false;
-    if (isNetwork(r)) {
-      if (!showNetwork) return false;
+    return true;
+  });
+
+  let display: Array<{ row: Row; depth: number }>;
+  if (viewMode === 'sessions') {
+    // Sessions tree: keep only Claude binaries and their descendants
+    // (per ppid + original_ancestors). Roots are the claude-runtime
+    // rows. Loose rows that didn't trace back to a Claude session get
+    // dropped — they belong in Network view.
+    const claudePids = new Set(baseFiltered.filter(r => r.runtime === 'claude').map(r => r.pid));
+    // First pass: include only rows whose direct or ancestor chain
+    // leads to a claude row.
+    const inSessionTree = baseFiltered.filter(r => {
+      if (r.runtime === 'claude') return true;
+      const ancestors = [r.ppid, ...r.original_ancestors];
+      return ancestors.some(p => claudePids.has(p));
+    });
+    const { childrenByPid } = buildParentLinks(inSessionTree);
+    const roots = inSessionTree.filter(r => r.runtime === 'claude');
+    display = flattenTree(roots, childrenByPid);
+  } else {
+    // Network: flat list of port-binders, with Show-all gating for
+    // non-Claude-attributed listeners (host-wide noise).
+    const filtered = baseFiltered.filter(r => {
+      if (!isNetwork(r)) return false;
       if (!isClaudeAttributed(r) && !showRaw) return false;
       return true;
-    }
-    return showClaude;
-  });
+    });
+    display = filtered.slice().sort(sortRows).map(row => ({ row, depth: 0 }));
+  }
+  const rows = display;
 
   return (
     <section className="processes-panel">
@@ -140,22 +206,26 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
           Processes <span className="processes-count">({rows.length}{rows.length !== all.length ? ` of ${all.length}` : ''})</span>
         </h2>
         <div className="processes-filter-group">
-          <label className="processes-filter" title="Show Claude sessions: the claude binary itself plus any process attributed to a Claude session by the tree walker or hook records.">
-            <input
-              type="checkbox"
-              checked={showClaude}
-              onChange={e => setShowClaude(e.target.checked)}
-            />
-            Claude sessions
-          </label>
-          <label className="processes-filter" title="Show host-wide network listeners: anything bound to a TCP port (postgres, redis, system services, other people's dev servers, etc.) that isn't attributed to a Claude session. Requires 'Show all' to also be checked — these listeners can be very noisy so we ask for two opt-ins.">
-            <input
-              type="checkbox"
-              checked={showNetwork}
-              onChange={e => setShowNetwork(e.target.checked)}
-            />
-            Network processes
-          </label>
+          <div className="processes-view-radio" role="radiogroup" aria-label="View mode">
+            <label className="processes-filter" title="Tree view: each Claude session shown as a pstree, with its descendant processes (including any port-binding ones) nested underneath.">
+              <input
+                type="radio"
+                name="processes-view-mode"
+                checked={viewMode === 'sessions'}
+                onChange={() => setViewMode('sessions')}
+              />
+              Sessions
+            </label>
+            <label className="processes-filter" title="Flat list of every process bound to a listening TCP port, sorted by attribution confidence and uptime.">
+              <input
+                type="radio"
+                name="processes-view-mode"
+                checked={viewMode === 'network'}
+                onChange={() => setViewMode('network')}
+              />
+              Network
+            </label>
+          </div>
           <label className="processes-filter" title="Show transparent wrapper launchers — npm, run-p, tsx watch, concurrently, etc. — that don't bind their own ports. By default they're collapsed away so the panel shows only the leaf processes that actually do the work.">
             <input
               type="checkbox"
@@ -164,7 +234,7 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
             />
             Wrappers
           </label>
-          <label className="processes-filter" title="Bypass the noise filter: include Claude's own housekeeping spawns (caffeinate, etc.) that we'd normally hide because they don't carry signal about what work the session is doing.">
+          <label className="processes-filter" title="Bypass the noise filter: include Claude's own housekeeping spawns (caffeinate, etc.) and host-wide network listeners that aren't attributed to a Claude session.">
             <input
               type="checkbox"
               checked={showRaw}
@@ -181,9 +251,9 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
             <col style={{ width: '60px' }} />
             <col style={{ width: '100px' }} />
             <col style={{ width: '150px' }} />
+            <col style={{ width: '110px' }} />
             <col style={{ width: '500px' }} />
             <col style={{ width: '130px' }} />
-            <col style={{ width: '110px' }} />
             <col style={{ width: '140px' }} />
             <col style={{ width: '90px' }} />
             <col style={{ width: '40px' }} />
@@ -194,19 +264,20 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
               <th>PID<span className="th-resize" /></th>
               <th>Runtime<span className="th-resize" /></th>
               <th>Framework<span className="th-resize" /></th>
+              <th>Project<span className="th-resize" /></th>
               <th>Command<span className="th-resize" /></th>
               <th>Ports<span className="th-resize" /></th>
-              <th>Project<span className="th-resize" /></th>
               <th>Session<span className="th-resize" /></th>
               <th>Uptime<span className="th-resize" /></th>
               <th aria-label="actions" />
             </tr>
           </thead>
-          <tbody>{rows.map(r => (
+          <tbody>{rows.map(({ row, depth }) => (
             <ProcessRow
-              key={r.process_id}
-              row={r}
-              panel={r.session_id ? allPanels.get(r.session_id) ?? null : null}
+              key={row.process_id}
+              row={row}
+              depth={depth}
+              panel={row.session_id ? allPanels.get(row.session_id) ?? null : null}
             />
           ))}</tbody>
         </table>

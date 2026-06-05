@@ -4832,6 +4832,31 @@ body.hide-thinking .event-thought-agent {
   cursor: pointer;
 }
 
+/* View-mode radio sits at the start of the filter group as a small
+ * segmented-control-ish cluster. */
+.processes-view-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  padding-right: 0.75em;
+  margin-right: 0.25em;
+  border-right: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+}
+
+/* Tree rail in the Sessions view PID column: a thin guide indicating
+ * the row is nested under its parent. */
+.process-tree-rail {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-right: 0.4em;
+  border-left: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+  border-radius: 0 0 0 2px;
+  vertical-align: middle;
+  transform: translateY(-0.15em);
+}
+
 .processes-filter-empty {
   color: color-mix(in srgb, var(--fg) 50%, transparent);
   font-style: italic;

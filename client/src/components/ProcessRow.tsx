@@ -70,7 +70,7 @@ function sessionChipBackground(panel: PanelState | null): string | null {
   return `linear-gradient(90deg, ${projectColor}, ${worktreeColor(wt.key)})`;
 }
 
-export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null }) {
+export function ProcessRow({ row, panel, depth = 0 }: { row: Row; panel: PanelState | null; depth?: number }) {
   const [tail, setTail] = useState<string | null>(null);
   const [loadingTail, setLoadingTail] = useState(false);
 
@@ -103,7 +103,10 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
             {PROVENANCE_DOT[row.provenance]}
           </span>
         </td>
-        <td>{row.pid}</td>
+        <td className="process-pid-cell" style={depth > 0 ? { paddingLeft: `calc(0.5rem + ${depth}rem)` } : undefined}>
+          {depth > 0 && <span className="process-tree-rail" aria-hidden="true" />}
+          {row.pid}
+        </td>
         <td className="process-runtime">
           {(() => {
             const svg = runtimeIcon(row.runtime);
@@ -122,6 +125,19 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
           })()}
         </td>
         <td>{frameworkText}</td>
+        <td title={row.project ?? undefined}>
+          {row.project ? (() => {
+            const name = row.project.split('/').filter(Boolean).pop() ?? row.project;
+            return (
+              <span
+                className="project-badge"
+                style={{ ['--project-badge-bg' as string]: worktreeColor(name) } as CSSProperties}
+              >
+                {name}
+              </span>
+            );
+          })() : '—'}
+        </td>
         <td className="process-command-cell">
           <HoverPopover
             popoverClassName="process-info-popover"
@@ -163,19 +179,6 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
               )}
             </span>
           ))}
-        </td>
-        <td title={row.project ?? undefined}>
-          {row.project ? (() => {
-            const name = row.project.split('/').filter(Boolean).pop() ?? row.project;
-            return (
-              <span
-                className="project-badge"
-                style={{ ['--project-badge-bg' as string]: worktreeColor(name) } as CSSProperties}
-              >
-                {name}
-              </span>
-            );
-          })() : '—'}
         </td>
         <td>
           {row.session_id ? (
