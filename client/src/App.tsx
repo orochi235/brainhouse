@@ -631,6 +631,10 @@ function AppMain() {
           <BrandLabel />
         </h1>
         <span className="topbar-controls">
+          {/* Debug-only buttons clustered at the left so the cluster
+            * reads as one mode-switchable area; muted lime tint
+            * (--debug-color) reinforces the grouping. Neutral
+            * always-visible controls (clear all, stats) follow. */}
           {prefs.debug?.enabled && (
             <>
               <button
@@ -647,15 +651,15 @@ function AppMain() {
               >
                 + counter subagent
               </button>
+              <ScenariosButton />
+              <TransformsButton />
+              <FlowsButton />
             </>
           )}
           <button type="button" className="debug-spawn" onClick={dismissAll}>
             clear all
           </button>
-          {prefs.debug?.enabled && <ScenariosButton />}
-          {prefs.debug?.enabled && <TransformsButton />}
           <StatsButton />
-          {prefs.debug?.enabled && <FlowsButton />}
           <HoverPopover
             className={`conn conn-${status}`}
             content={<ConnTooltip status={status} />}
@@ -684,7 +688,7 @@ function AppMain() {
           </span>
         </span>
       </header>
-      {processesPanelOpen && <ProcessesPanel allPanels={allPanels} />}
+      {processesPanelOpen && <ProcessesPanel allPanels={allPanels} accountColorByLabel={accountColorByLabel} />}
       <LayoutGroup>
         <main
           className="session-grid"

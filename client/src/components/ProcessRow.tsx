@@ -81,6 +81,7 @@ export function ProcessRow({
   depth = 0,
   viewMode = 'network',
   showAccount = false,
+  accountColor = null,
   projectColor = null,
   expandable = false,
   expanded = false,
@@ -100,6 +101,10 @@ export function ProcessRow({
   /** Resolved project theme color (e.g. panel.theme.background for the
    * matching panel). Falls back to worktreeColor() when null. */
   projectColor?: string | null;
+  /** Per-account color from prefs.roots[].color. When set, drives the
+   * --account-color CSS var on the Account badge so it tints the
+   * same way panel-account badges do in session title bars. */
+  accountColor?: string | null;
   /** True when this row represents a tree root that has children — the
    * UI renders an expand/collapse caret in the status column. */
   expandable?: boolean;
@@ -209,7 +214,15 @@ export function ProcessRow({
         </td>
         {showAccount && (
           <td className="process-account-cell">
-            {panel?.account_label ?? '—'}
+            {panel?.account_label ? (
+              <span
+                className="panel-account"
+                style={accountColor ? ({ ['--account-color' as string]: accountColor } as CSSProperties) : undefined}
+                title={`account: ${panel.account_label}`}
+              >
+                {panel.account_label}
+              </span>
+            ) : '—'}
           </td>
         )}
         <td className="process-command-cell">

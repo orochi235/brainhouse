@@ -151,7 +151,16 @@ function flattenTree(
   return out;
 }
 
-export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelState> }) {
+export function ProcessesPanel({
+  allPanels,
+  accountColorByLabel,
+}: {
+  allPanels: Map<string, PanelState>;
+  /** account_label → hex color from prefs.roots[]. Drives the
+   * --account-color CSS var on the Account badge so its tint matches
+   * the session card / project widget account badge. */
+  accountColorByLabel?: Map<string, string>;
+}) {
   const all = useProcesses();
 
   // Project-path → badge color lookup. Built from any panel whose
@@ -325,6 +334,10 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
               showAccount={showAccount}
               panel={row.session_id ? allPanels.get(row.session_id) ?? null : null}
               projectColor={row.project ? projectThemes.get(row.project) ?? null : null}
+              accountColor={(() => {
+                const label = row.session_id ? allPanels.get(row.session_id)?.account_label : null;
+                return label ? accountColorByLabel?.get(label) ?? null : null;
+              })()}
               expandable={isRoot && hasChildren}
               expanded={expandedRoots.has(row.pid)}
               onToggleExpand={isRoot && hasChildren ? () => toggleRoot(row.pid) : undefined}
