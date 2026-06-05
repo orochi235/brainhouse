@@ -4928,6 +4928,39 @@ body.hide-thinking .event-thought-agent {
   font-size: 0.95em;
 }
 
+.process-info-popover {
+  min-width: 360px;
+  max-width: 560px;
+}
+
+.process-info-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.75em;
+  row-gap: 0.2em;
+  margin: 0;
+  font-size: 0.85em;
+}
+
+.process-info-grid dt {
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.85em;
+  align-self: center;
+}
+
+.process-info-grid dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.process-info-command {
+  white-space: pre-wrap;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+}
+
 /* Runtime cell: SVG icon (reuses the existing CLI_ICONS palette used
  * by Bash tool capsules) followed by version. Falls back to plain
  * text when we have no icon for the detected runtime. */

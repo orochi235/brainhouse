@@ -6,6 +6,7 @@ import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { trpc } from '../trpc.ts';
+import { HoverPopover } from './HoverPopover.tsx';
 
 /** Map a detected runtime to the same SVG asset used by Bash tool
  * capsules. Falls back to null so the caller can render text only. */
@@ -122,7 +123,30 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
         </td>
         <td>{frameworkText}</td>
         <td className="process-command-cell">
-          <span className="process-command" title={row.command}>{row.command}</span>
+          <HoverPopover
+            popoverClassName="process-info-popover"
+            content={
+              <dl className="process-info-grid">
+                <dt>PID</dt><dd>{row.pid}</dd>
+                <dt>Uptime</dt><dd>{fmtUptime(row.uptime_s)}</dd>
+                {row.runtime && <><dt>Runtime</dt><dd>{runtimeText}</dd></>}
+                {row.framework && <><dt>Framework</dt><dd>{frameworkText}</dd></>}
+                {row.ports.length > 0 && (
+                  <>
+                    <dt>Ports</dt>
+                    <dd>{row.ports.map(p => `${p.addr}:${p.port}`).join(' ')}</dd>
+                  </>
+                )}
+                {row.project && <><dt>Project</dt><dd>{row.project}</dd></>}
+                {row.session_id && <><dt>Session</dt><dd>{row.session_id}</dd></>}
+                {row.hook_command && <><dt>Intent</dt><dd>{row.hook_command}</dd></>}
+                <dt>Provenance</dt><dd>{row.provenance}</dd>
+                <dt>Command</dt><dd className="process-info-command">{row.command}</dd>
+              </dl>
+            }
+          >
+            <span className="process-command">{row.command}</span>
+          </HoverPopover>
         </td>
         <td>
           {row.ports.length === 0 ? '—' : row.ports.map((p, i) => (
