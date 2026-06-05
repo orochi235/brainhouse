@@ -89,7 +89,6 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
     }
   };
 
-  const cwdShort = row.cwd ? (row.cwd.split('/').filter(Boolean).pop() ?? row.cwd) : '—';
   const runtimeText = row.runtime ? (row.runtime_version ? `${row.runtime} ${row.runtime_version}` : row.runtime) : '—';
   const frameworkText = row.framework
     ? (row.framework_version ? `${row.framework} ${row.framework_version}` : row.framework)
@@ -137,7 +136,9 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
             </span>
           ))}
         </td>
-        <td>{cwdShort}</td>
+        <td title={row.project ?? undefined}>
+          {row.project ? row.project.split('/').filter(Boolean).pop() : '—'}
+        </td>
         <td>
           {row.session_id ? (
             <span
@@ -149,15 +150,10 @@ export function ProcessRow({ row, panel }: { row: Row; panel: PanelState | null 
             >
               <CopyableId id={row.session_id} length={8} />
             </span>
-          ) : row.project ? (
-            // No single session pinned, but cwd matches a Claude project.
-            // Show the project basename with a leading folder glyph so it's
-            // visually distinct from a session id. Title carries full path.
-            <span className="session-chip-wrap session-chip-project" title={row.project}>
-              <span className="project-chip">📁 {row.project.split('/').filter(Boolean).pop()}</span>
-            </span>
           ) : (
-            '(discovered)'
+            // Project-only attribution (no specific session) shows in the
+            // adjacent Project column, so this cell can stay empty.
+            '—'
           )}
         </td>
         <td>{fmtUptime(row.uptime_s)}</td>

@@ -184,6 +184,14 @@ export class Reconciler {
           }
         }
       }
+      // Whenever we have a session_id, also surface its cwd as the
+      // project so the panel's Project column has something to show
+      // for every attributed row (not just rows attributed via the
+      // cwd-heuristic tier).
+      if (row.session_id && !row.project) {
+        const info = this.sessions.get(row.session_id);
+        if (info?.cwd) row.project = info.cwd;
+      }
       // cwd-based attribution if not in tree. We treat exact and
       // descendant matches the same way: a session's cwd is either
       // identical to the process's cwd, or an ancestor of it. The
