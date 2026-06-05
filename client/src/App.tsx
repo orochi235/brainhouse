@@ -208,6 +208,12 @@ function AppMain() {
   }, [freezeMode]);
   const { status, panels: allPanels } = useDeltaStream();
   const [theme, setTheme] = useTheme();
+  const [processesPanelOpen, setProcessesPanelOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('brainhouse:processesPanelOpen') !== '0'; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('brainhouse:processesPanelOpen', processesPanelOpen ? '1' : '0'); } catch {}
+  }, [processesPanelOpen]);
   const { prefs, refetch: refetchPrefs } = usePrefs();
   // Filter out blacklisted session IDs before anything downstream touches
   // the panel set — that way every consumer (notifications, project
@@ -629,14 +635,14 @@ function AppMain() {
             <>
               <button
                 type="button"
-                className="debug-spawn"
+                className="debug-spawn is-debug-button"
                 onClick={() => trpc.debug.spawnMock.mutate()}
               >
                 + mock session
               </button>
               <button
                 type="button"
-                className="debug-spawn"
+                className="debug-spawn is-debug-button"
                 onClick={() => trpc.debug.spawnCounter.mutate({ stopAt: 10 })}
               >
                 + counter subagent
@@ -660,6 +666,15 @@ function AppMain() {
             <button
               type="button"
               className="theme-toggle"
+              title={processesPanelOpen ? 'Hide processes panel' : 'Show processes panel'}
+              aria-pressed={processesPanelOpen}
+              onClick={() => setProcessesPanelOpen(v => !v)}
+            >
+              ⚙
+            </button>
+            <button
+              type="button"
+              className="theme-toggle"
               title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             >
@@ -669,7 +684,7 @@ function AppMain() {
           </span>
         </span>
       </header>
-      <ProcessesPanel allPanels={allPanels} />
+      {processesPanelOpen && <ProcessesPanel allPanels={allPanels} />}
       <LayoutGroup>
         <main
           className="session-grid"
@@ -1331,7 +1346,7 @@ function ScenariosButton() {
   return (
     <button
       type="button"
-      className="debug-spawn"
+      className="debug-spawn is-debug-button"
       title="Spawn a synthetic scenario that exercises specific UI/lifecycle paths"
       onClick={() => lightbox.open(<ScenariosModal />)}
     >
@@ -1345,7 +1360,7 @@ function TransformsButton() {
   return (
     <button
       type="button"
-      className="debug-spawn"
+      className="debug-spawn is-debug-button"
       title="Show the pipeline transforms applied to every event stream"
       onClick={() => lightbox.open(<TransformsModal />)}
     >
@@ -1373,7 +1388,7 @@ function FlowsButton() {
   return (
     <button
       type="button"
-      className="debug-spawn"
+      className="debug-spawn is-debug-button"
       title="Sankey of which event types tend to follow which, across all sessions"
       onClick={() => lightbox.open(<FlowsModal />)}
     >

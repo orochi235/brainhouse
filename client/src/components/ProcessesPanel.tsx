@@ -165,6 +165,12 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
     if (!key || !p.theme) continue;
     if (!projectThemes.has(key)) projectThemes.set(key, badgeColor(p.theme.background));
   }
+  // Show the Account column only when the user actually has more than
+  // one configured account — otherwise it's a wasted column always
+  // showing the same label.
+  const accountLabels = new Set<string>();
+  for (const p of allPanels.values()) if (p.account_label) accountLabels.add(p.account_label);
+  const showAccount = accountLabels.size > 1;
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'sessions'; } catch { return 'sessions'; }
   });
@@ -302,6 +308,7 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
                 </>
               )}
               <th style={{ width: '110px' }}>Project<span className="th-resize" /></th>
+              {showAccount && <th style={{ width: '90px' }}>Account<span className="th-resize" /></th>}
               <th style={{ width: '500px' }}>{viewMode === 'sessions' ? 'Title' : 'Command'}<span className="th-resize" /></th>
               <th style={{ width: '130px' }}>Ports<span className="th-resize" /></th>
               <th style={{ width: '140px' }}>Session<span className="th-resize" /></th>
@@ -315,6 +322,7 @@ export function ProcessesPanel({ allPanels }: { allPanels: Map<string, PanelStat
               row={row}
               depth={depth}
               viewMode={viewMode}
+              showAccount={showAccount}
               panel={row.session_id ? allPanels.get(row.session_id) ?? null : null}
               projectColor={row.project ? projectThemes.get(row.project) ?? null : null}
               expandable={isRoot && hasChildren}

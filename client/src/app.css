@@ -160,6 +160,22 @@ body {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+/* Design-language token: muted lime green flags anything debug-related
+ * (the prefs.debug?.enabled-gated topbar buttons, future debug
+ * surfaces). Stable hue + clamped sat/lightness so it reads as
+ * intentional rather than incidental. */
+:root {
+  --debug-color: hsl(80 45% 55%);
+}
+.is-debug-button,
+.is-debug-button:hover {
+  color: var(--debug-color);
+  border-color: color-mix(in srgb, var(--debug-color) 60%, transparent);
+}
+.is-debug-button:hover {
+  border-color: var(--debug-color);
+}
 .conn {
   font-size: 0.75rem;
   color: var(--muted);
@@ -4973,11 +4989,16 @@ body.hide-thinking .event-thought-agent {
   border-radius: 4px;
   background: var(--project-badge-bg, color-mix(in srgb, var(--fg) 12%, transparent));
   color: white;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Inherit the system sans-serif (same font we use for project names
+   * in .project-widget-title and .panel-subtitle-cwd) — was monospace
+   * which made the badge feel like a code chip rather than an
+   * identity label. */
+  font-family: inherit;
   font-size: 0.8em;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   /* Pull the badge box slightly tighter than the row so it doesn't
    * push the row height when the project basename is long. */
   line-height: 1.4;

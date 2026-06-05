@@ -80,6 +80,7 @@ export function ProcessRow({
   panel,
   depth = 0,
   viewMode = 'network',
+  showAccount = false,
   projectColor = null,
   expandable = false,
   expanded = false,
@@ -92,6 +93,10 @@ export function ProcessRow({
    * carries the project-identity work those columns did in the flat
    * Network view. */
   viewMode?: 'sessions' | 'network';
+  /** Set by ProcessesPanel when the user has more than one Claude
+   * account configured. When false the Account column is omitted from
+   * both the thead and tbody. */
+  showAccount?: boolean;
   /** Resolved project theme color (e.g. panel.theme.background for the
    * matching panel). Falls back to worktreeColor() when null. */
   projectColor?: string | null;
@@ -202,6 +207,11 @@ export function ProcessRow({
             );
           })() : '—'}
         </td>
+        {showAccount && (
+          <td className="process-account-cell">
+            {panel?.account_label ?? '—'}
+          </td>
+        )}
         <td className="process-command-cell">
           <HoverPopover
             popoverClassName="process-info-popover"
@@ -276,7 +286,7 @@ export function ProcessRow({
       </tr>
       {tail !== null && (
         <tr className="process-tail">
-          <td colSpan={viewMode === 'network' ? 10 : 8}><pre>{tail}</pre></td>
+          <td colSpan={(viewMode === 'network' ? 10 : 8) + (showAccount ? 1 : 0)}><pre>{tail}</pre></td>
         </tr>
       )}
     </>
