@@ -299,7 +299,15 @@ export class TranscriptMonitor {
         event.kind === 'bash_intent' ||
         event.kind === 'bash_id_map'
       ) {
-        this.tracker.handleHookRecord(event);
+        // For session_pid, resolve the hook's CLAUDE_CONFIG_DIR to a
+        // prefs root → account label and stamp it onto the record. Keeps
+        // the resolution map on the server (where roots already live)
+        // rather than pushing it down into the hook scripts.
+        const enriched =
+          event.kind === 'session_pid' && event.claude_config_dir
+            ? { ...event, account_label: this.accountLabels.get(event.claude_config_dir) ?? null }
+            : event;
+        this.tracker.handleHookRecord(enriched);
         return;
       }
       if (event.kind === 'session_end') {

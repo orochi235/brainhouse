@@ -13,6 +13,67 @@ const SHOW_RAW_KEY = 'brainhouse:processes:showRaw';
 const SHOW_WRAPPERS_KEY = 'brainhouse:processes:showWrappers';
 
 type ViewMode = 'sessions' | 'network';
+type SortKey = 'pid' | 'project' | 'account' | 'command' | 'session' | 'idle' | 'uptime' | null;
+
+/** Pick the comparable value for a row under a given sort key. Strings
+ * sort lexicographically; numbers naturally; nulls land at the end of
+ * the desc order (i.e., always treated as "smallest"). */
+function sortValue(
+  row: Row,
+  panel: PanelState | null,
+  key: Exclude<SortKey, null>,
+  now: number,
+): string | number {
+  switch (key) {
+    case 'pid': return row.pid;
+    case 'project': return row.project ?? '';
+    case 'account': return panel?.account_label ?? row.account_label ?? '';
+    case 'command': return panel?.title ?? row.command;
+    case 'session': return row.session_id ?? '';
+    case 'idle': return panel ? Math.max(0, now - panel.last_event_at) : Number.MAX_SAFE_INTEGER;
+    case 'uptime': return row.uptime_s;
+  }
+}
+
+function cmp(a: string | number, b: string | number, dir: 'asc' | 'desc'): number {
+  const mul = dir === 'asc' ? 1 : -1;
+  if (typeof a === 'number' && typeof b === 'number') return mul * (a - b);
+  return mul * String(a).localeCompare(String(b));
+}
+
+/** Header cell that toggles a column sort. Click cycle: desc → asc → off
+ * (back to the view's default ordering). Arrow renders only when the
+ * column is active. Resize handle preserved so widths still work. */
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  toggle,
+  width,
+}: {
+  label: string;
+  sortKey: Exclude<SortKey, null>;
+  sort: { key: SortKey; dir: 'asc' | 'desc' };
+  toggle: (k: Exclude<SortKey, null>) => void;
+  width: string;
+}) {
+  const active = sort.key === sortKey;
+  const arrow = active ? (sort.dir === 'desc' ? '▾' : '▴') : '';
+  return (
+    <th style={{ width }} className={active ? 'sortable-th is-sorted' : 'sortable-th'}>
+      <button
+        type="button"
+        className="th-sort-button"
+        onClick={() => toggle(sortKey)}
+        aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      >
+        {label}
+        {arrow && <span className="th-sort-arrow">{arrow}</span>}
+      </button>
+      <span className="th-resize" />
+    </th>
+  );
+}
 
 /** Commands Claude Code (or its harness) spawns for housekeeping —
  * keep-alive shims, sleep prevention, etc. They're real descendants
@@ -174,11 +235,13 @@ export function ProcessesPanel({
     if (!key || !p.theme) continue;
     if (!projectThemes.has(key)) projectThemes.set(key, badgeColor(p.theme.background));
   }
-  // Show the Account column only when the user actually has more than
-  // one configured account — otherwise it's a wasted column always
-  // showing the same label.
+  // Show the Account column only when more than one distinct label
+  // appears across panels OR rows — counting row.account_label here
+  // catches the brainhouse self-stamp case (it's a synthetic label
+  // that never lives on a panel).
   const accountLabels = new Set<string>();
   for (const p of allPanels.values()) if (p.account_label) accountLabels.add(p.account_label);
+  for (const r of all) if (r.account_label) accountLabels.add(r.account_label);
   const showAccount = accountLabels.size > 1;
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'sessions'; } catch { return 'sessions'; }
@@ -194,6 +257,17 @@ export function ProcessesPanel({
    * disturb the others. Not persisted — collapse state resets when
    * the page reloads, matching typical OS process-viewer behavior. */
   const [expandedRoots, setExpandedRoots] = useState<Set<number>>(() => new Set());
+  /** Active sort. `key === null` falls back to the view's default
+   * order (sessions: natural tree order; network: attribution-tier
+   * descending then uptime). Click cycles desc → asc → off. */
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: null, dir: 'desc' });
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) => {
+      if (prev.key !== key) return { key, dir: 'desc' };
+      if (prev.dir === 'desc') return { key, dir: 'asc' };
+      return { key: null, dir: 'desc' };
+    });
+  };
   const toggleRoot = (pid: number) => {
     setExpandedRoots(prev => {
       const next = new Set(prev);
@@ -201,6 +275,15 @@ export function ProcessesPanel({
       return next;
     });
   };
+  // 1-Hz tick to refresh the per-row Idle column (sessions view only).
+  // Uptime is server-pushed so doesn't need this; idle = now − panel.last_event_at
+  // is purely a client-side derivation.
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    if (viewMode !== 'sessions') return;
+    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
+    return () => clearInterval(id);
+  }, [viewMode]);
   useEffect(() => {
     try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch {}
   }, [viewMode]);
@@ -235,7 +318,18 @@ export function ProcessesPanel({
       return ancestors.some(p => claudePids.has(p));
     });
     const { childrenByPid } = buildParentLinks(inSessionTree);
-    const roots = inSessionTree.filter(r => r.runtime === 'claude');
+    let roots = inSessionTree.filter(r => r.runtime === 'claude');
+    // Column-sort applies to the root level only; descendants stay in
+    // natural tree order under their root so the hierarchy reads
+    // coherently.
+    if (sort.key) {
+      const k = sort.key;
+      roots = roots.slice().sort((a, b) => {
+        const pa = a.session_id ? allPanels.get(a.session_id) ?? null : null;
+        const pb = b.session_id ? allPanels.get(b.session_id) ?? null : null;
+        return cmp(sortValue(a, pa, k, now), sortValue(b, pb, k, now), sort.dir);
+      });
+    }
     display = flattenTree(roots, childrenByPid, expandedRoots).map(n => ({
       row: n.row,
       depth: n.depth,
@@ -250,7 +344,14 @@ export function ProcessesPanel({
       if (!isClaudeAttributed(r) && !showRaw) return false;
       return true;
     });
-    display = filtered.slice().sort(sortRows).map(row => ({ row, depth: 0 }));
+    const ordered = sort.key
+      ? filtered.slice().sort((a, b) => {
+          const pa = a.session_id ? allPanels.get(a.session_id) ?? null : null;
+          const pb = b.session_id ? allPanels.get(b.session_id) ?? null : null;
+          return cmp(sortValue(a, pa, sort.key!, now), sortValue(b, pb, sort.key!, now), sort.dir);
+        })
+      : filtered.slice().sort(sortRows);
+    display = ordered.map(row => ({ row, depth: 0 }));
   }
   const rows = display;
 
@@ -309,19 +410,30 @@ export function ProcessesPanel({
           <thead>
             <tr>
               <th aria-label="status" style={{ width: '30px' }}><span className="th-resize" /></th>
-              <th style={{ width: '100px' }}>PID<span className="th-resize" /></th>
+              <SortHeader label="PID" sortKey="pid" sort={sort} toggle={toggleSort} width="100px" />
               {viewMode === 'network' && (
                 <>
                   <th style={{ width: '100px' }}>Runtime<span className="th-resize" /></th>
                   <th style={{ width: '150px' }}>Framework<span className="th-resize" /></th>
                 </>
               )}
-              <th style={{ width: '110px' }}>Project<span className="th-resize" /></th>
-              {showAccount && <th style={{ width: '90px' }}>Account<span className="th-resize" /></th>}
-              <th style={{ width: '500px' }}>{viewMode === 'sessions' ? 'Title' : 'Command'}<span className="th-resize" /></th>
-              <th style={{ width: '130px' }}>Ports<span className="th-resize" /></th>
-              <th style={{ width: '140px' }}>Session<span className="th-resize" /></th>
-              <th style={{ width: '90px' }}>Uptime<span className="th-resize" /></th>
+              <SortHeader label="Project" sortKey="project" sort={sort} toggle={toggleSort} width="110px" />
+              {showAccount && (
+                <SortHeader label="Account" sortKey="account" sort={sort} toggle={toggleSort} width="90px" />
+              )}
+              <SortHeader
+                label={viewMode === 'sessions' ? 'Title' : 'Command'}
+                sortKey="command"
+                sort={sort}
+                toggle={toggleSort}
+                width="500px"
+              />
+              {viewMode === 'network' && <th style={{ width: '130px' }}>Ports<span className="th-resize" /></th>}
+              <SortHeader label="Session" sortKey="session" sort={sort} toggle={toggleSort} width="140px" />
+              {viewMode === 'sessions' && (
+                <SortHeader label="Idle" sortKey="idle" sort={sort} toggle={toggleSort} width="70px" />
+              )}
+              <SortHeader label="Uptime" sortKey="uptime" sort={sort} toggle={toggleSort} width="90px" />
               <th aria-label="actions" style={{ width: '40px' }} />
             </tr>
           </thead>
@@ -335,12 +447,14 @@ export function ProcessesPanel({
               panel={row.session_id ? allPanels.get(row.session_id) ?? null : null}
               projectColor={row.project ? projectThemes.get(row.project) ?? null : null}
               accountColor={(() => {
-                const label = row.session_id ? allPanels.get(row.session_id)?.account_label : null;
+                const panelLabel = row.session_id ? allPanels.get(row.session_id)?.account_label : null;
+                const label = panelLabel ?? row.account_label;
                 return label ? accountColorByLabel?.get(label) ?? null : null;
               })()}
               expandable={isRoot && hasChildren}
               expanded={expandedRoots.has(row.pid)}
               onToggleExpand={isRoot && hasChildren ? () => toggleRoot(row.pid) : undefined}
+              now={viewMode === 'sessions' ? now : null}
             />
           ))}</tbody>
         </table>

@@ -28,6 +28,11 @@ export interface ToolItem {
   anchorUuid: string;
   use: ToolUsePayload | null;
   result: ToolResultPayload | null;
+  /** Timestamp of the tool_result event when one has landed. Lets the
+   * waiting-badge clock anchor to "tool just finished" rather than
+   * falling back to `now` (which made the elapsed counter perpetually
+   * read 0s while the model was looping). Null while pending. */
+  resultTs: string | null;
   ack: string | null;
   ts: string;
   /** True when the user pressed ctrl-c mid-turn and this tool's call was

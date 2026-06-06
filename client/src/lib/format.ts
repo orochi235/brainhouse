@@ -1,15 +1,25 @@
 /** Time-formatting helpers shared by panel header + thinking timer. */
 
 export function formatIdle(seconds: number): string {
-  if (seconds < 60) return `${Math.floor(seconds)}s`;
-  if (seconds < 3600) {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return s ? `${m}m ${s}s` : `${m}m`;
+  const total = Math.max(0, Math.floor(seconds));
+  if (total < 60) return `${total}s`;
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  // Lead with the largest non-zero unit ("1d 13h 3m" rather than
+  // "37h 3m"). When a smaller unit follows the lead, keep all units
+  // between them even if intermediate ones are zero — "1d 0h 3m"
+  // reads more honestly than "1d 3m". Trailing zero units are still
+  // dropped (e.g. "1d" alone, "1d 13h").
+  if (days > 0) {
+    if (!hours && !minutes) return `${days}d`;
+    return minutes ? `${days}d ${hours}h ${minutes}m` : `${days}d ${hours}h`;
   }
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return m ? `${h}h ${m}m` : `${h}h`;
+  if (hours > 0) {
+    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return secs ? `${minutes}m ${secs}s` : `${minutes}m`;
 }
 
 /** Coarse: only the largest unit. For closed/archived sessions. */

@@ -67,6 +67,9 @@ export const HookEventSchema = z.object({
   tool_use_id: z.string().optional(),
   /** bash_id_map only. Background bash id assigned by Claude Code. */
   bash_id: z.string().optional(),
+  /** session_pid only. Value of $CLAUDE_CONFIG_DIR at hook time, when
+   * present. Resolved upstream to an account_label via prefs.roots[].path. */
+  claude_config_dir: z.string().nullable().optional(),
   /** Unix seconds, set by the dispatcher. */
   ts: z.number(),
 });

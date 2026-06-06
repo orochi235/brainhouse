@@ -35,6 +35,12 @@ export interface ProcessRow {
    * session is an exact match. The UI shows this as a project chip
    * in the Session column when session_id is null. */
   project: string | null;
+  /** Account label this row should be attributed to. Set when the
+   * spawning Claude session's hook carries a CLAUDE_CONFIG_DIR we can
+   * resolve to a prefs root, or via brainhouse's own self-stamp for
+   * its server + descendants. Survives session unregistration: a panel
+   * teardown no longer erases the chip on the row. */
+  account_label: string | null;
   /** Ancestor PIDs (immediate parent → root, exclusive of self) snapshotted
    * the first time we saw this row in ps. Used to retroactively attribute
    * a process to a Claude session that registers AFTER the process has
@@ -45,7 +51,7 @@ export interface ProcessRow {
   original_ancestors: number[];
 }
 
-interface SessionInfo { pid: number; cwd: string; }
+interface SessionInfo { pid: number; cwd: string; accountLabel?: string | null; }
 interface BashIntent { command: string; run_in_background: boolean; cwd: string; ts: number; }
 
 const SIGNAL_MIN_UPTIME_S = 3;
@@ -76,8 +82,23 @@ export class Reconciler {
   private broadcasted = new Set<string>();
   private bashIdsBySession = new Map<string, string[]>();
   private transcriptPathBySession = new Map<string, string>();
+  /** Brainhouse-internal "self" attribution. When set, the row for
+   * `selfPid` and every row whose snapshotted ancestor chain contains
+   * `selfPid` gets `account_label = selfAccountLabel` (unless already
+   * attributed by a hook). Used to badge the brainhouse server and
+   * its dev-mode children (vite, tsx watch, etc.) when no Claude
+   * session spawned them. */
+  private selfPid: number | null = null;
+  private selfAccountLabel: string | null = null;
 
   registerSession(sessionId: string, info: SessionInfo) { this.sessions.set(sessionId, info); }
+
+  /** Stamp brainhouse's own pid + descendants with a synthetic label.
+   * Pass `null` for label to clear. */
+  registerSelf(pid: number, label: string | null) {
+    this.selfPid = pid;
+    this.selfAccountLabel = label;
+  }
   unregisterSession(sessionId: string) {
     this.sessions.delete(sessionId);
     this.intents.delete(sessionId);
@@ -189,6 +210,14 @@ export class Reconciler {
           }
         }
       }
+      // Account inheritance from the attributed session, when the
+      // session was registered with a label (hook carried CLAUDE_CONFIG_DIR
+      // that resolved to a prefs root). Sticky — once stamped we don't
+      // clobber it, so the chip survives the session unregistering.
+      if (row.session_id && !row.account_label) {
+        const info = this.sessions.get(row.session_id);
+        if (info?.accountLabel) row.account_label = info.accountLabel;
+      }
       // Whenever we have a session_id, also surface its cwd as the
       // project so the panel's Project column has something to show
       // for every attributed row (not just rows attributed via the
@@ -247,6 +276,15 @@ export class Reconciler {
             if (id) row.bash_id = id;
             this.bashIdsBySession.set(row.session_id, arr);
           }
+        }
+      }
+
+      // Self-stamp: brainhouse's own process and anything spawned by
+      // it inherit the synthetic label. Runs after hook/session
+      // attribution so a real account always wins.
+      if (!row.account_label && this.selfPid !== null && this.selfAccountLabel) {
+        if (row.pid === this.selfPid || row.original_ancestors.includes(this.selfPid)) {
+          row.account_label = this.selfAccountLabel;
         }
       }
 
@@ -326,6 +364,7 @@ export class Reconciler {
       uptime_s: 0,
       bash_id: null,
       project: null,
+      account_label: null,
       original_ancestors: originalAncestors,
     };
   }

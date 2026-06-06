@@ -38,6 +38,11 @@ async function main() {
   });
   await monitor.start();
   tracker.start();
+  // Synthetic "brainhouse" badge for the server's own pid + descendants.
+  // Not a real Claude account — just so the dev-mode self-processes
+  // (this server + vite + any tsx watch) read as something rather than
+  // anonymous in the Processes panel.
+  tracker.registerSelf('brainhouse');
   await runStartupDiscovery(tracker);
 
   // pino-pretty's default ANSI emission (color resets, attribute clears)

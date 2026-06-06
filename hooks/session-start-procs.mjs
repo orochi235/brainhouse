@@ -30,6 +30,7 @@ const rec = {
   cwd: process.cwd(),
   start_ts: startTsNs(),
   ts: Date.now() / 1000,
+  claude_config_dir: process.env.CLAUDE_CONFIG_DIR ?? null,
 };
 
 try {

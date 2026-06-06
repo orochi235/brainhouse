@@ -656,3 +656,22 @@ mixin / variable already exists elsewhere) and let each consumer
 apply its own clamp range. That avoids the need to "un-darken"
 themes for compact UI surfaces; the source of truth is just `hue`,
 and S/L is chosen at render time per context.
+
+## Persistent project registry for process attribution
+
+Today the processes panel attributes a row to a project only when a
+*currently-registered* Claude session's cwd matches the row's cwd
+(`reconciler.ts:209-232`). Once the session ends → unregister → the
+attribution path goes dark, even for long-lived processes (dev
+servers, brainhouse itself) whose project is still obvious from the
+cwd alone.
+
+Sketch: persist a set of known project roots — anything any Claude
+session has ever rooted at or under — into the SQLite store. The
+reconciler consults this set as a final fallback after live-session
+matching, so a process whose cwd descends from a known project root
+gets a `project` chip even if no session is currently live there.
+
+Doesn't help with account attribution (account ≠ project; same path
+tree can be touched by either account). But it's a clean win for the
+project chip — fewer anonymous rows in the network view.

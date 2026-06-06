@@ -30,6 +30,7 @@ export const toolUseToCapsule: Stage1Transform = {
       anchorUuid: event.uuid,
       use: event.payload,
       result: null,
+      resultTs: null,
       ack: null,
       ts: event.ts,
     });

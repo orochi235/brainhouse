@@ -19,6 +19,11 @@ export type ProcessRow = {
    * Mutually exclusive with session_id in the natural sense — both
    * can be set simultaneously, but the UI prefers session_id. */
   project: string | null;
+  /** Server-stamped account label. Set when a Claude session hook
+   * resolved to a prefs root, or via brainhouse's own self-stamp
+   * (synthetic "brainhouse" label for its own pid + descendants).
+   * Used as the fallback when the row has no live panel to read from. */
+  account_label: string | null;
 };
 
 export type ProcessDelta =

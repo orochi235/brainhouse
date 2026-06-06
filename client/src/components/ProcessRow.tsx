@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { CopyableId } from '../lib/CopyableId.tsx';
+import { formatIdle } from '../lib/format.ts';
 import { CLI_ICONS } from '../lib/tools.ts';
 import { badgeColor, deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import type { PanelState } from '../useDeltaStream.ts';
@@ -39,16 +40,7 @@ const PROVENANCE_CLASS: Record<Row['provenance'], string> = {
   discovered: 'process-dot process-dot-discovered',
 };
 
-function fmtUptime(s: number): string {
-  const totalSec = Math.max(0, Math.floor(s));
-  const m = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  if (m >= 60) {
-    const h = Math.floor(m / 60);
-    return `${h}h ${m % 60}m`;
-  }
-  return `${String(m).padStart(2, '0')}m ${String(sec).padStart(2, '0')}s`;
-}
+const fmtUptime = formatIdle;
 
 function isLoopback(addr: string): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '0.0.0.0' || addr === '*';
@@ -57,19 +49,25 @@ function isLoopback(addr: string): boolean {
 /** Compute the background tint for the session chip. Solid project
  * color when there's no worktree, or a left-to-right gradient from
  * project color to worktree color when there is. Returns null when
- * we don't have enough info (no panel for the session). */
-function sessionChipBackground(panel: PanelState | null): string | null {
-  if (!panel) return null;
-  const repoRoot = panel.repo_root ?? null;
-  if (!repoRoot) return null;
-  const repo = repoRoot.split('/').filter(Boolean).pop() ?? '';
-  if (!repo) return null;
+ * we don't have enough info (no panel + no upstream project color). */
+function sessionChipBackground(panel: PanelState | null, fallbackProjectColor: string | null): string | null {
+  if (!panel) return fallbackProjectColor;
   // Prefer the configured panel theme (e.g. brainhouse's purple) over
   // the hash-derived worktreeColor fallback. Theme backgrounds are
   // typically dark and desaturated for use as panel backgrounds;
   // badgeColor() lifts them into vibrant chip-friendly territory while
-  // preserving their hue identity.
-  const projectColor = panel.theme?.background ? badgeColor(panel.theme.background) : worktreeColor(repo);
+  // preserving their hue identity. When the panel has no repo_root yet
+  // (sessions started outside a git repo, or pre-repo-detection), fall
+  // through to the upstream-computed project color so the chip still
+  // matches the row's Project badge instead of going gray.
+  const repoRoot = panel.repo_root ?? null;
+  const repo = repoRoot ? repoRoot.split('/').filter(Boolean).pop() ?? '' : '';
+  const projectColor = panel.theme?.background
+    ? badgeColor(panel.theme.background)
+    : repo
+      ? worktreeColor(repo)
+      : fallbackProjectColor;
+  if (!projectColor) return null;
   const wt = deriveWorktree(panel.cwd);
   if (!wt) return projectColor;
   return `linear-gradient(90deg, ${projectColor}, ${worktreeColor(wt.key)})`;
@@ -86,6 +84,7 @@ export function ProcessRow({
   expandable = false,
   expanded = false,
   onToggleExpand,
+  now = null,
 }: {
   row: Row;
   panel: PanelState | null;
@@ -113,6 +112,10 @@ export function ProcessRow({
   expanded?: boolean;
   /** Click handler for the caret. Undefined disables the affordance. */
   onToggleExpand?: () => void;
+  /** Wall-clock seconds, ticking from the parent panel. When non-null
+   * (sessions view), the row renders an Idle column = now − panel.last_event_at.
+   * Null in network view, where the column doesn't exist. */
+  now?: number | null;
 }) {
   const [tail, setTail] = useState<string | null>(null);
   const [loadingTail, setLoadingTail] = useState(false);
@@ -212,19 +215,25 @@ export function ProcessRow({
             );
           })() : '—'}
         </td>
-        {showAccount && (
-          <td className="process-account-cell">
-            {panel?.account_label ? (
-              <span
-                className="panel-account"
-                style={accountColor ? ({ ['--account-color' as string]: accountColor } as CSSProperties) : undefined}
-                title={`account: ${panel.account_label}`}
-              >
-                {panel.account_label}
-              </span>
-            ) : '—'}
-          </td>
-        )}
+        {showAccount && (() => {
+          // Prefer the live panel's label (always current); fall back to
+          // the server-stamped row.account_label so non-panel rows
+          // (brainhouse self, sessions that have ended) still show.
+          const label = panel?.account_label ?? row.account_label;
+          return (
+            <td className="process-account-cell">
+              {label ? (
+                <span
+                  className="panel-account"
+                  style={accountColor ? ({ ['--account-color' as string]: accountColor } as CSSProperties) : undefined}
+                  title={`account: ${label}`}
+                >
+                  {label}
+                </span>
+              ) : '—'}
+            </td>
+          );
+        })()}
         <td className="process-command-cell">
           <HoverPopover
             popoverClassName="process-info-popover"
@@ -249,33 +258,41 @@ export function ProcessRow({
               </dl>
             }
           >
-            <span className="process-command">
+            <span
+              className={
+                viewMode === 'sessions' && panel?.title
+                  ? 'process-command is-title'
+                  : 'process-command'
+              }
+            >
               {viewMode === 'sessions' && panel?.title ? panel.title : row.command}
             </span>
           </HoverPopover>
         </td>
-        <td>
-          {row.ports.length === 0 ? '—' : row.ports.map((p, i) => (
-            <span
-              key={`${p.proto}-${p.addr}-${p.port}-${i}`}
-              className={p.inherited ? 'port-inherited' : undefined}
-              title={p.inherited ? 'inherited from a descendant process' : undefined}
-            >
-              {i > 0 && ' '}
-              {isLoopback(p.addr) ? (
-                <a href={`http://localhost:${p.port}`} target="_blank" rel="noreferrer">:{p.port}</a>
-              ) : (
-                <span>:{p.port}</span>
-              )}
-            </span>
-          ))}
-        </td>
+        {viewMode !== 'sessions' && (
+          <td>
+            {row.ports.length === 0 ? '—' : row.ports.map((p, i) => (
+              <span
+                key={`${p.proto}-${p.addr}-${p.port}-${i}`}
+                className={p.inherited ? 'port-inherited' : undefined}
+                title={p.inherited ? 'inherited from a descendant process' : undefined}
+              >
+                {i > 0 && ' '}
+                {isLoopback(p.addr) ? (
+                  <a href={`http://localhost:${p.port}`} target="_blank" rel="noreferrer">:{p.port}</a>
+                ) : (
+                  <span>:{p.port}</span>
+                )}
+              </span>
+            ))}
+          </td>
+        )}
         <td>
           {row.session_id ? (
             <span
               className="session-chip-wrap"
               style={(() => {
-                const bg = sessionChipBackground(panel);
+                const bg = sessionChipBackground(panel, projectColor ?? null);
                 return bg ? ({ ['--session-chip-bg' as string]: bg } as CSSProperties) : {};
               })()}
             >
@@ -287,6 +304,29 @@ export function ProcessRow({
             '—'
           )}
         </td>
+        {now !== null && (() => {
+          const idleSec = panel ? Math.max(0, now - panel.last_event_at) : null;
+          // 0 = fresh, 6 = ancient. Bumps at 5m, 30m, 2h, 6h, 24h, 7d.
+          // CSS picks the per-bucket color (full --fg → progressively
+          // darker via color-mix).
+          const bucket =
+            idleSec === null ? null :
+            idleSec < 300 ? 0 :
+            idleSec < 1800 ? 1 :
+            idleSec < 7200 ? 2 :
+            idleSec < 21600 ? 3 :
+            idleSec < 86400 ? 4 :
+            idleSec < 604800 ? 5 :
+            6;
+          return (
+            <td
+              className={bucket !== null ? `process-idle idle-bucket-${bucket}` : 'process-idle'}
+              title={panel ? 'time since last event in this session' : 'no session activity tracked'}
+            >
+              {idleSec === null ? '—' : formatIdle(idleSec)}
+            </td>
+          );
+        })()}
         <td>{fmtUptime(row.uptime_s)}</td>
         <td>
           {row.run_in_background && (

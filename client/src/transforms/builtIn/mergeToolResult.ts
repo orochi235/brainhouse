@@ -27,6 +27,7 @@ export const mergeToolResult: Stage1Transform = {
     const target = id ? findToolItem(items, id) : null;
     if (target) {
       target.result = event.payload;
+      target.resultTs = event.ts;
       return true;
     }
     items.push({
@@ -34,6 +35,7 @@ export const mergeToolResult: Stage1Transform = {
       anchorUuid: event.uuid,
       use: null,
       result: event.payload,
+      resultTs: event.ts,
       ack: null,
       ts: event.ts,
     });

@@ -46,11 +46,23 @@ export class ProcessTracker extends EventEmitter {
   addSubscriber() { this.subscribers++; }
   removeSubscriber() { this.subscribers = Math.max(0, this.subscribers - 1); }
 
+  /** Stamp the brainhouse server's own pid (and its descendants) with
+   * a synthetic account label. Lets dev-mode self-spawned processes
+   * (vite, tsx watch) show an account chip even though no Claude
+   * session attribution applies. */
+  registerSelf(label: string | null) {
+    this.rec.registerSelf(process.pid, label);
+  }
+
   snapshot(): ProcessRow[] { return this.rec.getQualifyingRows(); }
 
   handleHookRecord(rec: any) {
     if (rec.kind === 'session_pid') {
-      this.rec.registerSession(rec.session_id, { pid: rec.pid, cwd: rec.cwd ?? '' });
+      this.rec.registerSession(rec.session_id, {
+        pid: rec.pid,
+        cwd: rec.cwd ?? '',
+        accountLabel: typeof rec.account_label === 'string' ? rec.account_label : null,
+      });
     } else if (rec.kind === 'bash_intent') {
       this.rec.recordBashIntent(rec.session_id, {
         command: rec.command ?? '', run_in_background: rec.run_in_background ?? false,

@@ -19,6 +19,15 @@ describe('formatIdle', () => {
     expect(formatIdle(3660)).toBe('1h 1m');
     expect(formatIdle(7200)).toBe('2h');
   });
+
+  it('day+ leads with d; keeps zero subunits between two nonzero ones', () => {
+    expect(formatIdle(86400)).toBe('1d');
+    expect(formatIdle(86400 + 3600)).toBe('1d 1h');
+    // Zero hours sandwiched between days and minutes is rendered, not skipped.
+    expect(formatIdle(86400 + 3 * 60)).toBe('1d 0h 3m');
+    expect(formatIdle(86400 + 13 * 3600 + 3 * 60)).toBe('1d 13h 3m');
+    expect(formatIdle(86400 * 2 + 5)).toBe('2d');
+  });
 });
 
 describe('formatIdleCoarse', () => {

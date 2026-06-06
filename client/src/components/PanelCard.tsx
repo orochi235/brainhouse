@@ -1248,7 +1248,7 @@ function lastUserActivity(
     const item = items[i];
     if (!item) continue;
     if (item.type === 'bubble' && item.role === 'user') return parseTs(item.event.ts, fallback);
-    if (item.type === 'tool' && item.result) return fallback; // result.ts not stored; use fallback
+    if (item.type === 'tool' && item.result) return parseTs(item.resultTs ?? item.ts, fallback);
   }
   return fallback;
 }

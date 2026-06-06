@@ -2249,6 +2249,23 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
 .event-tool {
   margin: 0.25rem 0;
 }
+/* Status badge + timestamp ride together at the row's right edge.
+ * The wrapper is what's absolutely positioned (replacing .event-time's
+ * direct anchoring for this row type only); the children flow normally
+ * inside it so the status sits immediately left of the time with a gap. */
+.event-tool-trailer {
+  position: absolute;
+  right: 0.4rem;
+  bottom: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.event-tool-trailer .event-time {
+  position: static;
+  right: auto;
+  bottom: auto;
+}
 /* Op-strip: compact line that replaces a flurry of tools/file-changes
  * between two chats. Click → lightbox renders each sub-item normally. */
 .event-op-strip {
@@ -2481,6 +2498,15 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
 }
 .tool-capsule.pending {
   border-color: rgba(251, 191, 36, 0.4);
+  animation: tool-pending-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tool-pending-pulse {
+  0%, 100% {
+    background: var(--code-bg);
+  }
+  50% {
+    background: color-mix(in srgb, #fbbf24 22%, var(--code-bg));
+  }
 }
 .tool-capsule.ok {
   border-color: rgba(132, 204, 22, 0.35);
@@ -2933,25 +2959,11 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   display: inline-block;
   position: relative;
 }
-.tool-status.status-pending::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1.5px solid #fbbf24;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: tool-spin 0.8s linear infinite;
-}
 .tool-status.status-ok {
   color: var(--accent);
 }
 .tool-status.status-error {
   color: #ef4444;
-}
-@keyframes tool-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 .tool-note {
   margin-top: 0.15rem;
@@ -2969,7 +2981,11 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   font-size: 0.72rem;
   opacity: 0.7;
   cursor: pointer;
-  padding: 0.2rem 0;
+  /* Reserve right gutter for the absolutely-positioned .event-time so
+   * the markdown body can't run under it — without this, system/meta
+   * timestamps visually drifted relative to tool/bubble timestamps even
+   * though the absolute anchor (right: 0.4rem) was identical. */
+  padding: 0.2rem 3rem 0.2rem 0;
 }
 .event-kind {
   font-size: 0.65rem;
@@ -4864,24 +4880,21 @@ body.hide-thinking .event-thought-agent {
 }
 /* The status light doubles as the expand/collapse toggle on tree
  * roots: clicking it does a 720° spin-and-morph from circle (●) to a
- * smaller downward triangle (▾), mirroring the panel-status-icon
- * pin/unpin animation in spirit. transform on a 720° delta gives two
- * full revolutions per direction; the glyph itself swaps in React
- * mid-spin. font-size smoothly shrinks while the dot becomes a
- * triangle, so the "smaller" cue is visible. */
+ * downward triangle (▾), mirroring the panel-status-icon pin/unpin
+ * animation in spirit. transform on a 720° delta gives two full
+ * revolutions per direction; the glyph itself swaps in React mid-spin.
+ * Triangle stays at the circle's font-size — it's already smaller than
+ * the diamond used in the panel pin-state morph. */
 .process-dot-expandable {
   display: inline-block;
   cursor: pointer;
   padding: 0 0.15em;
   border-radius: 3px;
   transform-origin: center;
-  transition:
-    transform 0.5s cubic-bezier(0.2, 0.6, 0.2, 1),
-    font-size 0.5s cubic-bezier(0.2, 0.6, 0.2, 1);
+  transition: transform 0.5s cubic-bezier(0.2, 0.6, 0.2, 1);
 }
 .process-dot-expandable.is-expanded {
   transform: rotate(720deg);
-  font-size: 0.75em;
 }
 .process-dot-expandable:hover {
   background: color-mix(in srgb, var(--fg) 12%, transparent);
@@ -4943,6 +4956,29 @@ body.hide-thinking .event-thought-agent {
   min-width: 3ch;
 }
 
+/* Sortable header: label sits inside an unstyled button that takes the
+ * click. Arrow appears only when this column is the active sort. */
+.processes-table th.sortable-th { cursor: pointer; }
+.processes-table th .th-sort-button {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.processes-table th .th-sort-button:hover {
+  color: color-mix(in srgb, var(--fg) 92%, var(--accent));
+}
+.processes-table th.is-sorted .th-sort-button {
+  color: var(--fg);
+}
+.processes-table th .th-sort-arrow {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
 /* A faint vertical bar at the right edge of each header to telegraph
  * the resize affordance — purely visual. The corner handle is the
  * active drag area; this just helps users discover it. */
@@ -4983,6 +5019,15 @@ body.hide-thinking .event-thought-agent {
  * worktree identity). Text is uppercase, monospace, white on the
  * tinted background. Variable --project-badge-bg is set inline from
  * worktreeColor(repo). */
+/* In the Processes table, the account badge should read at the same
+ * size as the sibling project badge so the two identity chips balance.
+ * Panel-header usage of .panel-account keeps its default smaller size. */
+.processes-table .panel-account {
+  font-size: 0.8em;
+  padding: 1px 7px;
+  line-height: 1.4;
+}
+
 .project-badge {
   display: inline-block;
   padding: 1px 7px;
@@ -5027,6 +5072,18 @@ body.hide-thinking .event-thought-agent {
   max-width: 30ch;
   overflow: hidden;
 }
+/* Idle column color buckets. Boundaries: 5m / 30m / 2h / 6h / 24h / 7d.
+ * Bucket 0 is full --fg (active sessions read brightest); each subsequent
+ * bucket mixes more transparency in so quiet sessions recede. */
+.process-idle { font-variant-numeric: tabular-nums; }
+.process-idle.idle-bucket-0 { color: var(--fg); }
+.process-idle.idle-bucket-1 { color: color-mix(in srgb, var(--fg) 88%, transparent); }
+.process-idle.idle-bucket-2 { color: color-mix(in srgb, var(--fg) 78%, transparent); }
+.process-idle.idle-bucket-3 { color: color-mix(in srgb, var(--fg) 68%, transparent); }
+.process-idle.idle-bucket-4 { color: color-mix(in srgb, var(--fg) 58%, transparent); }
+.process-idle.idle-bucket-5 { color: color-mix(in srgb, var(--fg) 48%, transparent); }
+.process-idle.idle-bucket-6 { color: color-mix(in srgb, var(--fg) 38%, transparent); }
+
 .process-command {
   display: block;
   white-space: nowrap;
@@ -5035,6 +5092,14 @@ body.hide-thinking .event-thought-agent {
   color: color-mix(in srgb, var(--fg) 60%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.95em;
+}
+/* Real session titles read as prose, not commands. Match the uptime
+ * column's full-strength fg color (.process-command dims to 60% — only
+ * the command-shaped rows should look that subordinated). */
+.process-command.is-title {
+  font-family: inherit;
+  font-size: 1em;
+  color: inherit;
 }
 
 .process-info-popover {

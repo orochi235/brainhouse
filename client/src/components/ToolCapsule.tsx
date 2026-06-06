@@ -52,14 +52,18 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
         <span className="tool-label" title={label}>
           <LinkifyText text={label} />
         </span>
+      </div>
+      {/* Status + time live as siblings of the capsule (not inside it) so
+       * the status sits to the LEFT of the timestamp rather than at the
+       * capsule's right edge — where it used to collide with the absolutely
+       * positioned time. Wrapper is absolutely positioned at the row's
+       * right edge; status and time flow inside it. */}
+      <span className="event-tool-trailer">
         <span className={`tool-status status-${status}`} aria-label={status}>
           {status === 'pending' ? '' : status === 'ok' ? '✓' : '✗'}
         </span>
-      </div>
-      {/* Time lives as a sibling of the capsule (not inside it) so its
-       * absolute positioning anchors to the `.event` li — same right-edge
-       * alignment as every other log entry. */}
-      <EventTime ts={item.ts} startedAt={startedAt} />
+        <EventTime ts={item.ts} startedAt={startedAt} />
+      </span>
       {item.ack && (
         <div className="tool-note">
           <Markdown text={item.ack} />
