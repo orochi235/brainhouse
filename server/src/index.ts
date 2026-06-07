@@ -13,7 +13,13 @@ import { resolveRoots } from './roots.js';
 import { Store } from './store.js';
 import { appRouter } from './trpc.js';
 
-const HOST = process.env.HOST ?? '127.0.0.1';
+// Dual-stack loopback: bind to the IPv6 wildcard, which on macOS/Linux
+// without `bindv6only` (the default on macOS, the usual default on Linux)
+// also accepts IPv4 connections as v4-mapped addresses. This avoids the
+// classic "macOS resolves `localhost` to ::1 first → IPv4-only listener
+// is unreachable" gotcha for any consumer hitting `localhost`. Override
+// to '127.0.0.1' (or any other interface) via HOST env when needed.
+const HOST = process.env.HOST ?? '::';
 const PORT = Number(process.env.PORT ?? 8765);
 
 async function main() {
@@ -107,7 +113,11 @@ async function main() {
   });
 
   await app.listen({ host: HOST, port: PORT });
-  app.log.info(`brainhouse listening at http://${HOST}:${PORT}`);
+  // `[::]` in URLs is ugly and not browser-friendly; show the friendly
+  // form when we're on the dual-stack default and let HOST overrides
+  // print literally.
+  const displayHost = HOST === '::' ? 'localhost' : HOST;
+  app.log.info(`brainhouse listening at http://${displayHost}:${PORT}`);
   for (const r of roots) app.log.info(`  watch: ${r}`);
 
   // One-shot onboarding nudge: if the user clearly uses subagents but
