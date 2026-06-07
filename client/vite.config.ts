@@ -7,8 +7,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@server': resolve(__dirname, '../server/src'),
-      '@windease/core': resolve(__dirname, '../../windease/packages/core/src/index.ts'),
-      '@windease/react': resolve(__dirname, '../../windease/packages/react/src/index.ts'),
     },
   },
   server: {

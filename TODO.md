@@ -676,6 +676,30 @@ Doesn't help with account attribution (account ≠ project; same path
 tree can be touched by either account). But it's a clean win for the
 project chip — fewer anonymous rows in the network view.
 
+## Hooks manager widget: per-account enable/disable
+
+Initial pass shipped: each brainhouse-managed hook is registered as a
+labeled entry in `~/.claude*/settings.json` by `bin/init.js`, and the
+install summary now prints a per-role table. See `hookRegistry()` —
+adding a row there is the only thing required for a new hook to be
+discovered by install/uninstall and to show up in the summary.
+
+Still on the table:
+- **In-app manager UI.** A small widget (probably in the topbar gear
+  popover, or a dedicated /hooks page) listing every brainhouse hook
+  with a per-account toggle. Reads the same source-of-truth registry
+  the CLI uses, plus the current `~/.claude-*/settings.json` state for
+  each detected account directory, so the table shows installed vs
+  available per account independently.
+- **Persistence model.** Toggles either rewrite settings.json directly
+  (matching `brainhouse init` semantics) or maintain a separate
+  per-account opt-out list the dispatcher consults. Direct rewrite is
+  simpler; the opt-out list survives `brainhouse init` re-runs without
+  forcing the user to re-toggle.
+- **Discoverability.** Show each hook's description (purpose, what it
+  injects, when it fires) so the user understands what they're
+  toggling. Likely lives next to the existing prefs modal.
+
 ## session-procs-reminder: broaden beyond strict session_id
 
 Initial pass shipped: a UserPromptSubmit hook

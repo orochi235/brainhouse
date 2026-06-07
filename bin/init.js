@@ -62,6 +62,11 @@ export function hookRegistry(hooksDir) {
     event: 'UserPromptSubmit',
     command: `node ${quote(path.join(hooksDir, 'session-procs-reminder.mjs'))}`,
   });
+  entries.push({
+    role: 'session-procs-policy',
+    event: 'SessionStart',
+    command: `node ${quote(path.join(hooksDir, 'session-procs-policy.mjs'))}`,
+  });
   // Process-tracking hooks: snapshot running processes per session and
   // record bash command starts/ends so the UI can show long-running work.
   entries.push({

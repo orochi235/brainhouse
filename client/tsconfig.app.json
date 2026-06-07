@@ -16,9 +16,7 @@
     "useDefineForClassFields": true,
     "verbatimModuleSyntax": true,
     "paths": {
-      "@server/*": ["../server/src/*"],
-      "@windease/core": ["../../windease/packages/core/src/index.ts"],
-      "@windease/react": ["../../windease/packages/react/src/index.ts"]
+      "@server/*": ["../server/src/*"]
     }
   },
   "include": ["src", "vite.config.ts"]

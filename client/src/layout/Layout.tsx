@@ -4,12 +4,12 @@
  * fills the viewport; everything beneath is positioned by binarySplit's
  * pixel rects, with drag-y / drag-x affordances at each gutter.
  */
-import { binarySplit, gridStrategy, stackStrategy } from '@windease/core';
+import { binarySplit, gridStrategy, stackStrategy } from 'windease';
 import {
-  NodeContainer,
+  Container,
   StrategyRegistryProvider,
-  WindeaseNodeProvider,
-} from '@windease/react';
+  WindeaseProvider,
+} from 'windease/react';
 import { useEffect } from 'react';
 import { layoutChrome, type Slots, SlotsProvider } from './chrome.tsx';
 import { layoutStore, ROOT_ID, WORKAREA_ID } from './store.ts';
@@ -159,10 +159,10 @@ export function Layout({ slots }: LayoutProps) {
   }, []);
 
   return (
-    <WindeaseNodeProvider store={layoutStore}>
+    <WindeaseProvider store={layoutStore}>
       <StrategyRegistryProvider strategies={strategies}>
         <SlotsProvider value={slots}>
-          <NodeContainer
+          <Container
             parentId={ROOT_ID}
             chrome={layoutChrome}
             affordances
@@ -170,6 +170,6 @@ export function Layout({ slots }: LayoutProps) {
           />
         </SlotsProvider>
       </StrategyRegistryProvider>
-    </WindeaseNodeProvider>
+    </WindeaseProvider>
   );
 }

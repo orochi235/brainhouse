@@ -25,8 +25,8 @@ import {
   createPanel,
   createZone,
   type NodeId,
-  WindeaseNodeStore,
-} from '@windease/core';
+  WindeaseStore,
+} from 'windease';
 
 export const ROOT_ID = asNodeId('root');
 export const WORKAREA_ID = asNodeId('workarea');
@@ -39,8 +39,8 @@ export type SlotId =
   | typeof MAIN_SLOT_ID
   | typeof SIDEBAR_SLOT_ID;
 
-function buildStore(): WindeaseNodeStore {
-  const store = new WindeaseNodeStore();
+function buildStore(): WindeaseStore {
+  const store = new WindeaseStore();
 
   // Root: vertical split. Small initial ratio so the topbar starts
   // close to its natural ~50px height. minSize on the top slot keeps a
