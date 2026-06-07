@@ -121,7 +121,13 @@ function isTransparentWrapper(row: Row): boolean {
  * listens on a port" vs. "this thing is part of the agent's
  * thinking". */
 function isNetwork(row: Row): boolean {
-  return row.ports.length > 0;
+  // Only rows that bind a port themselves count as "network". A row
+  // whose ports are entirely inherited from a descendant (wrappers
+  // like npm / run-p / tsx watch, or Claude itself surfacing a child's
+  // listener) belongs in the Sessions tree under its parent, not as a
+  // separate Network row — otherwise a single dev server spawns a
+  // fan-out of duplicate rows across both tabs.
+  return row.ports.some((p) => !p.inherited);
 }
 
 /** A non-network row that's been attributed to (or IS) a Claude
@@ -203,8 +209,10 @@ function flattenTree(
     const sorted = kids.slice().sort((a, b) => b.uptime_s - a.uptime_s);
     for (const k of sorted) visit(k, depth + 1, false);
   }
-  const sortedRoots = roots.slice().sort((a, b) => b.uptime_s - a.uptime_s);
-  for (const r of sortedRoots) {
+  // Roots are rendered in caller-supplied order — column sort owns the
+  // root ordering. Descendants sort by uptime inside `visit` so the
+  // tree reads naturally regardless of which column the user sorted on.
+  for (const r of roots) {
     // Only root-level collapse is supported; nested descendants are
     // always shown when their root is expanded.
     visit(r, 0, !expanded.has(r.pid));
@@ -321,7 +329,8 @@ export function ProcessesPanel({
     let roots = inSessionTree.filter(r => r.runtime === 'claude');
     // Column-sort applies to the root level only; descendants stay in
     // natural tree order under their root so the hierarchy reads
-    // coherently.
+    // coherently. With no active column sort, fall back to the prior
+    // default of longest-uptime first.
     if (sort.key) {
       const k = sort.key;
       roots = roots.slice().sort((a, b) => {
@@ -329,6 +338,8 @@ export function ProcessesPanel({
         const pb = b.session_id ? allPanels.get(b.session_id) ?? null : null;
         return cmp(sortValue(a, pa, k, now), sortValue(b, pb, k, now), sort.dir);
       });
+    } else {
+      roots = roots.slice().sort((a, b) => b.uptime_s - a.uptime_s);
     }
     display = flattenTree(roots, childrenByPid, expandedRoots).map(n => ({
       row: n.row,
@@ -429,7 +440,7 @@ export function ProcessesPanel({
                 width="500px"
               />
               {viewMode === 'network' && <th style={{ width: '130px' }}>Ports<span className="th-resize" /></th>}
-              <SortHeader label="Session" sortKey="session" sort={sort} toggle={toggleSort} width="140px" />
+              <SortHeader label="Session" sortKey="session" sort={sort} toggle={toggleSort} width="90px" />
               {viewMode === 'sessions' && (
                 <SortHeader label="Idle" sortKey="idle" sort={sort} toggle={toggleSort} width="70px" />
               )}

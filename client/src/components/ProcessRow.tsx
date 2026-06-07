@@ -117,23 +117,9 @@ export function ProcessRow({
    * Null in network view, where the column doesn't exist. */
   now?: number | null;
 }) {
-  const [tail, setTail] = useState<string | null>(null);
-  const [loadingTail, setLoadingTail] = useState(false);
-
   const kill = () => {
     if (!window.confirm(`Send SIGTERM to PID ${row.pid}?`)) return;
     void trpc.processes.kill.mutate({ process_id: row.process_id });
-  };
-
-  const toggleTail = async () => {
-    if (tail !== null) { setTail(null); return; }
-    setLoadingTail(true);
-    try {
-      const r = await trpc.processes.tailStdout.query({ process_id: row.process_id, lines: 40 });
-      setTail(r.content || '(no output)');
-    } finally {
-      setLoadingTail(false);
-    }
   };
 
   const runtimeText = row.runtime ? (row.runtime_version ? `${row.runtime} ${row.runtime_version}` : row.runtime) : '—';
@@ -173,7 +159,7 @@ export function ProcessRow({
               }
             } : undefined}
           >
-            {expandable && expanded ? '▾' : PROVENANCE_DOT[row.provenance]}
+            {expandable && expanded ? '▼' : PROVENANCE_DOT[row.provenance]}
           </span>
         </td>
         <td className="process-pid-cell" style={depth > 0 ? { paddingLeft: `calc(0.5rem + ${depth}rem)` } : undefined}>
@@ -275,10 +261,18 @@ export function ProcessRow({
               <span
                 key={`${p.proto}-${p.addr}-${p.port}-${i}`}
                 className={p.inherited ? 'port-inherited' : undefined}
-                title={p.inherited ? 'inherited from a descendant process' : undefined}
+                title={[
+                  p.addr === 'localhost' || isLoopback(p.addr) ? null : `bound to ${p.addr}`,
+                  p.inherited ? 'inherited from a descendant process' : null,
+                  p.is_http === false ? 'not an HTTP server' : null,
+                  p.is_http === null || p.is_http === undefined ? 'probing…' : null,
+                ].filter(Boolean).join(' · ') || undefined}
               >
                 {i > 0 && ' '}
-                {isLoopback(p.addr) ? (
+                {/* Link only when the server-side probe confirmed an
+                 * HTTP response. null (not yet probed) and false render
+                 * as plain text so we never link a port that won't open. */}
+                {p.is_http === true ? (
                   <a href={`http://localhost:${p.port}`} target="_blank" rel="noreferrer">:{p.port}</a>
                 ) : (
                   <span>:{p.port}</span>
@@ -329,19 +323,12 @@ export function ProcessRow({
         })()}
         <td>{fmtUptime(row.uptime_s)}</td>
         <td>
-          {row.run_in_background && (
-            <button onClick={toggleTail} aria-label={`Tail PID ${row.pid}`}>
-              {loadingTail ? '…' : '▾'}
-            </button>
-          )}
+          {/* Tail-stdout toggle (▾) is hidden until the logs UX is
+           * redesigned — inline <pre> below the row was too disruptive.
+           * Kill action remains. */}
           <button onClick={kill} aria-label={`Kill PID ${row.pid}`}>✕</button>
         </td>
       </tr>
-      {tail !== null && (
-        <tr className="process-tail">
-          <td colSpan={(viewMode === 'network' ? 10 : 8) + (showAccount ? 1 : 0)}><pre>{tail}</pre></td>
-        </tr>
-      )}
     </>
   );
 }

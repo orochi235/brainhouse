@@ -135,9 +135,9 @@ export function ProjectWidgetCard({
         }
       />
       <div className="project-widget-stats">
-        <Stat label="sessions" value={totalCount} />
-        <Stat label="files" value={fileCount} />
-        <Stat label="tokens" value={formatTokens(totalTokens)} />
+        <Stat kind="sessions" label="sessions" value={totalCount} />
+        <Stat kind="files" label="files" value={fileCount} />
+        <Stat kind="tokens" label="tokens" value={formatTokens(totalTokens)} />
       </div>
       <ul className="project-widget-sessions">
         {mergedSessions.length === 0 && (
@@ -246,12 +246,20 @@ function useMergedProjectSessions(
   }, [historical, liveRows]);
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
+function Stat({
+  kind,
+  label,
+  value,
+}: {
+  kind: 'sessions' | 'files' | 'tokens';
+  label: string;
+  value: number | string;
+}) {
   return (
-    <div className="project-widget-stat">
+    <span className="project-widget-stat" data-kind={kind} title={label}>
       <span className="project-widget-stat-value">{value}</span>
       <span className="project-widget-stat-label">{label}</span>
-    </div>
+    </span>
   );
 }
 

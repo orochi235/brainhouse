@@ -675,3 +675,25 @@ gets a `project` chip even if no session is currently live there.
 Doesn't help with account attribution (account ≠ project; same path
 tree can be touched by either account). But it's a clean win for the
 project chip — fewer anonymous rows in the network view.
+
+## session-procs-reminder: broaden beyond strict session_id
+
+Initial pass shipped: a UserPromptSubmit hook
+(`hooks/session-procs-reminder.mjs`) that hits
+`GET /procs/by-session/:sessionId` and injects a compact one-line-per-
+process summary so sessions don't forget about dev servers they spun
+up. See `bin/init.js` for the registry entry.
+
+Today the endpoint filters strictly on `row.session_id === sid`.
+Discovered rows (`provenance: 'discovered'`) and rows whose Claude
+session has since unregistered are excluded even when the spawning
+session almost certainly *was* this one — e.g. a `vite` started via
+`run_in_background: true` whose parent shell exited.
+
+Sketch: broaden the filter to also include rows whose `cwd` descends
+from the active session's cwd (resolvable via the tracker's session
+registration, or via the persistent project registry above once it
+lands). Trade-off: risk of cross-attributing a server that another
+session in the same project actually owns — probably fine since the
+reminder text already says "from this session" loosely, and the model
+can confirm via `bash_id` / port before acting.

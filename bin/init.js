@@ -57,6 +57,11 @@ export function hookRegistry(hooksDir) {
     event: 'UserPromptSubmit',
     command: `node ${quote(path.join(hooksDir, 'context-reminder.mjs'))}`,
   });
+  entries.push({
+    role: 'session-procs-reminder',
+    event: 'UserPromptSubmit',
+    command: `node ${quote(path.join(hooksDir, 'session-procs-reminder.mjs'))}`,
+  });
   // Process-tracking hooks: snapshot running processes per session and
   // record bash command starts/ends so the UI can show long-running work.
   entries.push({
@@ -189,9 +194,25 @@ export async function runInit(argv) {
   }
 
   if (!uninstall && !dryRun) {
-    const roles = [...new Set(registry.map((e) => e.role))].join(', ');
     console.log('');
-    console.log(`Hooks installed (${roles}).`);
+    console.log('Hooks installed:');
+    for (const line of formatRegistry(registry)) console.log(`  ${line}`);
+    console.log('');
     console.log('New Claude Code sessions will pick up the changes immediately.');
   }
+}
+
+/** Group registry entries by role and render one line per role with the
+ * events it binds to. Roles appear in registry order so the install summary
+ * mirrors the canonical table source-of-truth. */
+export function formatRegistry(registry) {
+  const byRole = new Map();
+  for (const entry of registry) {
+    const existing = byRole.get(entry.role);
+    const tag = entry.matcher && entry.matcher !== '.*' ? `${entry.event}(${entry.matcher})` : entry.event;
+    if (existing) existing.push(tag);
+    else byRole.set(entry.role, [tag]);
+  }
+  const width = Math.max(...[...byRole.keys()].map((r) => r.length));
+  return [...byRole].map(([role, events]) => `${role.padEnd(width)}  ${events.join(', ')}`);
 }

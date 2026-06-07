@@ -10,7 +10,16 @@ export type ProcessRow = {
   provenance: 'hooked' | 'observed' | 'heuristic' | 'discovered';
   runtime: string | null; runtime_version: string | null; runtime_source: string | null;
   framework: string | null; framework_version: string | null;
-  ports: Array<{ proto: 'TCP'; addr: string; port: number; inherited?: boolean }>;
+  ports: Array<{
+    proto: 'TCP';
+    addr: string;
+    port: number;
+    inherited?: boolean;
+    /** null = not yet probed, true = HEAD / returned an HTTP response,
+     * false = probed and not HTTP. Drives whether the Ports column
+     * renders the entry as a link or plain text. */
+    is_http?: boolean | null;
+  }>;
   ended_ts: number | null; ended_reason: string | null;
   uptime_s: number;
   bash_id: string | null;

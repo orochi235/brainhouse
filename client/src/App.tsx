@@ -15,6 +15,7 @@ import { TransformsModal } from './components/TransformsModal.tsx';
 import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
+import { Layout } from './layout/Layout.tsx';
 import { LightboxProvider, useLightbox } from './lib/lightbox.tsx';
 import {
   sortByOrder,
@@ -621,8 +622,14 @@ function AppMain() {
     gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
   };
 
+  const dockVisible = trayPanels.length > 0 || dockRollups.length > 0;
+
   return (
     <LightboxProvider>
+      <LayoutGroup>
+        <Layout slots={{
+          top: (
+            <>
       <header
         className="topbar"
         style={{ '--brand-tier-color': TIER_COLOR[CURRENT_BRAND.tier] } as CSSProperties}
@@ -689,7 +696,10 @@ function AppMain() {
         </span>
       </header>
       {processesPanelOpen && <ProcessesPanel allPanels={allPanels} accountColorByLabel={accountColorByLabel} />}
-      <LayoutGroup>
+            </>
+          ),
+          main: (
+            <>
         <main
           className="session-grid"
           ref={gridRef}
@@ -855,7 +865,9 @@ function AppMain() {
             <p className="empty">no sessions yet — try `+ mock session`</p>
           )}
         </main>
-        {(trayPanels.length > 0 || dockRollups.length > 0) && (
+            </>
+          ),
+          sidebar: dockVisible ? (
           <aside
             className="session-dock"
             onDragOver={(e) => {
@@ -927,7 +939,8 @@ function AppMain() {
               </div>
             )}
           </aside>
-        )}
+          ) : null,
+        }} />
       </LayoutGroup>
     </LightboxProvider>
   );

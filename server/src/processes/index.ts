@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { HttpProbe } from './httpProbe.js';
 import { Reconciler, type ProcessRow } from './reconciler.js';
 import {
   listCwds as realListCwds,
@@ -25,6 +26,7 @@ export class ProcessTracker extends EventEmitter {
   private now: () => number;
   private tickTimer?: NodeJS.Timeout;
   private portTimer?: NodeJS.Timeout;
+  private httpProbe = new HttpProbe();
 
   constructor(deps: TrackerDeps = {}) {
     super();
@@ -106,9 +108,26 @@ export class ProcessTracker extends EventEmitter {
     if (this.subscribers === 0) return;
     try {
       const portRows = await this.listPorts();
-      // Direct-listener ports keyed by pid.
+      // Direct-listener ports keyed by pid. Each port also carries the
+      // latest cached `is_http` result (null when never probed); the
+      // probe itself runs out-of-band below.
       const ownPorts = new Map<number, ProcessRow['ports']>();
-      for (const r of portRows) ownPorts.set(r.pid, r.ports);
+      const unprobed = new Set<number>();
+      for (const r of portRows) {
+        const stamped = r.ports.map((p) => {
+          const known = this.httpProbe.get(p.port);
+          if (known === null) unprobed.add(p.port);
+          return { ...p, is_http: known };
+        });
+        ownPorts.set(r.pid, stamped);
+      }
+      // Cache is sticky for the server's lifetime. We don't evict on
+      // absence because lsof momentarily returning empty (timeout, race
+      // during a fork/exec storm) would otherwise wipe the cache and
+      // make every linked port flicker back to plain text on the next
+      // tick. Port reuse across processes within a single brainhouse
+      // run is rare enough that the false-positive risk is worth
+      // accepting in trade.
 
       // Reverse-ancestor lookup: for each tracked row R, find all
       // tracked rows D where R.pid ∈ D.original_ancestors. Anyone in
@@ -149,15 +168,36 @@ export class ProcessTracker extends EventEmitter {
           if (!seen.has(k)) { seen.add(k); merged.push(p); }
         }
         // Only re-broadcast when something actually changed for the row.
+        // is_http counts as a change so the link affordance can flip
+        // when a probe lands.
         const prev = row.ports;
         const same = prev.length === merged.length && prev.every((p, i) => {
           const m = merged[i];
-          return m && m.proto === p.proto && m.addr === p.addr && m.port === p.port && !!m.inherited === !!p.inherited;
+          return (
+            !!m &&
+            m.proto === p.proto &&
+            m.addr === p.addr &&
+            m.port === p.port &&
+            !!m.inherited === !!p.inherited &&
+            (m.is_http ?? null) === (p.is_http ?? null)
+          );
         });
         if (!same) {
           this.rec.setPorts(row.process_id, merged);
           this.emit('ports', { process_id: row.process_id, ports: merged });
         }
+      }
+      // Kick off probes for newly-seen ports. Only POSITIVE results
+      // trigger a re-sweep (so the link can show up immediately);
+      // negative results just stay null and wait for the next regular
+      // tick. Without this guard, non-HTTP ports trigger a sweep on
+      // every probe completion, which re-discovers them as unprobed
+      // (negatives aren't cached) and fires them again — an infinite
+      // probe loop that pegs the event loop.
+      for (const port of unprobed) {
+        void this.httpProbe.probe(port).then((ok) => {
+          if (ok && this.subscribers > 0) void this.maybeSweepPorts();
+        });
       }
     } catch (e) { console.error('[processes] port sweep failed:', e); }
   }

@@ -20,7 +20,13 @@ export interface ProcessRow {
    * ports its tracked descendants bind (`inherited: true`). The UI
    * grays the inherited ones so it's clear which row "owns" the
    * binding. */
-  ports: Array<{ proto: 'TCP'; addr: string; port: number; inherited?: boolean }>;
+  /**
+   * `is_http`:
+   *   null  → not yet probed (or just appeared)
+   *   true  → HEAD / returned an HTTP response (any status)
+   *   false → connection refused / timeout twice in a row
+   */
+  ports: Array<{ proto: 'TCP'; addr: string; port: number; inherited?: boolean; is_http?: boolean | null }>;
   ended_ts: number | null; ended_reason: string | null;
   uptime_s: number;
   /** Claude Code background bash id (`bash_1` style) when this row was

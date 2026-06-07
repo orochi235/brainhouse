@@ -67,6 +67,20 @@ async function main() {
 
   app.get('/health', async () => ({ ok: true }));
 
+  // Plain-JSON read of processes attributed to a Claude session. Lives
+  // outside the tRPC tree so brainhouse hook scripts can hit it with a
+  // single `fetch()` without speaking the tRPC protocol. Used by the
+  // UserPromptSubmit `session-procs-reminder` hook to inject a one-line
+  // summary of live background work for the active session.
+  app.get<{ Params: { sessionId: string } }>(
+    '/procs/by-session/:sessionId',
+    async (req) => {
+      const sid = req.params.sessionId;
+      const rows = tracker.snapshot().filter((r) => r.session_id === sid);
+      return { session_id: sid, rows };
+    },
+  );
+
   // Serve the built client when present (production / `npm start`). In dev
   // the Vite server runs on its own port and proxies /trpc back here, so
   // this block is a no-op until `npm run build` has produced dist/public.
@@ -74,7 +88,12 @@ async function main() {
   if (existsSync(publicDir)) {
     await app.register(fastifyStatic, { root: publicDir });
     app.setNotFoundHandler((req, reply) => {
-      if (req.method !== 'GET' || req.url.startsWith('/trpc') || req.url.startsWith('/health')) {
+      if (
+        req.method !== 'GET' ||
+        req.url.startsWith('/trpc') ||
+        req.url.startsWith('/health') ||
+        req.url.startsWith('/procs')
+      ) {
         return reply.code(404).send({ error: 'not found' });
       }
       return reply.sendFile('index.html');
