@@ -63,6 +63,11 @@ interface BaseTransform {
   /** Restrict this transform to the listed views. Omitted = runs in all
    * views. */
   views?: ViewName[];
+  /** Selector keys from the SelectorDef registry. If present, the runner
+   * skips this transform's `run` for events that match none of them.
+   * Omitted = run on every event (current behavior preserved during the
+   * selector-engine migration). Meaningless on stage-2 transforms. */
+  matches?: string[];
 }
 
 export interface Stage1Transform extends BaseTransform {
