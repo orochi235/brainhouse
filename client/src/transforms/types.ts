@@ -63,6 +63,10 @@ interface BaseTransform {
   /** Restrict this transform to the listed views. Omitted = runs in all
    * views. */
   views?: ViewName[];
+  /** SelectorDef keys this transform "claims" (declarative match rules).
+   * Spec 1 populates these on built-in transforms; Spec 2 only reads them
+   * to render chips. Undefined = no declared match (legacy/global). */
+  matches?: string[];
 }
 
 export interface Stage1Transform extends BaseTransform {
