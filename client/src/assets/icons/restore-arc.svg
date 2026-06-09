@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <!-- U-shaped arc, opening at 9:00 (left). Drawn from the top end down,
+       around the right side, and back up to the bottom-left end. -->
+  <path d="M5 3 A 5 5 0 1 1 5 13" />
+  <!-- Arrowhead at the top end (5,3), pointing leftward along the arc's
+       tangent (which at the top of a left-opening U is horizontal-left). -->
+  <polyline points="8 1.5 5 3 6.5 6" />
+</svg>
