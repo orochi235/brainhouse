@@ -491,6 +491,10 @@ function AppMain() {
     else trayPanels.push(p);
   }
   trayPanels.push(...clientMiniPanels, ...clientMiniSubs);
+  // Sidebar order: most recently active first. The idle label on each
+  // mini panel is anchored on last_event_at, so the sort key matches
+  // what the user reads in the header — top row is freshest.
+  trayPanels.sort((a, b) => b.last_event_at - a.last_event_at);
   const orderedGridIds = sortByOrder(
     gridPanels.map((p) => p.id),
     order,

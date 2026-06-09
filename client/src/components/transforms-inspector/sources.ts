@@ -9,6 +9,7 @@
 import askUserQuestionSrc from '../../transforms/builtIn/askUserQuestion.ts?raw';
 import assistantTextBubbleSrc from '../../transforms/builtIn/assistantTextBubble.ts?raw';
 import attachSkillPreludeSrc from '../../transforms/builtIn/attachSkillPrelude.ts?raw';
+import bashTerminalSrc from '../../transforms/builtIn/bashTerminal.ts?raw';
 import clearMarkerSrc from '../../transforms/builtIn/clearMarker.ts?raw';
 import coalesceBetweenChatsSrc from '../../transforms/builtIn/coalesceBetweenChats.ts?raw';
 import coalesceFileOpsSrc from '../../transforms/builtIn/coalesceFileOps.ts?raw';
@@ -40,6 +41,7 @@ export const TRANSFORM_SOURCE: Record<string, string> = {
   'built-in.clear-marker': clearMarkerSrc,
   'built-in.attach-skill-prelude': attachSkillPreludeSrc,
   'built-in.tag-btw-user-text': tagBtwUserTextSrc,
+  'built-in.bash-terminal': bashTerminalSrc,
   'built-in.user-text-bubble': userTextBubbleSrc,
   'built-in.assistant-text-bubble': assistantTextBubbleSrc,
   'built-in.default-event-item': defaultEventItemSrc,

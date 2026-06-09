@@ -473,9 +473,12 @@ function PanelHeader({
   if (isLive) {
     idleLabel = formatIdle(Math.max(0, now - panel.last_event_at));
   } else {
-    // done + mini: `+5m` style — status icon already communicates which
-    // lifecycle state we're in, so the label is just the elapsed delta.
-    idleLabel = `+${formatIdleCoarse(Math.max(0, now - panel.status_changed_at))}`;
+    // done + mini: `+5m` style — anchor on last_event_at so the number
+    // reflects actual silence, not the moment the lifecycle stepped.
+    // Otherwise a panel quiet for days but freshly demoted to mini
+    // reads "+3h" instead of "+3d". The status icon already tells the
+    // user which lifecycle state we're in.
+    idleLabel = `+${formatIdleCoarse(Math.max(0, now - panel.last_event_at))}`;
   }
   const showWaitingBadge = !!waiting && waitingSince != null;
   const waitingLabel = showWaitingBadge ? formatIdle(Math.max(0, now - waitingSince)) : '';
