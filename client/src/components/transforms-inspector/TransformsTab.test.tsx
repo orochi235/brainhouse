@@ -36,7 +36,7 @@ describe('<TransformsTab>', () => {
   });
 
   it('renders detail with "no declared match" when matches is undefined', () => {
-    renderTab({ selectedKey: 'built-in.track-pending' });
+    renderTab({ selectedKey: 'built-in.coalesce-file-ops' });
     expect(screen.getByText(/no declared match/i)).toBeInTheDocument();
   });
 });
