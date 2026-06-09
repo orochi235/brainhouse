@@ -943,6 +943,11 @@ function AppMain() {
                   }}
                   pinned={pinned.has(p.id)}
                   onTogglePin={() => togglePin(p.id)}
+                  onPinToMinibar={() => {
+                    // TODO: real minibar pin semantics — see
+                    // docs/superpowers/specs/2026-06-09-mini-hover-toolbar-design.md
+                    console.info('[minibar pin] requested for', p.id);
+                  }}
                   account={accountFor(p)}
                   accountColor={accountColorFor(p)}
                 />
@@ -1329,6 +1334,7 @@ function MiniPanel({
   // toggle (user preference). To re-enable, forward both props to PanelCard.
   pinned: _pinned,
   onTogglePin: _onTogglePin,
+  onPinToMinibar,
 }: {
   panel: PanelState;
   onHide: () => void;
@@ -1337,6 +1343,7 @@ function MiniPanel({
   accountColor: string | undefined;
   pinned: boolean;
   onTogglePin: () => void;
+  onPinToMinibar: () => void;
 }) {
   return (
     <motion.div
@@ -1367,6 +1374,7 @@ function MiniPanel({
         panel={panel}
         onHide={onHide}
         onRestore={onRestore}
+        onPinToMinibar={onPinToMinibar}
         account={account}
         accountColor={accountColor}
       />
