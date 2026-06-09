@@ -19,6 +19,7 @@ export const trackPending: Stage1Transform = {
   name: 'pending-indicator tracking',
   description:
     'Drives the thinking indicator + waiting badge. user_text / tool_result set pending=true; assistant_text clears it. tool_use does not clear — the model is still working through a tool loop.',
+  matches: ['pending.bump'],
   run(event, _items, ctx) {
     if (event.kind === 'user_text' || event.kind === 'tool_result') ctx.scratch.pending = true;
     if (event.kind === 'assistant_text') ctx.scratch.pending = false;

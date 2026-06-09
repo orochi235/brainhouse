@@ -16,14 +16,13 @@ export const scanChecklist: Stage1Transform = {
   name: 'checklist scan',
   description:
     "Finds the most recent ```brainhouse-checklist code block in any bubble and surfaces it as the panel's pinned progress list.",
+  matches: ['dialogue.any'],
   run(event, _items, ctx) {
-    if (
-      (event.kind === 'user_text' || event.kind === 'assistant_text') &&
-      typeof event.payload.text === 'string'
-    ) {
-      const found = extractLastChecklist(event.payload.text);
-      if (found) ctx.scratch.checklist = found;
-    }
+    // Selector ensures user_text/assistant_text; narrow for payload access.
+    if (event.kind !== 'user_text' && event.kind !== 'assistant_text') return false;
+    if (typeof event.payload.text !== 'string') return false;
+    const found = extractLastChecklist(event.payload.text);
+    if (found) ctx.scratch.checklist = found;
   },
 };
 
