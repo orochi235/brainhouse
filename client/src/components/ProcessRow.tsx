@@ -139,13 +139,21 @@ export function ProcessRow({
           <span
             className={[
               PROVENANCE_CLASS[row.provenance],
+              // Brainhouse server's own pid: solid purple diamond
+              // instead of the round provenance dot. Framework is
+              // stamped server-side on the self pid only, so this
+              // styling never bleeds onto descendants or unrelated
+              // rows.
+              row.framework === 'brainhouse' ? 'process-dot-self' : '',
               expandable ? 'process-dot-expandable' : '',
               expandable && expanded ? 'is-expanded' : '',
             ].filter(Boolean).join(' ')}
             title={
               expandable
                 ? (expanded ? 'collapse subtree' : 'expand subtree')
-                : PROVENANCE_TOOLTIP[row.provenance]
+                : row.framework === 'brainhouse'
+                  ? 'brainhouse server'
+                  : PROVENANCE_TOOLTIP[row.provenance]
             }
             role={expandable ? 'button' : undefined}
             aria-expanded={expandable ? expanded : undefined}
@@ -159,7 +167,11 @@ export function ProcessRow({
               }
             } : undefined}
           >
-            {expandable && expanded ? '▼' : PROVENANCE_DOT[row.provenance]}
+            {expandable && expanded
+              ? '▼'
+              : row.framework === 'brainhouse'
+                ? '◆'
+                : PROVENANCE_DOT[row.provenance]}
           </span>
         </td>
         <td className="process-pid-cell" style={depth > 0 ? { paddingLeft: `calc(0.5rem + ${depth}rem)` } : undefined}>

@@ -44,13 +44,12 @@ async function main() {
   });
   await monitor.start();
   tracker.start();
-  // Synthetic "brainhouse" badge for the server's own pid + descendants.
-  // Not a real Claude account — just so the dev-mode self-processes
-  // (this server + vite + any tsx watch) read as something rather than
-  // anonymous in the Processes panel. The framework + version are
-  // stamped only on the server's own pid so the Network view's
-  // Framework column identifies it as `brainhouse vX.Y.Z`.
-  tracker.registerSelf('brainhouse', 'brainhouse', readBrainhouseVersion());
+  // Identify the brainhouse server's own pid in the processes table.
+  // The framework + version stamp the self row so the Network view
+  // surfaces it as `brainhouse vX.Y.Z` and the UI applies the purple
+  // diamond status glyph. No synthetic account_label — brainhouse
+  // isn't a Claude account, and the chip would mislead.
+  tracker.registerSelf(null, 'brainhouse', readBrainhouseVersion());
   await runStartupDiscovery(tracker);
 
   // pino-pretty's default ANSI emission (color resets, attribute clears)
