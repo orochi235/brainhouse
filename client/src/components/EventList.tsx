@@ -420,7 +420,40 @@ function BubblePartView({ part, escape }: { part: BubblePart; escape: boolean })
       </div>
     );
   }
-  return <Markdown text={part.text} escape={escape} />;
+  // Split `<system-reminder>...</system-reminder>` blocks out of the
+  // main flow into a collapsed `<details>` footer. Reminders are
+  // hook-injected context that the user didn't author (process list,
+  // task-tool nudge, autonomous-loop nags, etc.); rendering them inline
+  // visually buries the user's actual prompt.
+  const chunks = splitSystemReminders(part.text);
+  if (chunks.reminders.length === 0) {
+    return <Markdown text={part.text} escape={escape} />;
+  }
+  return (
+    <>
+      {chunks.main && <Markdown text={chunks.main} escape={escape} />}
+      <details className="bubble-reminders">
+        <summary>
+          {chunks.reminders.length} system reminder{chunks.reminders.length === 1 ? '' : 's'}
+        </summary>
+        {chunks.reminders.map((r, i) => (
+          <pre className="bubble-reminder" key={i}>
+            {r}
+          </pre>
+        ))}
+      </details>
+    </>
+  );
+}
+
+const SYSTEM_REMINDER_RE = /<system-reminder>([\s\S]*?)<\/system-reminder>/g;
+function splitSystemReminders(text: string): { main: string; reminders: string[] } {
+  const reminders: string[] = [];
+  const main = text.replace(SYSTEM_REMINDER_RE, (_, body) => {
+    reminders.push(String(body).trim());
+    return '';
+  });
+  return { main: main.replace(/\n{3,}/g, '\n\n').trim(), reminders };
 }
 
 function ThinkingEvent({ event }: { event: Event; startedAt?: number }) {

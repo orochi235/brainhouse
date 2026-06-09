@@ -6320,3 +6320,33 @@ body.hide-thinking .event-thought-agent {
 .terminal-extra {
   color: color-mix(in srgb, var(--fg) 65%, transparent);
 }
+
+/* `<system-reminder>` blocks extracted from a user bubble's body —
+ * rendered as a collapsed `<details>` footer so the bubble's main
+ * text (the user's actual prompt) reads first, with the hook-injected
+ * context one click away. */
+.bubble-reminders {
+  margin-top: 0.4rem;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+.bubble-reminders > summary {
+  cursor: pointer;
+  list-style: revert;
+  user-select: none;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+.bubble-reminders[open] > summary {
+  margin-bottom: 0.25rem;
+}
+.bubble-reminder {
+  margin: 0.25rem 0;
+  padding: 0.3rem 0.45rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+}
