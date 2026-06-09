@@ -37,8 +37,9 @@ export const userTextBubble: Stage1Transform = {
   name: 'mergeInterruptedFollowup + user_text bubble',
   description:
     'Emits a user bubble. If the previous user_text was an interrupt marker, classifies as queued (<3s gap → sawtooth-graft onto prior bubble) or full (>=3s gap → emit `interrupt-divider` then a fresh bubble).',
+  matches: ['user-text.any'],
   run(event, items, ctx) {
-    if (event.kind !== 'user_text') return false;
+    if (event.kind !== 'user_text') return false; // type narrowing
     const text = event.payload.text ?? '';
     const interrupt = findPrecedingInterrupt(ctx.allEvents, event);
     if (interrupt) {

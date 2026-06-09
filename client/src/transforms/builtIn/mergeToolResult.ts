@@ -20,8 +20,9 @@ export const mergeToolResult: Stage1Transform = {
   name: 'mergeToolResultIntoCapsule',
   description:
     'Attaches a tool_result onto the existing tool capsule with the same tool_use_id. Orphans (result with no use) render as a result-only capsule.',
+  matches: ['tool-result.any'],
   run(event, items, ctx) {
-    if (event.kind !== 'tool_result') return false;
+    if (event.kind !== 'tool_result') return false; // type narrowing
     const id = event.payload.tool_use_id;
     if (id && ctx.scratch.absorbedToolUseIds.has(id)) return true;
     const target = id ? findToolItem(items, id) : null;

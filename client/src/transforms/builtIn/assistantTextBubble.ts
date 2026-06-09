@@ -18,8 +18,9 @@ export const assistantTextBubble: Stage1Transform = {
   name: 'foldToolAck + assistant_text bubble',
   description:
     'Emits an assistant bubble. A short assistant_text (<=200 chars, no blank line, no code fence) immediately after a tool capsule is folded into the capsule as its ack footer.',
+  matches: ['assistant-text.any'],
   run(event, items, ctx) {
-    if (event.kind !== 'assistant_text') return false;
+    if (event.kind !== 'assistant_text') return false; // type narrowing
     const text = (event.payload.text ?? '').trim();
     const last = items[items.length - 1];
     const isShort = text && text.length <= 200 && !text.includes('\n\n') && !text.includes('```');

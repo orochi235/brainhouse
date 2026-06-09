@@ -21,8 +21,9 @@ export const suppressInterruptMarker: Stage1Transform = {
   name: 'suppressInterruptMarker',
   description:
     'Drops the synthetic "[Request interrupted by user]" user_text. Walks back to the last user bubble and marks every assistant/tool item between as canceled (dim + strikethrough).',
+  matches: ['user-text.any'],
   run(event, items) {
-    if (event.kind !== 'user_text') return false;
+    if (event.kind !== 'user_text') return false; // type narrowing
     if (typeof event.payload.text !== 'string') return false;
     if (!INTERRUPT_PATTERN.test(event.payload.text.trim())) return false;
     markCanceledTurn(items);

@@ -28,10 +28,12 @@ export const stripBhTitleMarker: Stage1Transform = {
   name: 'stripBhTitleMarker',
   description:
     'Removes the trailing `<!-- bh-title: ... -->` side-channel marker from assistant_text so the inline auto-title prompt never leaks into the UI.',
+  matches: ['assistant-text.bh-title'],
   run(event) {
+    // Selector ensures kind=assistant_text + body contains 'bh-title:'.
     if (event.kind !== 'assistant_text') return false;
     const text = event.payload.text;
-    if (typeof text !== 'string' || !text.includes('bh-title:')) return false;
+    if (typeof text !== 'string') return false;
     const cleaned = text.replace(BH_TITLE_MARKER_RE, '').trimEnd();
     event.payload.text = cleaned;
     return false;
