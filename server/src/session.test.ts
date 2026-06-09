@@ -276,6 +276,19 @@ describe('SessionStore', () => {
     expect(store.snapshot()).toHaveLength(1);
   });
 
+  it('late-arriving cwd stamps repo_root (not just cwd)', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('meta', { uuid: 'u1', payload: { record_type: 'session-start' } }));
+    const before = store.snapshot()[0];
+    expect(before?.cwd).toBeNull();
+    expect(before?.repo_root).toBeNull();
+    store.apply(ev('user_text', { uuid: 'u2', cwd: process.cwd(), payload: { text: 'hi' } }));
+    const after = store.snapshot()[0];
+    expect(after?.cwd).toBe(process.cwd());
+    expect(after?.repo_root).toBeTruthy();
+  });
+
   it('subagent creates a child panel linked to parent', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });

@@ -684,6 +684,7 @@ export class SessionStore {
     if (panel.cwd) return;
     if (!event.cwd) return;
     panel.cwd = event.cwd;
+    panel.repo_root = findRepoRoot(event.cwd);
     deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
   }
 
