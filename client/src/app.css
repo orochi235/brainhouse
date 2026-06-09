@@ -2570,27 +2570,41 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   cursor: pointer;
   min-height: 1.5rem;
 }
-/* Pending pulse: a goldenrod highlight that travels left-to-right
- * across the capsule. Using background-position on an oversized
- * gradient gives a clean continuous motion — animating the
- * background-color directly between var(--code-bg) and a color-mix()
- * value reads as a blink because the two endpoints don't interpolate
- * the way a single computed color does. */
+/* Pending pulse: a goldenrod 20px-wide highlight that travels
+ * left-to-right across the capsule. Implemented as a positioned
+ * pseudo-element animated via `transform: translateX(...)`, which
+ * runs on the compositor and stays smooth on wide capsules (a Task:
+ * general-purpose capsule may be several hundred px wide). The
+ * `100cqw` keyframe value resolves to the capsule's width without
+ * referencing the pseudo's own (fixed 20px) dimensions. */
 .tool-capsule.pending {
   border-color: rgba(251, 191, 36, 0.45);
-  background-image: linear-gradient(
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  container-type: inline-size;
+}
+.tool-capsule.pending::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 20px;
+  background: linear-gradient(
     90deg,
-    transparent 0%,
+    transparent,
     color-mix(in srgb, #fbbf24 32%, transparent) 50%,
-    transparent 100%
+    transparent
   );
-  background-size: 200% 100%;
-  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: -1;
   animation: tool-pending-sweep 1.8s linear infinite;
+  will-change: transform;
 }
 @keyframes tool-pending-sweep {
-  from { background-position: 200% 0; }
-  to   { background-position: -100% 0; }
+  from { transform: translateX(-20px); }
+  to   { transform: translateX(100cqw); }
 }
 .tool-capsule.ok {
   border-color: rgba(132, 204, 22, 0.35);
@@ -2716,6 +2730,296 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
 .transforms-blurb {
   margin: 0.3rem 0 0;
   color: color-mix(in srgb, var(--fg) 80%, transparent);
+}
+
+/* Spec 3 — transforms inspector trace tab + per-panel toggles. */
+.transforms-tab-strip {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 0.3rem;
+}
+.transforms-tab {
+  background: transparent;
+  border: 0;
+  padding: 0.4rem 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font: inherit;
+}
+.transforms-tab.is-active {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
+}
+.transforms-item-disabled {
+  opacity: 0.5;
+}
+.transforms-toggle-btn {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.trace-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: min(90vw, 1100px);
+}
+.trace-filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+.trace-filter-text {
+  flex: 1 1 12rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  color: var(--fg);
+  border-radius: 4px;
+  font: inherit;
+}
+.trace-filter-status,
+.trace-filter-transforms-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.trace-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.trace-filter-transforms summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.trace-filter-clear {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+.trace-panes {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.5fr);
+  gap: 0.5rem;
+  min-height: 320px;
+  max-height: 60vh;
+}
+.trace-event-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  font-size: 0.78rem;
+}
+.trace-row {
+  display: grid;
+  grid-template-columns: 2rem 5rem 1fr auto 0.8rem;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
+  cursor: pointer;
+}
+.trace-row:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.trace-row.is-selected {
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+.trace-row-index {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.trace-row-kind {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+.trace-row-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
+}
+.trace-row-touched {
+  display: flex;
+  gap: 0.2rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  max-width: 14rem;
+}
+.trace-touched-chip {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.trace-touched-chip.is-dim {
+  opacity: 0.55;
+}
+.trace-status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--muted);
+}
+.trace-status-dot.is-consumed {
+  background: #4ade80;
+}
+.trace-status-dot.is-noop {
+  background: #f59e0b;
+}
+.trace-status-dot.is-errored {
+  background: #ef4444;
+}
+.trace-status-dot.is-unmatched {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+.trace-empty {
+  padding: 1rem;
+  color: var(--muted);
+  text-align: center;
+}
+.trace-detail-pane {
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  padding: 0.5rem;
+  overflow-y: auto;
+}
+.trace-detail-empty {
+  color: var(--muted);
+  margin: 0.5rem 0;
+}
+.trace-detail-header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 0.4rem;
+}
+.trace-uuid-copy {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 0;
+}
+.trace-detail-kind {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.trace-detail-ts,
+.trace-detail-index {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.trace-detail-section {
+  margin: 0.5rem 0;
+}
+.trace-detail-section h4 {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.trace-json {
+  max-height: 12rem;
+  overflow: auto;
+  font-size: 0.72rem;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  padding: 0.4rem;
+  border-radius: 3px;
+  margin: 0;
+}
+.trace-stage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.trace-stage-table th,
+.trace-stage-table td {
+  text-align: left;
+  padding: 0.2rem 0.4rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+}
+.trace-stage-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+.trace-stage-table tr.trace-row-disabled {
+  opacity: 0.5;
+}
+.trace-stage-table tr.is-errored td {
+  color: #fca5a5;
+}
+.trace-disabled-label {
+  color: var(--muted);
+  font-style: italic;
+}
+.trace-detail-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.trace-snapshot-btn {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--fg);
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+.snapshot-copied {
+  background: #4ade80;
+  color: #052e16;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+.trace-reset-toggles {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  align-self: flex-start;
 }
 
 /* Cross-session flows sankey — column-bucketed event sequence graph.
@@ -4923,11 +5227,34 @@ body.hide-thinking .event-thought-agent {
   background: color-mix(in srgb, var(--bg) 90%, var(--fg) 4%);
   font-size: 0.85em;
   max-height: 40vh;
-  overflow: auto;
+  /* Panel is a flex column so the inner .processes-scroll wrapper can
+   * take the remaining height and own the scroll — header + table thead
+   * stay pinned, only data rows move. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   /* Keep above the session-grid in case any transform/z-index from the
    * grid creates a new stacking context. */
   position: relative;
   z-index: 1;
+}
+
+.processes-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+/* Pin the table's column-header row inside the scroll container so it
+ * stays visible while data rows scroll. Background must match the
+ * panel's so the cells above don't bleed through. */
+.processes-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--bg) 90%, var(--fg) 4%);
 }
 
 .processes-count {
@@ -4963,6 +5290,28 @@ body.hide-thinking .event-thought-agent {
 .processes-filter input {
   margin: 0;
   cursor: pointer;
+}
+
+/* Refresh button in the processes-panel header. Purges all tracked
+ * process state and re-scans from ps/lsof — visually marked with the
+ * circular-arrow glyph; spins while the round-trip is in flight. */
+.processes-refresh {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  cursor: pointer;
+  font-size: 1em;
+  line-height: 1;
+  padding: 0.15em 0.45em;
+}
+.processes-refresh:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+.processes-refresh:disabled {
+  cursor: progress;
+  opacity: 0.6;
 }
 
 /* View-mode radio sits at the start of the filter group as a small
@@ -5125,19 +5474,29 @@ body.hide-thinking .event-thought-agent {
  * worktree identity). Text is uppercase, monospace, white on the
  * tinted background. Variable --project-badge-bg is set inline from
  * worktreeColor(repo). */
-/* In the Processes table, the account badge should read at the same
- * size as the sibling project badge so the two identity chips balance.
+/* In the Processes table, the account badge should match the sibling
+ * project badge in size, padding, weight, and tracking — they sit next
+ * to each other and should read as siblings. Border-radius stays
+ * pill-shaped (999px) to keep the account-vs-project shape distinction.
  * Panel-header usage of .panel-account keeps its default smaller size. */
 .processes-table .panel-account {
   font-size: 0.8em;
   padding: 1px 7px;
   line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
 }
 
 .project-badge {
   display: inline-block;
+  max-width: 100%;
   padding: 1px 7px;
   border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
   background: var(--project-badge-bg, color-mix(in srgb, var(--fg) 12%, transparent));
   color: white;
   /* Inherit the system sans-serif (same font we use for project names
@@ -5164,6 +5523,13 @@ body.hide-thinking .event-thought-agent {
 }
 .port-inherited a:hover {
   color: color-mix(in srgb, var(--accent, #a78bfa) 65%, transparent);
+}
+
+/* Ports we couldn't confirm as HTTP render as plain text (not linked).
+ * Match the adjacent command column's dim gray so the non-link reads as
+ * subordinated rather than equal-weight with linkable ports. */
+.port-unlinkable {
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
 }
 
 /* When neither runtime nor framework can be detected, those two cells
@@ -5290,10 +5656,46 @@ body.hide-thinking .event-thought-agent {
   line-height: 1;
 }
 
-.process-dot-hooked     { color: #4ade80; }   /* confident: in-tree + intent match */
-.process-dot-observed   { color: #facc15; }   /* in-tree, no intent match */
-.process-dot-heuristic  { color: #fb923c; }   /* cwd-matched fallback */
-.process-dot-discovered { color: color-mix(in srgb, var(--fg) 45%, transparent); }
+/* Confidence is encoded by fill-vs-outline, not by hue. Hooked = solid
+ * green (we know exactly which agent spawned this). Observed +
+ * heuristic = the same green but outlined, signaling "would have been
+ * hooked if we'd seen the hook event." Discovered (no attribution at
+ * all) keeps its dim-gray outline. The outline effect uses
+ * `-webkit-text-stroke` on the existing filled ● glyph so the JSX stays
+ * unchanged. */
+.process-dot-hooked     { color: #4ade80; }
+.process-dot-observed,
+.process-dot-heuristic {
+  color: transparent;
+  -webkit-text-stroke: 1.5px #4ade80;
+}
+.process-dot-discovered {
+  color: transparent;
+  -webkit-text-stroke: 1.5px color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+/* Brainhouse server process itself (server pid). Solid purple diamond
+ * stands out from the round status lights so the row that runs the
+ * dashboard is visually unmistakable. A larger outlined diamond
+ * (rendered via ::after) wraps the filled one — frames it without
+ * needing extra JSX. */
+.process-dot-self {
+  color: #a78bfa;
+  position: relative;
+  display: inline-block;
+}
+.process-dot-self::after {
+  content: '◇';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.55em;
+  line-height: 1;
+  color: #a78bfa;
+  pointer-events: none;
+}
 
 .process-tail > td {
   background: color-mix(in srgb, var(--fg) 3%, transparent);
@@ -5310,4 +5712,66 @@ body.hide-thinking .event-thought-agent {
   white-space: pre-wrap;
   word-break: break-word;
   color: color-mix(in srgb, var(--fg) 80%, transparent);
+}
+
+/* Bash terminal block — coalesces consecutive <bash-input>/<bash-stdout>/
+ * <bash-stderr> user_text events into a single monospace card. Entries
+ * stack inside; per-entry `data-source` is reserved for future styling. */
+.event-terminal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+.terminal-card {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  max-width: 90%;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--fg);
+}
+.terminal-entry + .terminal-entry {
+  border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+}
+.terminal-cmd {
+  display: flex;
+  gap: 0.5ch;
+  font-weight: 600;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.terminal-prompt {
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  user-select: none;
+}
+.terminal-cmd-text {
+  flex: 1;
+}
+.terminal-stdout,
+.terminal-stderr,
+.terminal-extra {
+  margin: 0.2rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: inherit;
+  max-height: 16rem;
+  overflow: auto;
+}
+.terminal-stdout {
+  color: color-mix(in srgb, var(--fg) 82%, transparent);
+}
+.terminal-stderr {
+  color: color-mix(in srgb, #e06666 85%, var(--fg));
+}
+.terminal-extra {
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
 }

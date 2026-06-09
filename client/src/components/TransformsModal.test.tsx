@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { VIEW_TRANSFORMS } from '../transforms/registry.ts';
+import { TraceProvider } from '../transforms/traceContext.tsx';
 import { TransformsModal } from './TransformsModal.tsx';
 
 describe('<TransformsModal>', () => {
@@ -27,5 +28,20 @@ describe('<TransformsModal>', () => {
     ]) {
       expect(screen.getAllByText(needle).length).toBeGreaterThan(0);
     }
+  });
+
+  it('hides the Trace tab when no panel context is provided', () => {
+    const { container } = render(<TransformsModal />);
+    expect(container.querySelector('.transforms-tab-strip')).toBeNull();
+  });
+
+  it('exposes a Trace tab when called with panel context', () => {
+    render(
+      <TraceProvider>
+        <TransformsModal panelId="p1" events={[]} items={[]} />
+      </TraceProvider>,
+    );
+    expect(screen.getByRole('tab', { name: 'Pipeline' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Trace' })).toBeTruthy();
   });
 });
