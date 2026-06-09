@@ -1,5 +1,5 @@
 import type { TerminalItem } from '../lib/pipeline.ts';
-import { EventTime } from './EventList.tsx';
+import { CapsuleRow } from './CapsuleRow.tsx';
 
 interface Props {
   item: TerminalItem;
@@ -8,7 +8,7 @@ interface Props {
 
 export function TerminalCard({ item, startedAt }: Props) {
   return (
-    <li className="event event-terminal">
+    <CapsuleRow kind="terminal" ts={item.ts} startedAt={startedAt}>
       <div className="terminal-card">
         {item.entries.map((entry, i) => (
           <div className="terminal-entry" data-source={entry.source} key={`${entry.event.uuid}-${i}`}>
@@ -30,7 +30,6 @@ export function TerminalCard({ item, startedAt }: Props) {
           </div>
         ))}
       </div>
-      <EventTime ts={item.ts} startedAt={startedAt} />
-    </li>
+    </CapsuleRow>
   );
 }

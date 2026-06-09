@@ -1959,6 +1959,23 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   bottom: 0.15rem;
   right: 0.4rem;
 }
+/* Canonical trailer slot used by `<CapsuleRow>`. Owns the right-edge
+ * positioning so individual rows don't each invent their own. Optional
+ * status node sits left of the timestamp with a small gap; the time's
+ * own absolute positioning is neutralized inside the trailer. */
+.event-trailer {
+  position: absolute;
+  right: 0.4rem;
+  bottom: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.event-trailer .event-time {
+  position: static;
+  right: auto;
+  bottom: auto;
+}
 
 /* Subagent overrides — kept after base .panel-* selectors so cascade is
  * naturally ascending in specificity. */
@@ -2322,23 +2339,6 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
 /* ---- tool capsule ---- */
 .event-tool {
   margin: 0.25rem 0;
-}
-/* Status badge + timestamp ride together at the row's right edge.
- * The wrapper is what's absolutely positioned (replacing .event-time's
- * direct anchoring for this row type only); the children flow normally
- * inside it so the status sits immediately left of the time with a gap. */
-.event-tool-trailer {
-  position: absolute;
-  right: 0.4rem;
-  bottom: 0.15rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.event-tool-trailer .event-time {
-  position: static;
-  right: auto;
-  bottom: auto;
 }
 /* Op-strip: compact line that replaces a flurry of tools/file-changes
  * between two chats. Click → lightbox renders each sub-item normally. */

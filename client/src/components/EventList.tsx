@@ -15,6 +15,7 @@ import {
 } from '../lib/pipeline.ts';
 import { iconForTool, parseBashCommandHead, prettyJson, shortenPath, type ToolIcon } from '../lib/tools.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
+import { CapsuleRow } from './CapsuleRow.tsx';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { Markdown } from './Markdown.tsx';
 import { OpStripLightbox } from './OpStripLightbox.tsx';
@@ -146,12 +147,11 @@ function Bubble({
   // didn't author, but they're not *thoughts*. Their visual treatment
   // is TBD; for now they fall through to the default user bubble.
   return (
-    <li
-      className={classNames(
-        `event event-${item.role}_text`,
-        item.canceled && 'canceled',
-        item.btw && 'is-btw',
-      )}
+    <CapsuleRow
+      kind={`${item.role}_text`}
+      ts={item.event.ts}
+      startedAt={startedAt}
+      className={classNames(item.canceled && 'canceled', item.btw && 'is-btw')}
       onClick={() => onBubbleClick?.(item.event)}
     >
       <div className={classNames('bubble', item.btw && 'is-btw')}>
@@ -163,8 +163,7 @@ function Bubble({
           />
         ))}
       </div>
-      <EventTime ts={item.event.ts} startedAt={startedAt} />
-    </li>
+    </CapsuleRow>
   );
 }
 
@@ -192,8 +191,10 @@ function FileChangeRow({ item, startedAt }: { item: FileChangeItem; startedAt?: 
       ? opSummary
       : `${opSummary} · +${stats.adds} −${stats.dels}`;
   return (
-    <li
-      className="event event-file-change"
+    <CapsuleRow
+      kind="file-change"
+      ts={item.ts}
+      startedAt={startedAt}
       onClick={() =>
         lightbox.open(
           <FilenameLinksProvider cwd={links.cwd} template={links.template}>
@@ -207,8 +208,7 @@ function FileChangeRow({ item, startedAt }: { item: FileChangeItem; startedAt?: 
       </span>
       <FileChangePath path={item.path} />
       <span className="file-change-summary">{summary}</span>
-      <EventTime ts={item.ts} startedAt={startedAt} />
-    </li>
+    </CapsuleRow>
   );
 }
 
@@ -445,18 +445,19 @@ function SystemEvent({ event, startedAt }: { event: Event; startedAt?: number })
   if (event.kind !== 'system') return null;
   const text = event.payload.content ?? `(${event.payload.subtype ?? 'system'})`;
   return (
-    <li
-      className="event event-system"
+    <CapsuleRow
+      kind="system"
+      ts={event.ts}
+      startedAt={startedAt}
       onClick={() =>
         lightbox.open(<pre className="lightbox-text-content">{text}</pre>, { variant: 'text' })
       }
     >
       <span className="event-kind">system</span>
-      <EventTime ts={event.ts} startedAt={startedAt} />
       <div className="event-body">
         <Markdown text={text} />
       </div>
-    </li>
+    </CapsuleRow>
   );
 }
 
@@ -467,17 +468,18 @@ function MetaEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
   if (label === 'auto-title') {
     const raw = event.payload.raw as { previous?: string; current?: string } | undefined;
     return (
-      <li className="event event-meta event-meta-auto-title">
+      <CapsuleRow kind="meta" ts={event.ts} startedAt={startedAt} className="event-meta-auto-title">
         <span className="event-kind">
           auto-titled · <em>{raw?.previous ?? '—'}</em> → <strong>{raw?.current ?? ''}</strong>
         </span>
-        <EventTime ts={event.ts} startedAt={startedAt} />
-      </li>
+      </CapsuleRow>
     );
   }
   return (
-    <li
-      className="event event-meta"
+    <CapsuleRow
+      kind="meta"
+      ts={event.ts}
+      startedAt={startedAt}
       onClick={() =>
         lightbox.open(
           <pre className="lightbox-text-content">{prettyJson(event.payload)}</pre>,
@@ -486,8 +488,7 @@ function MetaEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
       }
     >
       <span className="event-kind">meta · {label}</span>
-      <EventTime ts={event.ts} startedAt={startedAt} />
-    </li>
+    </CapsuleRow>
   );
 }
 

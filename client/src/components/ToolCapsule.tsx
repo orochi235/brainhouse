@@ -7,7 +7,7 @@ import {
 import { useLightbox } from '../lib/lightbox.tsx';
 import type { ViewItem } from '../lib/pipeline.ts';
 import { iconForTool, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
-import { EventTime } from './EventList.tsx';
+import { CapsuleRow } from './CapsuleRow.tsx';
 import { Markdown } from './Markdown.tsx';
 
 type ToolItem = Extract<ViewItem, { type: 'tool' }>;
@@ -25,7 +25,17 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
   const icon = iconForTool(use.name, use.input);
 
   return (
-    <li className={classNames('event event-tool', item.canceled && 'canceled')}>
+    <CapsuleRow
+      kind="tool"
+      ts={item.ts}
+      startedAt={startedAt}
+      className={classNames(item.canceled && 'canceled')}
+      trailing={
+        <span className={`tool-status status-${status}`} aria-label={status}>
+          {status === 'pending' ? '' : status === 'ok' ? '✓' : '✗'}
+        </span>
+      }
+    >
       <div
         className={classNames('tool-capsule', status, item.canceled && 'canceled')}
         data-tool-name={use.name}
@@ -53,23 +63,12 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
           <LinkifyText text={label} />
         </span>
       </div>
-      {/* Status + time live as siblings of the capsule (not inside it) so
-       * the status sits to the LEFT of the timestamp rather than at the
-       * capsule's right edge — where it used to collide with the absolutely
-       * positioned time. Wrapper is absolutely positioned at the row's
-       * right edge; status and time flow inside it. */}
-      <span className="event-tool-trailer">
-        <span className={`tool-status status-${status}`} aria-label={status}>
-          {status === 'pending' ? '' : status === 'ok' ? '✓' : '✗'}
-        </span>
-        <EventTime ts={item.ts} startedAt={startedAt} />
-      </span>
       {item.ack && (
         <div className="tool-note">
           <Markdown text={item.ack} />
         </div>
       )}
-    </li>
+    </CapsuleRow>
   );
 }
 
