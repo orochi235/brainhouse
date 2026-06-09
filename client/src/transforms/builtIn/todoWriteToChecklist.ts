@@ -53,8 +53,9 @@ export const todoWriteToChecklist: Stage1Transform = {
   name: 'TodoWrite / TaskCreate / TaskUpdate → checklist',
   description:
     "Routes Claude Code's TodoWrite, TaskCreate, and TaskUpdate tool calls into the panel's pinned checklist and suppresses the tool capsule.",
+  matches: ['tool-use.todo-write', 'tool-use.task-create', 'tool-use.task-update'],
   run(event, _items, ctx) {
-    if (event.kind !== 'tool_use') return false;
+    if (event.kind !== 'tool_use') return false; // type narrowing
     const name = event.payload.name;
     const ts = event.ts || undefined;
     if (name === 'TodoWrite') {

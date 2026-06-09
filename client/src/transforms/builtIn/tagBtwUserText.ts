@@ -34,6 +34,7 @@ export const tagBtwUserText: Stage1Transform = {
   name: '/btw queued prompt → flag next assistant bubble',
   description:
     'Detects queued /btw prompts (queued_command attachment payloads or queue-operation/user_text pairs) and sets pendingBtwAssistant so the next assistant bubble renders with btw:true. The queued prompt itself emits a plain user bubble. Consumes the noisy queue-operation bookkeeping records.',
+  matches: ['meta.any', 'user-text.any'],
   run(event, items, ctx) {
     if (event.kind === 'meta') {
       if (event.payload.record_type === 'queue-operation') {

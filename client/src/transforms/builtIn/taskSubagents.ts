@@ -24,6 +24,7 @@ export const taskSubagents: Stage1Transform = {
   name: 'Task → subagent spawn list',
   description:
     'Watches Task tool_use + tool_result pairs and accumulates a list of spawned subagents for the parent panel header.',
+  matches: ['tool-use.task', 'tool-result.any'],
   run(event, _items, ctx) {
     if (event.kind === 'tool_use' && event.payload.name === 'Task') {
       const input = (event.payload.input ?? {}) as TaskInput;

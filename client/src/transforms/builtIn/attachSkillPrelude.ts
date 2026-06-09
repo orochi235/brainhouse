@@ -11,7 +11,6 @@
  * Runs before `userTextBubble`.
  */
 
-import { hasTag } from '@server/parser.ts';
 import type { Stage1Transform } from '../types.ts';
 import { findToolItem } from './util.ts';
 
@@ -22,9 +21,10 @@ export const attachSkillPrelude: Stage1Transform = {
   name: 'attach skill prelude to tool capsule',
   description:
     'Routes synthetic user-meta messages produced by the Skill tool onto their originating capsule instead of emitting a giant user bubble.',
+  matches: ['user-text.meta'],
   run(event, items) {
-    if (event.kind !== 'user_text') return false;
-    if (!hasTag(event, 'meta')) return false;
+    // Selector ensures user_text + meta tag.
+    if (event.kind !== 'user_text') return false; // type narrowing
     const { source_tool_use_id, text } = event.payload;
     if (!source_tool_use_id) return false;
     const target = findToolItem(items, source_tool_use_id);

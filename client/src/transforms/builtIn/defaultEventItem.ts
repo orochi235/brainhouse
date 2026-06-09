@@ -28,6 +28,7 @@ export const defaultEventItem: Stage1Transform = {
   name: 'thinking / system / meta items',
   description:
     'Wraps thinking, system, and meta events as view items. Drops meta records that exist only to update panel-level state (subagent-meta, custom-title, agent-name).',
+  matches: ['thinking.any', 'system.any', 'meta.any'],
   run(event, items) {
     if (event.kind === 'thinking') {
       // Drop *redacted* thinking — Claude's encrypted-signature variant

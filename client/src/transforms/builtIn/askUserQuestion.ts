@@ -28,8 +28,10 @@ export const askUserQuestion: Stage1Transform = {
   name: 'AskUserQuestion → assistant bubble',
   description:
     'Renders an AskUserQuestion tool call as if Claude is speaking — bolded question + bulleted options. The matching tool_result is swallowed; the answer is emitted as a separate user-side bubble after the assistant bubble.',
+  matches: ['tool-use.ask-user-question'],
   run(event, items, ctx) {
-    if (event.kind !== 'tool_use' || event.payload.name !== 'AskUserQuestion') return false;
+    // Selector guarantees tool_use + name=AskUserQuestion; narrow for type.
+    if (event.kind !== 'tool_use') return false;
     const input = event.payload.input;
     const toolUseId = event.payload.tool_use_id;
     const answerInfo = toolUseId ? findAnswerInfo(ctx.allEvents, toolUseId) : null;

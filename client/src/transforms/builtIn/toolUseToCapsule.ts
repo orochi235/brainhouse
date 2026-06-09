@@ -17,8 +17,9 @@ export const toolUseToCapsule: Stage1Transform = {
   name: 'tool_use → new capsule',
   description:
     'Default tool_use handler: emits a `tool` view item. Special-cases the orphan-upgrade path when we already rendered a result-only capsule.',
+  matches: ['tool-use.any'],
   run(event, items) {
-    if (event.kind !== 'tool_use') return false;
+    if (event.kind !== 'tool_use') return false; // type narrowing
     const id = event.payload.tool_use_id;
     const orphan = id ? findToolItem(items, id) : null;
     if (orphan && !orphan.use) {
