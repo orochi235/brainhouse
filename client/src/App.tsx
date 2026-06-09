@@ -495,6 +495,19 @@ function AppMain() {
   // mini panel is anchored on last_event_at, so the sort key matches
   // what the user reads in the header — top row is freshest.
   trayPanels.sort((a, b) => b.last_event_at - a.last_event_at);
+  // Lifecycle invariant: nothing in the main grid may carry server-mini
+  // status. Mini is a sidebar-only lifecycle state. If allocator
+  // backfill (or a pin/userKept override) lands a mini-status panel in
+  // the grid, fire restore so the server flips it to `done` and the
+  // panel renders as a full window. Idempotent on the server.
+  useEffect(() => {
+    for (const p of gridPanels) {
+      if (p.status === 'mini') trpc.restore.mutate({ panelId: p.id });
+    }
+    // gridPanels reference changes every render; key on the id list so we
+    // only re-fire when membership actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gridPanels.map((p) => `${p.id}:${p.status}`).join(',')]);
   const orderedGridIds = sortByOrder(
     gridPanels.map((p) => p.id),
     order,

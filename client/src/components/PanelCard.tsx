@@ -240,6 +240,13 @@ export function PanelCard({
   }, [panel.events, panel.id, tracing, toggles.isEnabled, traceStore]);
   const waiting = pending && panel.status === 'live';
   const progressPct = checklist ? progressPercent(checklist) : null;
+  // Mini is a sidebar-only render mode. When this panel is mounted into
+  // the main grid (no `onRestore` provided — only the tray supplies it),
+  // render it as a full window regardless of server-side status. The
+  // lifecycle invariant in App.tsx fires a server restore for any such
+  // panel, but this guard prevents a one-render flash of mini styling
+  // during the roundtrip.
+  const renderMini = panel.status === 'mini' && !!onRestore;
 
   // Subagent at 100% progress: play a collapse animation, then unmount.
   // Parent panels are never auto-collapsed; their lifecycle stays
@@ -301,7 +308,10 @@ export function PanelCard({
         className={classNames(
           'panel',
           `panel-${panel.kind}`,
-          `status-${panel.status}`,
+          // Use the visual render mode for the status class — see
+          // `renderMini`. A mini-status panel rendered in the grid gets
+          // `status-done` so it doesn't pick up the compact mini CSS.
+          `status-${renderMini ? 'mini' : panel.status === 'mini' ? 'done' : panel.status}`,
           waiting && 'waiting',
           panel.awaiting_input && 'awaiting-input',
           progressPct !== null && 'has-progress',
@@ -332,7 +342,7 @@ export function PanelCard({
           parentTitle={parentTitle}
           readOnly={readOnly}
         />
-        {panel.status !== 'mini' && (
+        {!renderMini && (
           <PanelToolPalette
             panel={panel}
             items={items}
@@ -469,6 +479,11 @@ function PanelHeader({
 }) {
   const lightbox = useLightbox();
   const isLive = panel.status === 'live';
+  // See sibling note in PanelCard: mini is a tray-only render mode.
+  // `onRestore` is only supplied by the tray renderer, so a panel in the
+  // grid never matches this flag — it draws as a full window even if
+  // server-side status is still mini for the next render cycle.
+  const renderMini = panel.status === 'mini' && !!onRestore;
   let idleLabel: string;
   if (isLive) {
     idleLabel = formatIdle(Math.max(0, now - panel.last_event_at));
@@ -540,7 +555,7 @@ function PanelHeader({
   // project-widget design. Mini panels get the × stacked below the
   // status light; trash lives in the subtitle aside (hover-revealed)
   // so it doesn't crowd this column.
-  const showLeadingClose = panel.status === 'mini' && !!onHide && !onRestore;
+  const showLeadingClose = renderMini && !!onHide && !onRestore;
   const leading = (
     <>
       {statusLight}
@@ -598,7 +613,7 @@ function PanelHeader({
           <span className="panel-waiting-elapsed">{waitingLabel}</span>
         </span>
       ) : (
-        <span className={panel.status === 'mini' ? 'panel-idle-inline' : 'panel-idle'}>
+        <span className={renderMini ? 'panel-idle-inline' : 'panel-idle'}>
           {idleLabel}
         </span>
       )}
@@ -637,7 +652,7 @@ function PanelHeader({
           <span aria-hidden="true">↩</span> {parentTitle}
         </button>
       )}
-      {panel.status === 'mini' && !readOnly && (
+      {renderMini && !readOnly && (
         <button
           type="button"
           className="panel-btn panel-trash"
@@ -655,7 +670,7 @@ function PanelHeader({
           />
         </button>
       )}
-      {panel.status !== 'mini' && !onRestore && (
+      {!renderMini && !onRestore && (
         <>
           <HoverPopover
             className="panel-session-time"
