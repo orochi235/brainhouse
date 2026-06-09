@@ -24,6 +24,7 @@ import { BlacklistConfirm } from './BlacklistConfirm.tsx';
 import { EventList } from './EventList.tsx';
 import { HoverPopover, TruncationTooltip } from './HoverPopover.tsx';
 import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
+import { MiniHoverToolbar } from './MiniHoverToolbar.tsx';
 import { StatusLight } from './StatusLight.tsx';
 import { TimelineLightbox } from './TimelineLightbox.tsx';
 import { TitleBar } from './TitleBar.tsx';
@@ -49,6 +50,9 @@ interface Props {
   /** Pinned panels stay in the grid + don't dim regardless of status/age. */
   pinned?: boolean;
   onTogglePin?: () => void;
+  /** Pin this mini panel to the minibar permanently. Semantics deferred
+   * — the handler is a stub for now. Only meaningful in mini-tray mode. */
+  onPinToMinibar?: () => void;
   /** True when a subagent has been pulled out of its parent's nested tray. */
   brokenOut?: boolean;
   /** Toggle whether a subagent renders nested under its parent or as a
@@ -89,6 +93,7 @@ export function PanelCard({
   onRestore,
   pinned,
   onTogglePin,
+  onPinToMinibar,
   brokenOut,
   onToggleBrokenOut,
   parentTitle,
@@ -353,6 +358,15 @@ export function PanelCard({
           />
         )}
         {checklist && <ChecklistPin items={checklist} now={now} />}
+        {renderMini && onRestore && (
+          <MiniHoverToolbar
+            onRestore={onRestore}
+            onPinToMinibar={() => onPinToMinibar?.()}
+            onTrash={() => {
+              trpc.remove.mutate({ panelId: panel.id });
+            }}
+          />
+        )}
         {subagentSpawns.length > 0 && (
           <SubagentSection
             spawns={subagentSpawns}
@@ -650,24 +664,6 @@ function PanelHeader({
           }}
         >
           <span aria-hidden="true">↩</span> {parentTitle}
-        </button>
-      )}
-      {renderMini && !readOnly && (
-        <button
-          type="button"
-          className="panel-btn panel-trash"
-          title="Move to trash (reversible from prefs → Trash)"
-          onClick={(e) => {
-            e.stopPropagation();
-            trpc.remove.mutate({ panelId: panel.id });
-          }}
-        >
-          <span
-            className="svg-glyph"
-            aria-hidden="true"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
-            dangerouslySetInnerHTML={{ __html: trashIcon }}
-          />
         </button>
       )}
       {!renderMini && !onRestore && (
