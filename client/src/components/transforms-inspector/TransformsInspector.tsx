@@ -1,12 +1,22 @@
 /**
  * Top-level inspector. Owns the tab strip (Types / Transforms / Trace) and
- * forwards hash-route state down to each tab. Trace renders a placeholder
- * card until Spec 3 ships.
+ * forwards hash-route state down to each tab. Trace renders the live
+ * Spec 3 view when opened with a panel context; otherwise it falls back
+ * to a placeholder card.
  */
 
+import type { Event } from '@server/parser.ts';
+import type { ViewItem } from '../../lib/pipeline-types.ts';
+import { TraceTab } from '../TraceTab.tsx';
 import { TransformsTab } from './TransformsTab.tsx';
 import { TypesTab } from './TypesTab.tsx';
 import { type InspectorTab, useHashRoute } from './useHashRoute.ts';
+
+interface TransformsInspectorProps {
+  panelId?: string;
+  events?: Event[];
+  items?: ViewItem[];
+}
 
 const TABS: { key: InspectorTab; label: string }[] = [
   { key: 'types', label: 'Types' },
@@ -14,7 +24,8 @@ const TABS: { key: InspectorTab; label: string }[] = [
   { key: 'trace', label: 'Trace' },
 ];
 
-export function TransformsInspector() {
+export function TransformsInspector({ panelId, events, items }: TransformsInspectorProps = {}) {
+  const hasPanelContext = !!panelId && !!events && !!items;
   const { route, setRoute } = useHashRoute('types');
   const tab: InspectorTab = route.tab ?? 'types';
   const selectedKey = route.key;
@@ -36,7 +47,9 @@ export function TransformsInspector() {
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            {t.key === 'trace' && <span className="inspector-tab-soon">soon</span>}
+            {t.key === 'trace' && !hasPanelContext && (
+              <span className="inspector-tab-soon">panel only</span>
+            )}
           </button>
         ))}
       </nav>
@@ -55,13 +68,15 @@ export function TransformsInspector() {
             onJumpToType={(k) => selectInTab('types', k)}
           />
         )}
-        {tab === 'trace' && (
+        {tab === 'trace' && hasPanelContext && (
+          <TraceTab panelId={panelId} events={events} items={items} />
+        )}
+        {tab === 'trace' && !hasPanelContext && (
           <div className="inspector-trace-placeholder">
-            <h4>Live trace — coming in Spec 3</h4>
+            <h4>Live trace needs a panel context</h4>
             <p className="inspector-muted">
-              This tab will let you watch which transforms fire against which events as the
-              panel runs. Tracked separately to keep the browse/author flows here shippable
-              today.
+              Open the inspector from a specific panel (the <code>tr</code> tool chip in the
+              debug palette) to see which transforms fired against which events.
             </p>
           </div>
         )}

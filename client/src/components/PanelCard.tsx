@@ -8,7 +8,11 @@ import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { getActiveDrag, setActiveDrag } from '../lib/activeDrag.ts';
 import { useLightbox } from '../lib/lightbox.tsx';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
-import type { SubagentSpawn } from '../lib/pipeline-types.ts';
+import type { TraceAccumulator } from '../transforms/runner.ts';
+import { useTraceStore, useTracingFlag } from '../transforms/traceContext.tsx';
+import { useTransformToggles } from '../transforms/useTransformToggles.ts';
+import type { SubagentSpawn, ViewItem } from '../lib/pipeline-types.ts';
+import { TransformsModal } from './TransformsModal.tsx';
 import { projectLabel } from '../lib/project.ts';
 import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
@@ -208,10 +212,32 @@ export function PanelCard({
     lastStatusRef.current = panel.status;
   }, [panel.status]);
 
-  const { items, checklist, pending, subagentSpawns } = useMemo(
-    () => preprocessEvents(panel.events, { view: 'conversation' }),
-    [panel.events],
-  );
+  // Transforms inspector hooks. When the Trace tab is open for this
+  // panel, `tracing` flips true and the runner accumulates a per-event
+  // trace we write back into the store. When closed, the runner stays
+  // on the fast path (no trace allocation). Toggles are read every
+  // pass so disabling a transform mid-debug re-renders the panel.
+  const tracing = useTracingFlag(panel.id);
+  const toggles = useTransformToggles(panel.id);
+  const traceStore = useTraceStore();
+  const { items, checklist, pending, subagentSpawns } = useMemo(() => {
+    const trace: TraceAccumulator | undefined = tracing
+      ? { perEvent: [], stage2: [] }
+      : undefined;
+    const result = preprocessEvents(panel.events, {
+      view: 'conversation',
+      trace,
+      isEnabled: toggles.isEnabled,
+    });
+    if (trace) {
+      traceStore.write(panel.id, {
+        perEvent: trace.perEvent,
+        stage2: trace.stage2,
+        generatedAt: Date.now(),
+      });
+    }
+    return result;
+  }, [panel.events, panel.id, tracing, toggles.isEnabled, traceStore]);
   const waiting = pending && panel.status === 'live';
   const progressPct = checklist ? progressPercent(checklist) : null;
 
@@ -309,6 +335,7 @@ export function PanelCard({
         {panel.status !== 'mini' && (
           <PanelToolPalette
             panel={panel}
+            items={items}
             onHide={onHide}
             brokenOut={!!brokenOut}
             onToggleBrokenOut={onToggleBrokenOut}
@@ -745,12 +772,14 @@ function BlacklistableCloseButton({
  */
 function PanelToolPalette({
   panel,
+  items,
   onHide,
   brokenOut,
   onToggleBrokenOut,
   readOnly,
 }: {
   panel: PanelState;
+  items: ViewItem[];
   onHide?: () => void;
   brokenOut?: boolean;
   onToggleBrokenOut?: () => void;
@@ -850,6 +879,24 @@ function PanelToolPalette({
             }}
           >
             id
+          </ToolChip>
+        )}
+        {debug && (
+          <ToolChip
+            className="panel-tool-debug"
+            title="Debug: open the transforms inspector for this panel (Pipeline + Trace tabs)"
+            onClick={(e) => {
+              e.stopPropagation();
+              lightbox.open(
+                <TransformsModal
+                  panelId={panel.id}
+                  events={panel.events}
+                  items={items}
+                />,
+              );
+            }}
+          >
+            tr
           </ToolChip>
         )}
         {onHide && (

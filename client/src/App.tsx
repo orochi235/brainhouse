@@ -13,6 +13,7 @@ import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
 import { SelectorStoreProvider } from './transforms/selectors/store.tsx';
+import { TraceProvider } from './transforms/traceContext.tsx';
 import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
@@ -144,7 +145,9 @@ function BrandLabel() {
 export function App() {
   const replay = useReplayEntry();
   return (
-    <PrefsProvider>{replay ? <ReplayView source={replay} /> : <AppMain />}</PrefsProvider>
+    <PrefsProvider>
+      <TraceProvider>{replay ? <ReplayView source={replay} /> : <AppMain />}</TraceProvider>
+    </PrefsProvider>
   );
 }
 
