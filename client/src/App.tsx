@@ -12,6 +12,7 @@ import { ProjectWidgetCard, ProjectWidgetChip } from './components/ProjectWidget
 import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
+import { SelectorStoreProvider } from './transforms/selectors/store.tsx';
 import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
@@ -625,6 +626,7 @@ function AppMain() {
   const dockVisible = trayPanels.length > 0 || dockRollups.length > 0;
 
   return (
+    <SelectorStoreProvider>
     <LightboxProvider>
       <LayoutGroup>
         <Layout slots={{
@@ -943,6 +945,7 @@ function AppMain() {
         }} />
       </LayoutGroup>
     </LightboxProvider>
+    </SelectorStoreProvider>
   );
 }
 
