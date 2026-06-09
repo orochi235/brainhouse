@@ -1,31 +1,34 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { VIEW_TRANSFORMS } from '../transforms/registry.ts';
+import { SelectorStoreProvider } from '../transforms/selectors/store.tsx';
 import { TransformsModal } from './TransformsModal.tsx';
 
+function frame() {
+  return render(
+    <SelectorStoreProvider>
+      <TransformsModal />
+    </SelectorStoreProvider>,
+  );
+}
+
 describe('<TransformsModal>', () => {
-  it('renders an entry for every registered transform', () => {
-    const { container } = render(<TransformsModal />);
-    const items = container.querySelectorAll('.transforms-item');
-    expect(items.length).toBe(VIEW_TRANSFORMS.length);
+  it('renders the pipeline-inspector title', () => {
+    frame();
+    expect(screen.getByText(/pipeline inspector/i)).toBeInTheDocument();
   });
 
-  it('groups entries by stage (pass-1 vs pass-2)', () => {
-    const { container } = render(<TransformsModal />);
-    expect(container.querySelectorAll('.transforms-pass-1').length).toBeGreaterThan(0);
-    expect(container.querySelectorAll('.transforms-pass-2').length).toBeGreaterThan(0);
+  it('renders the three inspector tabs including Trace', () => {
+    frame();
+    expect(screen.getByRole('tab', { name: /types/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /transforms/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /trace/i })).toBeInTheDocument();
   });
 
-  it('mentions key transforms by name', () => {
-    render(<TransformsModal />);
-    for (const needle of [
-      /mergeToolResultIntoCapsule/,
-      /AskUserQuestion/,
-      /suppressInterruptMarker/,
-      /coalesceFileOps/,
-      /coalesceBetweenChats/,
-    ]) {
-      expect(screen.getAllByText(needle).length).toBeGreaterThan(0);
-    }
+  it('Types tab is selected by default', () => {
+    frame();
+    expect(screen.getByRole('tab', { name: /types/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 });
