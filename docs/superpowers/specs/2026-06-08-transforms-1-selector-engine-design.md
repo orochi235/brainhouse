@@ -115,20 +115,32 @@ interface BaseTransform {
 
 ```ts
 // Trace seam consumed by Spec 3. Declared here so Spec 3 doesn't
-// fork the runner. Exported as a type; the runtime hook is wired in
-// Spec 3.
+// fork the runner. One TraceRecord per event; perStage entries are
+// emitted in registration order. finalItemIndices is filled in after
+// stage 2 completes — Spec 3 owns the attribution logic.
 export interface TraceRecord {
   eventUuid: string;
-  transformKey: string;
-  selectorKey?: string;     // which named selector matched, if any
-  outcome: 'skipped' | 'ran-passthrough' | 'ran-consumed' | 'threw';
-  ts: number;
+  perStage: Array<{
+    transformKey: string;
+    selectorKey?: string;     // which named selector matched, if any
+    matched: boolean;         // selector matched (or no `matches` declared)
+    ran: boolean;             // run() was invoked
+    consumed: boolean;        // stage-1 returned true
+    mutatedItems: boolean;    // heuristic — Spec 3 details
+    error?: TransformError;
+  }>;
+  finalItemIndices: number[]; // indices into the post-pipeline items[]
 }
 ```
 
-The runner exposes an optional `onTrace?: (r: TraceRecord) => void`
-in `RunViewPipelineOpts`. Spec 1's only obligation is the call site;
-Spec 3 supplies the listener.
+The runner exposes an optional `trace?: TraceRecord[]` in
+`RunViewPipelineOpts`. When supplied, the runner appends one record
+per event, building `perStage` entries inline as each stage-1
+transform is dispatched. `finalItemIndices` is left empty by Spec 1;
+Spec 3's post-stage-2 pass fills it in. When `trace` is omitted, the
+runner takes a fast path with no allocation. Spec 3 owns the
+mutation-detection heuristic and the post-pass attribution; Spec 1's
+only obligation is the per-stage record skeleton at the call site.
 
 ## Grammar
 
@@ -243,31 +255,43 @@ nothing" (the transform never runs); omitted is "match everything"
 
 ```ts
 for (const event of events) {
+  const record: TraceRecord | undefined = opts.trace
+    ? { eventUuid: event.uuid, perStage: [], finalItemIndices: [] }
+    : undefined;
   for (const t of stage1) {
-    if (t.matches && !anySelectorMatches(t.matches, event)) {
-      opts.onTrace?.({ eventUuid: event.uuid, transformKey: t.key,
-                       outcome: 'skipped', ts: Date.now() });
+    const matchHit = t.matches ? firstSelectorHit(t.matches, event) : 'any';
+    const matched = matchHit !== null;
+    if (!matched) {
+      record?.perStage.push({ transformKey: t.key, matched: false, ran: false,
+                              consumed: false, mutatedItems: false });
       continue;
     }
     let consumed = false;
+    let error: TransformError | undefined;
+    // Mutation-detection snapshot is Spec 3's responsibility; omitted here.
     try {
       consumed = t.run(event, items, ctx) === true;
-      opts.onTrace?.({ eventUuid: event.uuid, transformKey: t.key,
-                       outcome: consumed ? 'ran-consumed' : 'ran-passthrough',
-                       ts: Date.now() });
     } catch (err) {
+      error = toTransformError(err, t.key, event.uuid);
       console.error(`[transform ${t.key}] threw on event ${event.uuid}:`, err);
-      opts.onTrace?.({ eventUuid: event.uuid, transformKey: t.key,
-                       outcome: 'threw', ts: Date.now() });
     }
+    record?.perStage.push({
+      transformKey: t.key,
+      selectorKey: matchHit === 'any' ? undefined : matchHit,
+      matched: true, ran: true, consumed,
+      mutatedItems: false, // Spec 3 replaces with real detection
+      error,
+    });
     if (consumed) break;
   }
+  if (record) opts.trace!.push(record);
 }
 ```
 
-`anySelectorMatches` resolves each key via the registry cache and
-returns true on the first hit, recording the matching key on the
-trace record when `onTrace` is supplied.
+`firstSelectorHit` resolves each key via the registry cache and
+returns the first matching key (or `null` if none match). When the
+transform has no `matches` declared, the runner uses the sentinel
+`'any'`.
 
 Stage-2 transforms are not event-routed; `matches` on a stage-2
 transform is meaningless. The runner ignores it there; the type

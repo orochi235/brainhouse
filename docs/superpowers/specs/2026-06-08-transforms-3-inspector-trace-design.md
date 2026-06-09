@@ -90,10 +90,15 @@ landing). The relevant per-transform call becomes:
 for (const event of events) {
   const record: TraceRecord = { eventUuid: event.uuid, perStage: [], finalItemIndices: [] };
   for (const t of stage1) {
-    const matched = t.selector ? t.selector.match(event) : true;
     const enabled = toggles.isEnabled(t.key);
-    if (!matched || !enabled) {
-      if (tracing) record.perStage.push({ transformKey: t.key, matched, ran: false, consumed: false, mutatedItems: false });
+    const matchHit = t.matches ? firstSelectorHit(t.matches, event) : 'any';
+    const matched = matchHit !== null;
+    if (!enabled) {
+      if (tracing) record.perStage.push({ transformKey: t.key, matched, ran: false, consumed: false, mutatedItems: false /* disabled */ });
+      continue;
+    }
+    if (!matched) {
+      if (tracing) record.perStage.push({ transformKey: t.key, matched: false, ran: false, consumed: false, mutatedItems: false });
       continue;
     }
     const before = snapshotItems(items);
@@ -102,16 +107,25 @@ for (const event of events) {
     try {
       consumed = t.run(event, items, ctx) === true;
     } catch (err) {
-      error = toTransformError(err);
+      error = toTransformError(err, t.key, event.uuid);
       console.error(`[transform ${t.key}] threw on event ${event.uuid}:`, err);
     }
     const mutatedItems = detectMutation(before, items);
-    if (tracing) record.perStage.push({ transformKey: t.key, matched: true, ran: true, consumed, mutatedItems, error });
+    if (tracing) record.perStage.push({
+      transformKey: t.key,
+      selectorKey: matchHit === 'any' ? undefined : matchHit,
+      matched: true, ran: true, consumed, mutatedItems, error,
+    });
     if (consumed) break;
   }
   if (tracing) trace.push(record);
 }
 ```
+
+This pseudocode extends Spec 1's runner shape with mutation detection
+and the `enabled`/toggle short-circuit. The `firstSelectorHit` helper
+is the one Spec 1 introduces; selector resolution is via the registry,
+not stored directly on the transform.
 
 `finalItemIndices` is filled in after stage-2 completes by walking the
 final `items` array and noting which entries carry an `anchorUuid` (or
