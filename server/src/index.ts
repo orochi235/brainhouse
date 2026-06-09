@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
@@ -47,8 +47,10 @@ async function main() {
   // Synthetic "brainhouse" badge for the server's own pid + descendants.
   // Not a real Claude account — just so the dev-mode self-processes
   // (this server + vite + any tsx watch) read as something rather than
-  // anonymous in the Processes panel.
-  tracker.registerSelf('brainhouse');
+  // anonymous in the Processes panel. The framework + version are
+  // stamped only on the server's own pid so the Network view's
+  // Framework column identifies it as `brainhouse vX.Y.Z`.
+  tracker.registerSelf('brainhouse', 'brainhouse', readBrainhouseVersion());
   await runStartupDiscovery(tracker);
 
   // pino-pretty's default ANSI emission (color resets, attribute clears)
@@ -130,6 +132,25 @@ async function main() {
     }
   } catch {
     // never let the nudge break startup
+  }
+}
+
+/** Read the brainhouse server package version off disk. Used to stamp
+ * the server's own ProcessRow so the Network view's Framework column
+ * shows `brainhouse vX.Y.Z`. Falls back to null when the package.json
+ * isn't where we expect (e.g. compiled output running outside the
+ * source tree) — the row still gets stamped as 'brainhouse', just
+ * without the version. */
+function readBrainhouseVersion(): string | null {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    // src/index.ts → ../package.json in source; dist/index.js → ../package.json in build.
+    const pkgPath = path.join(here, '..', 'package.json');
+    if (!existsSync(pkgPath)) return null;
+    const v = JSON.parse(readFileSync(pkgPath, 'utf8')).version;
+    return typeof v === 'string' ? v : null;
+  } catch {
+    return null;
   }
 }
 

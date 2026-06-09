@@ -51,9 +51,11 @@ export class ProcessTracker extends EventEmitter {
   /** Stamp the brainhouse server's own pid (and its descendants) with
    * a synthetic account label. Lets dev-mode self-spawned processes
    * (vite, tsx watch) show an account chip even though no Claude
-   * session attribution applies. */
-  registerSelf(label: string | null) {
-    this.rec.registerSelf(process.pid, label);
+   * session attribution applies. The framework + version (when
+   * supplied) are stamped only on the self pid so brainhouse appears
+   * as a recognized service in the Network view's Framework column. */
+  registerSelf(label: string | null, framework: string | null = null, version: string | null = null) {
+    this.rec.registerSelf(process.pid, label, framework, version);
   }
 
   snapshot(): ProcessRow[] { return this.rec.getQualifyingRows(); }

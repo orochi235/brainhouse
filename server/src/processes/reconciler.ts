@@ -96,14 +96,30 @@ export class Reconciler {
    * session spawned them. */
   private selfPid: number | null = null;
   private selfAccountLabel: string | null = null;
+  /** Framework name to stamp on the self row (and only the self row,
+   * not its descendants — those still get framework-detected by argv).
+   * Set via `registerSelf` so the brainhouse server identifies itself
+   * in the Network view's Framework column instead of showing up as a
+   * generic `tsx watch src/index.ts` row. */
+  private selfFramework: string | null = null;
+  private selfFrameworkVersion: string | null = null;
 
   registerSession(sessionId: string, info: SessionInfo) { this.sessions.set(sessionId, info); }
 
   /** Stamp brainhouse's own pid + descendants with a synthetic label.
-   * Pass `null` for label to clear. */
-  registerSelf(pid: number, label: string | null) {
+   * Pass `null` for label to clear. The optional framework / version
+   * are stamped only on the self pid's row (descendants keep their
+   * argv-detected framework). */
+  registerSelf(
+    pid: number,
+    label: string | null,
+    framework: string | null = null,
+    frameworkVersion: string | null = null,
+  ) {
     this.selfPid = pid;
     this.selfAccountLabel = label;
+    this.selfFramework = framework;
+    this.selfFrameworkVersion = frameworkVersion;
   }
   unregisterSession(sessionId: string) {
     this.sessions.delete(sessionId);
@@ -292,6 +308,21 @@ export class Reconciler {
         if (row.pid === this.selfPid || row.original_ancestors.includes(this.selfPid)) {
           row.account_label = this.selfAccountLabel;
         }
+      }
+      // The self row itself also identifies as 'brainhouse' in the
+      // framework column so the Network view shows it as a recognized
+      // service rather than a bare `tsx watch src/index.ts` node row.
+      // Descendants (vite, the client dev server, etc.) keep their
+      // argv-detected framework — only the literal self pid is
+      // stamped here.
+      if (
+        this.selfPid !== null &&
+        this.selfFramework !== null &&
+        row.pid === this.selfPid &&
+        !row.framework
+      ) {
+        row.framework = this.selfFramework;
+        if (this.selfFrameworkVersion) row.framework_version = this.selfFrameworkVersion;
       }
 
       row.uptime_s = nowS - p.start_ts / 1_000_000_000;
