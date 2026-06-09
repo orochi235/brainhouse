@@ -97,6 +97,37 @@ export function usePanelDismissal(panels: Map<string, PanelState>, opts: Dismiss
     }
   }, [panels]);
 
+  // Server-driven mini transition: when a panel's status flips
+  // live|done → mini, stamp `autoMiniAt[id]` so the slot allocator's
+  // grid-backfill rule can't immediately pull it back. The existing
+  // last_event_at comparison in `isClientMini` lifts the stamp on the
+  // next fresh event. First-sight panels (no prior observation) don't
+  // re-fire this path — the bootstrap stale-on-first-sight effect above
+  // already handles them.
+  const prevStatusRef = useRef<Map<string, PanelState['status']>>(new Map());
+  useEffect(() => {
+    const now = Date.now() / 1000;
+    const fresh: Record<string, number> = {};
+    for (const p of panels.values()) {
+      const prev = prevStatusRef.current.get(p.id);
+      prevStatusRef.current.set(p.id, p.status);
+      if (prev === undefined) continue;
+      if (prev !== 'mini' && p.status === 'mini') {
+        fresh[p.id] = Math.max(p.last_event_at, now);
+      }
+    }
+    // Prune entries for ids the server has forgotten.
+    for (const id of prevStatusRef.current.keys()) {
+      if (!panels.has(id)) prevStatusRef.current.delete(id);
+    }
+    if (Object.keys(fresh).length > 0) {
+      setAutoMiniAt((cur) => ({ ...cur, ...fresh }));
+      for (const [id, at] of Object.entries(fresh)) {
+        persist?.(id, { auto_mini_at: at });
+      }
+    }
+  }, [panels, persist]);
+
   // Prune entries for panels the server has fully forgotten.
   useEffect(() => {
     for (const id of seenIdsRef.current) {

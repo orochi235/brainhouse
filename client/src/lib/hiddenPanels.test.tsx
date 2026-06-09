@@ -50,7 +50,7 @@ describe('usePanelDismissal', () => {
   });
 
   it('isHidden flips back to false once last_event_at advances past hideAt', () => {
-    const mini = panel('a', { status: 'mini', last_event_at: 1_000 });
+    const mini = panel('a', { status: 'mini', last_event_at: Date.now() / 1000 - 5 });
     const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {
       initialProps: { p: makePanels(mini) },
     });
@@ -132,6 +132,61 @@ describe('usePanelDismissal', () => {
     const resumed = panel('a', { last_event_at: Date.now() / 1000 + 120 });
     rerender({ p: makePanels(resumed) });
     expect(result.current.isClientMini(resumed)).toBe(true);
+  });
+
+  describe('server mini transition → auto sidebar route', () => {
+    it('live → mini transition stamps autoMiniAt and flips isClientMini', () => {
+      const live = panel('a', { status: 'live', last_event_at: Date.now() / 1000 - 5 });
+      const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {
+        initialProps: { p: makePanels(live) },
+      });
+      expect(result.current.isClientMini(live)).toBe(false);
+      const demoted = panel('a', { status: 'mini', last_event_at: Date.now() / 1000 - 5 });
+      rerender({ p: makePanels(demoted) });
+      expect(result.current.isClientMini(demoted)).toBe(true);
+    });
+
+    it('done → mini transition also stamps', () => {
+      const idle = panel('a', { status: 'done', last_event_at: Date.now() / 1000 - 5 });
+      const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {
+        initialProps: { p: makePanels(idle) },
+      });
+      const demoted = panel('a', { status: 'mini', last_event_at: Date.now() / 1000 - 5 });
+      rerender({ p: makePanels(demoted) });
+      expect(result.current.isClientMini(demoted)).toBe(true);
+    });
+
+    it('fresh activity past the stamp pops the panel back to grid', () => {
+      const live = panel('a', { status: 'live', last_event_at: Date.now() / 1000 - 5 });
+      const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {
+        initialProps: { p: makePanels(live) },
+      });
+      const demoted = panel('a', { status: 'mini', last_event_at: Date.now() / 1000 - 5 });
+      rerender({ p: makePanels(demoted) });
+      expect(result.current.isClientMini(demoted)).toBe(true);
+      const revived = panel('a', { status: 'live', last_event_at: Date.now() / 1000 + 120 });
+      rerender({ p: makePanels(revived) });
+      expect(result.current.isClientMini(revived)).toBe(false);
+    });
+
+    it('panel that arrives already mini (no prior status) is not stamped here', () => {
+      // Bootstrap stale-on-first-sight uses a 30s cutoff; with a fresh
+      // last_event_at the bootstrap path also doesn't stamp, so the panel
+      // is plainly not clientMini.
+      const freshMini = panel('a', { status: 'mini', last_event_at: Date.now() / 1000 });
+      const { result } = renderHook(() => usePanelDismissal(makePanels(freshMini)));
+      expect(result.current.isClientMini(freshMini)).toBe(false);
+    });
+
+    it('live → done (no mini) does not stamp', () => {
+      const live = panel('a', { status: 'live', last_event_at: Date.now() / 1000 - 5 });
+      const { result, rerender } = renderHook(({ p }) => usePanelDismissal(p), {
+        initialProps: { p: makePanels(live) },
+      });
+      const idle = panel('a', { status: 'done', last_event_at: Date.now() / 1000 - 5 });
+      rerender({ p: makePanels(idle) });
+      expect(result.current.isClientMini(idle)).toBe(false);
+    });
   });
 
   it('prunes hiddenAt + clientMini entries when the server forgets a panel', () => {
