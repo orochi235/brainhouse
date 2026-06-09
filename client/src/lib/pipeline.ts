@@ -23,6 +23,8 @@ export type {
   FileChangeItem,
   OpStripItem,
   PreprocessResult,
+  TerminalEntry,
+  TerminalItem,
   ToolItem,
   ViewItem,
 } from './pipeline-types.ts';

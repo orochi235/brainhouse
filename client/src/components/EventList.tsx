@@ -18,6 +18,7 @@ import { usePrefs } from '../lib/usePrefs.tsx';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { Markdown } from './Markdown.tsx';
 import { OpStripLightbox } from './OpStripLightbox.tsx';
+import { TerminalCard } from './TerminalCard.tsx';
 import { ThoughtBubble } from './ThoughtBubble.tsx';
 import { ToolCapsule } from './ToolCapsule.tsx';
 
@@ -77,6 +78,7 @@ export function ViewItemList({
 function itemKey(item: ViewItem): string {
   if (item.type === 'tool') return `tool:${item.anchorUuid}`;
   if (item.type === 'file-change') return `file:${item.anchorUuid}`;
+  if (item.type === 'terminal') return `term:${item.anchorUuid}`;
   if (item.type === 'op-strip') return `strip:${item.anchorUuid}`;
   if (item.type === 'interrupt-divider') return `int:${item.anchorUuid}`;
   if (item.type === 'day-divider') return `day:${item.date}:${item.anchorUuid}`;
@@ -96,6 +98,7 @@ function Item({
     return <Bubble item={item} startedAt={startedAt} onBubbleClick={onBubbleClick} />;
   if (item.type === 'tool') return <ToolCapsule item={item} startedAt={startedAt} />;
   if (item.type === 'file-change') return <FileChangeRow item={item} startedAt={startedAt} />;
+  if (item.type === 'terminal') return <TerminalCard item={item} startedAt={startedAt} />;
   if (item.type === 'op-strip') return <OpStripRow item={item} startedAt={startedAt} />;
   if (item.type === 'thinking') return <ThinkingEvent event={item.event} startedAt={startedAt} />;
   if (item.type === 'system') return <SystemEvent event={item.event} startedAt={startedAt} />;

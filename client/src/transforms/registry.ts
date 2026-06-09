@@ -14,6 +14,7 @@
  *     - clearMarker            `/clear` artifacts → "prior session cleared" divider; drops caveat/stdout noise
  *     - attachSkillPrelude     SKILL.md meta-text → attached to its Skill capsule (lightbox-only)
  *     - tagBtwUserText         /btw queue-operation meta + background-task `<task-notification>` queued_command attachments → bubble (marks next assistant btw:true)
+ *     - bashTerminal           user_text with `<bash-*>` blocks → coalesced terminal item
  *     - userTextBubble         default user_text → bubble (handles interrupted-followup sawtooth)
  *     - assistantTextBubble    default assistant_text → bubble (folds short ones onto a prior tool capsule)
  *     - defaultEventItem       thinking / system / meta → wrapper items
@@ -30,6 +31,7 @@
 import { askUserQuestion } from './builtIn/askUserQuestion.ts';
 import { assistantTextBubble } from './builtIn/assistantTextBubble.ts';
 import { attachSkillPrelude } from './builtIn/attachSkillPrelude.ts';
+import { bashTerminal } from './builtIn/bashTerminal.ts';
 import { clearMarker } from './builtIn/clearMarker.ts';
 import { coalesceBetweenChats } from './builtIn/coalesceBetweenChats.ts';
 import { coalesceFileOps } from './builtIn/coalesceFileOps.ts';
@@ -60,6 +62,7 @@ export const VIEW_TRANSFORMS: ViewTransform[] = [
   clearMarker,
   attachSkillPrelude,
   tagBtwUserText,
+  bashTerminal,
   userTextBubble,
   assistantTextBubble,
   defaultEventItem,

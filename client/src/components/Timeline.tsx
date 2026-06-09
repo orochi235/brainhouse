@@ -908,7 +908,12 @@ function itemSources(items: ViewItem[]): Map<string, MarkSource> {
 }
 
 function itemId(item: ViewItem): string {
-  if (item.type === 'tool' || item.type === 'file-change' || item.type === 'op-strip') {
+  if (
+    item.type === 'tool' ||
+    item.type === 'file-change' ||
+    item.type === 'op-strip' ||
+    item.type === 'terminal'
+  ) {
     return item.anchorUuid;
   }
   if (item.type === 'interrupt-divider' || item.type === 'day-divider') return item.anchorUuid;
@@ -920,6 +925,7 @@ function itemLabel(item: ViewItem): string {
   if (item.type === 'tool') return `tool ${item.use?.name ?? ''}`.trim();
   if (item.type === 'file-change') return `file ${item.path}`;
   if (item.type === 'op-strip') return `op-strip (${item.items.length})`;
+  if (item.type === 'terminal') return `terminal (${item.entries.length})`;
   if (item.type === 'bubble') return `${item.role} bubble`;
   if (item.type === 'day-divider') return `day · ${item.label}`;
   if (item.type === 'interrupt-divider') return 'interrupt';
@@ -927,7 +933,12 @@ function itemLabel(item: ViewItem): string {
 }
 
 function itemTime(item: ViewItem): number | null {
-  if (item.type === 'tool' || item.type === 'file-change' || item.type === 'op-strip') {
+  if (
+    item.type === 'tool' ||
+    item.type === 'file-change' ||
+    item.type === 'op-strip' ||
+    item.type === 'terminal'
+  ) {
     return parseTs(item.ts);
   }
   if (item.type === 'interrupt-divider' || item.type === 'day-divider') return parseTs(item.ts);

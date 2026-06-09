@@ -55,6 +55,31 @@ export interface FileChangeItem {
   ts: string;
 }
 
+/** One bash-tagged user_text event parsed into its component blocks.
+ * `input`/`stdout`/`stderr` hold the contents of the matching XML tags;
+ * `extras` catches any other `<bash-*>` variant that may appear. */
+export interface TerminalEntry {
+  input: string | null;
+  stdout: string | null;
+  stderr: string | null;
+  extras: Record<string, string>;
+  /** Provenance hint. 'cli-bang' = produced by Claude Code's `!cmd`
+   * shell-out (carries a `<bash-input>`). 'unknown' = stdout/stderr-only
+   * or unrecognized shape. Renderer ignores this in v1; reserved for
+   * per-source styling later. */
+  source: 'cli-bang' | 'unknown';
+  event: Event;
+}
+
+/** Run of consecutive bash-tagged user_text events coalesced into a
+ * single terminal-styled block. Produced by `bashTerminal`. */
+export interface TerminalItem {
+  type: 'terminal';
+  anchorUuid: string;
+  entries: TerminalEntry[];
+  ts: string;
+}
+
 /** Runs of non-bubble items between two bubbles compress into this. */
 export interface OpStripItem {
   type: 'op-strip';
@@ -80,6 +105,7 @@ export type ViewItem =
   | BubbleItem
   | ToolItem
   | FileChangeItem
+  | TerminalItem
   | OpStripItem
   | { type: 'thinking'; event: Event; canceled?: boolean }
   | { type: 'system'; event: Event }
