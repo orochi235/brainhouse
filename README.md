@@ -5,6 +5,13 @@ Claude Code writes under `~/.claude/projects` (and any other roots you point
 it at), renders each session as a live panel, and demotes panels through a
 `live → done → mini → removed` lifecycle as they go idle.
 
+![Brainhouse dashboard: live session panels above the processes widget](docs/screenshots/dashboard.png)
+
+The processes widget tracks dev servers and other long-running processes per
+project and account:
+
+![Processes widget showing tracked dev servers with project, account, ports, and session](docs/screenshots/processes.png)
+
 ## Requirements
 
 - Node 20+ (see `.nvmrc`)

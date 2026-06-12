@@ -15,3 +15,5 @@ coverage/
 # Playwright MCP traces from local smoke tests
 .playwright-mcp/
 *.png
+# …except the README screenshots
+!docs/screenshots/*.png
