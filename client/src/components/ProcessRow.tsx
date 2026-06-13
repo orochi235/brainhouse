@@ -8,6 +8,7 @@ import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { trpc } from '../trpc.ts';
 import { HoverPopover } from './HoverPopover.tsx';
+import { SvgGlyph } from './SvgGlyph.tsx';
 
 /** Map a detected runtime to the same SVG asset used by Bash tool
  * capsules. Falls back to null so the caller can render text only. */
@@ -185,12 +186,7 @@ export function ProcessRow({
                 const svg = runtimeIcon(row.runtime);
                 if (svg) return (
                   <>
-                    <span
-                      className="runtime-icon"
-                      aria-hidden="true"
-                      // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG.
-                      dangerouslySetInnerHTML={{ __html: svg }}
-                    />
+                    <SvgGlyph svg={svg} className="runtime-icon" />
                     {row.runtime_version && <span className="runtime-version">{row.runtime_version}</span>}
                   </>
                 );

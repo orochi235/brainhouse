@@ -1,6 +1,7 @@
 import restoreIcon from '../assets/icons/restore-arc.svg?raw';
 import pinIcon from '../assets/icons/pin.svg?raw';
 import trashIcon from '../assets/icons/trash.svg?raw';
+import { SvgGlyph } from './SvgGlyph.tsx';
 
 interface Props {
   onRestore: () => void;
@@ -55,12 +56,7 @@ function ToolbarButton({
         onClick();
       }}
     >
-      <span
-        className="svg-glyph"
-        aria-hidden="true"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
-        dangerouslySetInnerHTML={{ __html: svg }}
-      />
+      <SvgGlyph svg={svg} className="svg-glyph" />
     </button>
   );
 }

@@ -19,6 +19,7 @@ import { CapsuleRow } from './CapsuleRow.tsx';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { Markdown } from './Markdown.tsx';
 import { OpStripLightbox } from './OpStripLightbox.tsx';
+import { SvgGlyph } from './SvgGlyph.tsx';
 import { TerminalCard } from './TerminalCard.tsx';
 import { ThoughtBubble } from './ThoughtBubble.tsx';
 import { ToolCapsule } from './ToolCapsule.tsx';
@@ -400,14 +401,7 @@ function countLines(s: string): number {
 
 function GroupIcon({ icon }: { icon: ToolIcon }) {
   if (icon.kind === 'svg')
-    return (
-      <span
-        className="op-strip-mini-icon svg-glyph"
-        aria-hidden="true"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
-        dangerouslySetInnerHTML={{ __html: icon.svg }}
-      />
-    );
+    return <SvgGlyph svg={icon.svg} className="op-strip-mini-icon svg-glyph" />;
   return <span className="op-strip-mini-icon">{icon.text}</span>;
 }
 

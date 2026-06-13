@@ -19,6 +19,7 @@
 import type { Event } from '@server/parser.ts';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ViewItemList } from './EventList.tsx';
+import { SvgGlyph } from './SvgGlyph.tsx';
 import { ToolChip, ToolChips } from './ToolChips.tsx';
 import { formatClockTime } from '../lib/format.ts';
 import { type ViewItem, preprocessEvents } from '../lib/pipeline.ts';
@@ -963,17 +964,7 @@ function describeMark(
       const status = result ? (result.is_error ? 'error' : 'ok') : 'pending';
       const icon = iconForTool(use.name, use.input);
       return {
-        icon:
-          icon.kind === 'svg' ? (
-            <span
-              className="svg-glyph"
-              aria-hidden="true"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
-              dangerouslySetInnerHTML={{ __html: icon.svg }}
-            />
-          ) : (
-            icon.text
-          ),
+        icon: icon.kind === 'svg' ? <SvgGlyph svg={icon.svg} className="svg-glyph" /> : icon.text,
         label: summarizeTool(use, result),
         status,
       };

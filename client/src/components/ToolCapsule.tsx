@@ -9,6 +9,7 @@ import type { ViewItem } from '../lib/pipeline.ts';
 import { iconForTool, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
 import { CapsuleRow } from './CapsuleRow.tsx';
 import { Markdown } from './Markdown.tsx';
+import { SvgGlyph } from './SvgGlyph.tsx';
 
 type ToolItem = Extract<ViewItem, { type: 'tool' }>;
 
@@ -48,16 +49,7 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
         }
       >
         <span className="tool-icon">
-          {icon.kind === 'svg' ? (
-            <span
-              className="svg-glyph"
-              aria-hidden="true"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
-              dangerouslySetInnerHTML={{ __html: icon.svg }}
-            />
-          ) : (
-            icon.text
-          )}
+          {icon.kind === 'svg' ? <SvgGlyph svg={icon.svg} className="svg-glyph" /> : icon.text}
         </span>
         <span className="tool-label" title={label}>
           <LinkifyText text={label} />
