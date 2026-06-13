@@ -38,10 +38,20 @@ export function formatTokens(n: number): string {
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}m`;
 }
 
+// Reuse a single formatter: constructing `Intl.DateTimeFormat` (which
+// `toLocaleTimeString` does internally on each call) is expensive, and
+// this runs hundreds of times per render across the timeline/event maps.
+const CLOCK_FORMAT = new Intl.DateTimeFormat([], {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
+
 export function formatClockTime(ts: string): string {
   let d = ts ? new Date(ts) : new Date();
   if (Number.isNaN(d.getTime())) d = new Date();
-  return d.toLocaleTimeString([], { hour12: false });
+  return CLOCK_FORMAT.format(d);
 }
 
 export function formatElapsed(seconds: number): string {

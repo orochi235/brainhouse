@@ -1,5 +1,5 @@
 import 'highlight.js/styles/github-dark.css';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
@@ -21,7 +21,7 @@ interface Props {
  * For user text we set `escape = true` so any literal `<hr>` or other HTML
  * the user types renders as text rather than as markup.
  */
-export function Markdown({ text, escape }: Props) {
+export const Markdown = memo(function Markdown({ text, escape }: Props) {
   const { cwd, template } = useFilenameLinks();
   const source = escape ? escapeHtml(text) : text;
   const rehypePlugins = useMemo(
@@ -41,7 +41,7 @@ export function Markdown({ text, escape }: Props) {
       </ReactMarkdown>
     </div>
   );
-}
+});
 
 /** Intercept ```mermaid fences and route them to MermaidBlock. Other
  * code fences fall through to react-markdown's default `<code>` (which
