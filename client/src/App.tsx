@@ -699,12 +699,12 @@ function AppMain() {
           <span className="topbar-icon-buttons">
             <button
               type="button"
-              className="theme-toggle"
+              className="theme-toggle processes-toggle"
               title={processesPanelOpen ? 'Hide processes panel' : 'Show processes panel'}
               aria-pressed={processesPanelOpen}
               onClick={() => setProcessesPanelOpen(v => !v)}
             >
-              ⚙
+              ≡
             </button>
             <button
               type="button"

@@ -237,6 +237,13 @@ body {
   color: var(--accent);
   border-color: var(--accent);
 }
+/* Processes toggle reads as "on" while the panel is open — persistent accent
+ * tint (mirrors the hover treatment) so its state is obvious at a glance. */
+.theme-toggle.processes-toggle[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 
 /* Design-language token: muted lime green flags anything debug-related
  * (the prefs.debug?.enabled-gated topbar buttons, future debug
