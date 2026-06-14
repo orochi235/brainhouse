@@ -4396,8 +4396,8 @@ body.replay-drop-target::after {
 }
 /* Debug panel toggle — an icon button grouped with the other topbar icon
    buttons (≡, ☀, ⚙). Sizing/border are inherited from .theme-toggle; here
-   we just center the bug glyph and tint it with the debug lime when the
-   panel is open (mirrors how the processes toggle reads as "on"). */
+   we just center the bug glyph and give it the same accent "on" treatment
+   as the processes toggle when the panel is open. */
 .debug-toggle {
   display: inline-flex;
   align-items: center;
@@ -4405,14 +4405,14 @@ body.replay-drop-target::after {
   color: var(--muted);
 }
 .debug-toggle svg {
-  width: 1.1rem;
-  height: 1.1rem;
+  width: 0.95rem;
+  height: 0.95rem;
   display: block;
 }
 .debug-toggle[aria-pressed='true'] {
-  color: var(--debug-color);
-  border-color: color-mix(in srgb, var(--debug-color) 60%, transparent);
-  background: color-mix(in srgb, var(--debug-color) 12%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .debug-flag {
   margin-left: 0.25rem;
