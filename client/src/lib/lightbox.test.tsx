@@ -1,7 +1,8 @@
 import { act, render, renderHook, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
-import { LightboxProvider, useLightbox } from './lightbox.tsx';
+import { LightboxProvider } from './lightbox.tsx';
+import { useLightbox } from './lightboxContext.ts';
 
 function wrap({ children }: { children: ReactNode }) {
   return <LightboxProvider>{children}</LightboxProvider>;

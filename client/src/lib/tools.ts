@@ -149,6 +149,33 @@ export const CLI_ICONS: Record<string, string> = {
 
 const BASH_SKIP = new Set(['sudo', 'time', 'command', 'exec', 'nice', 'env']);
 
+export interface McpToolName {
+  server: string;
+  tool: string;
+}
+
+/**
+ * Parse an MCP tool name (`mcp__<server>__<tool>`) into display parts.
+ * The server segment can itself contain underscores, so the tool is
+ * whatever follows the LAST `__`. Known prefixes are stripped
+ * (`claude_ai_` connectors, `plugin_` for plugin-bundled servers — where
+ * a duplicated plugin/server word like `playwright_playwright` collapses
+ * to one), and remaining underscores become spaces.
+ */
+export function parseMcpToolName(name: string): McpToolName | null {
+  if (!name.startsWith('mcp__')) return null;
+  const rest = name.slice('mcp__'.length);
+  const idx = rest.lastIndexOf('__');
+  if (idx <= 0) return null;
+  let server = rest.slice(0, idx);
+  const tool = rest.slice(idx + 2).replace(/_/g, ' ');
+  if (server.startsWith('claude_ai_')) server = server.slice('claude_ai_'.length);
+  else if (server.startsWith('plugin_')) server = server.slice('plugin_'.length);
+  const words = server.split('_').filter(Boolean);
+  const deduped = words.filter((w, i) => w !== words[i - 1]);
+  return { server: deduped.join(' '), tool };
+}
+
 export function parseBashCommandHead(cmd: string): string {
   if (!cmd) return '';
   const tokens = cmd.trim().split(/\s+/);
@@ -170,6 +197,7 @@ export function iconForTool(name: string, input: unknown): ToolIcon {
       if (head && CLI_ICONS[head]) return { kind: 'svg', svg: CLI_ICONS[head] };
     }
   }
+  if (parseMcpToolName(name)) return { kind: 'glyph', text: '🔌' };
   return { kind: 'glyph', text: TOOL_ICONS[name] ?? '⚙' };
 }
 
@@ -209,8 +237,10 @@ export function summarizeTool(
     const d = input.description ?? '';
     label = `Task: ${t}${d ? ` — ${d}` : ''}`;
   } else {
+    const mcp = parseMcpToolName(name);
+    const head = mcp ? `${mcp.server} · ${mcp.tool}` : name;
     const firstVal = Object.values(input)[0];
-    label = name + (firstVal !== undefined ? `: ${String(firstVal)}` : '');
+    label = head + (firstVal !== undefined ? `: ${String(firstVal)}` : '');
   }
   if (!result) return label;
   if (result.is_error) return `${label}  · error`;
@@ -260,9 +290,7 @@ function serialize(value: unknown, prefix: string, indent: string): string {
   if (Array.isArray(value)) {
     if (value.length === 0) return '[]';
     const next = prefix + indent;
-    const items = value
-      .map((v) => `${next}${serialize(v, next, indent)}`)
-      .join(',\n');
+    const items = value.map((v) => `${next}${serialize(v, next, indent)}`).join(',\n');
     return `[\n${items}\n${prefix}]`;
   }
   if (t === 'object') {
@@ -288,8 +316,6 @@ function formatString(s: string, prefix: string): string {
     // unescape those individually inside a quoted form.
     return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\t/g, '\t')}"`;
   }
-  const inner = lines
-    .map((line, i) => (i === 0 ? line : `${prefix}${line}`))
-    .join('\n');
+  const inner = lines.map((line, i) => (i === 0 ? line : `${prefix}${line}`)).join('\n');
   return `"${inner}"`;
 }

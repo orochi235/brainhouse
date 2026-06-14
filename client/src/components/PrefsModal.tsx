@@ -15,7 +15,7 @@ import {
   EDITOR_PRESETS,
   editorPresetIdForTemplate,
 } from '../lib/filenameLinks.ts';
-import { useLightbox } from '../lib/lightbox.tsx';
+import { useLightbox } from '../lib/lightboxContext.ts';
 import { trpc } from '../trpc.ts';
 
 type Root = { path: string; label?: string; color?: string };

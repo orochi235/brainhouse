@@ -1,33 +1,9 @@
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { LightboxContext, type LightboxState } from './lightboxContext.ts';
 
-interface LightboxTheme {
-  background: string;
-  foreground: string;
-}
-
-interface LightboxState {
-  open: (
-    content: ReactNode,
-    opts?: { variant?: 'rich' | 'text'; theme?: LightboxTheme | null },
-  ) => void;
-  close: () => void;
-  /** Install a guard. While set, attempts to close via Esc, backdrop
-   * click, or the ✕ button are routed through it: returning true allows
-   * the close, false blocks it. Pass `null` to clear. Cleared
-   * automatically on each `open()` so a guard from a prior modal never
-   * leaks. */
-  setCloseGuard: (guard: (() => boolean) | null) => void;
-}
-
-const Ctx = createContext<LightboxState | null>(null);
+// This module must export components only (no hooks, no context objects)
+// so Vite can Fast Refresh it in isolation — see the note on
+// LightboxContext in lightboxContext.ts. `useLightbox` lives there.
 
 export function LightboxProvider({ children }: { children: ReactNode }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -76,6 +52,10 @@ export function LightboxProvider({ children }: { children: ReactNode }) {
     const d = dialogRef.current;
     if (!d) return;
     const handler = (e: MouseEvent) => {
+      // Keyboard activation (Space/Enter on a focused control) fires a
+      // click with detail 0 at (0,0) — outside any rect. Only pointer
+      // clicks count as backdrop clicks.
+      if (e.detail === 0) return;
       const box = d.querySelector<HTMLElement>('.lightbox-inner');
       if (!box) return;
       const r = box.getBoundingClientRect();
@@ -98,7 +78,7 @@ export function LightboxProvider({ children }: { children: ReactNode }) {
   }, [tryClose]);
 
   return (
-    <Ctx.Provider value={{ open, close, setCloseGuard }}>
+    <LightboxContext.Provider value={{ open, close, setCloseGuard }}>
       {children}
       <dialog ref={dialogRef} className={`lightbox lightbox-${variant}`}>
         <button type="button" className="lightbox-close" onClick={tryClose} aria-label="Close">
@@ -106,12 +86,6 @@ export function LightboxProvider({ children }: { children: ReactNode }) {
         </button>
         <div className="lightbox-inner">{content}</div>
       </dialog>
-    </Ctx.Provider>
+    </LightboxContext.Provider>
   );
-}
-
-export function useLightbox(): LightboxState {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error('useLightbox must be inside LightboxProvider');
-  return ctx;
 }

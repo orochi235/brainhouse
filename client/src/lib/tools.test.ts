@@ -2,10 +2,40 @@ import { describe, expect, it } from 'vitest';
 import {
   iconForTool,
   parseBashCommandHead,
+  parseMcpToolName,
   shortenPath,
   stringifyToolValue,
   summarizeTool,
 } from './tools.ts';
+
+describe('parseMcpToolName', () => {
+  it('splits server and tool on the last __, de-underscored', () => {
+    expect(parseMcpToolName('mcp__claude_ai_Google_Calendar__create_event')).toEqual({
+      server: 'Google Calendar',
+      tool: 'create event',
+    });
+    expect(parseMcpToolName('mcp__claude_ai_Atlassian__getJiraIssue')).toEqual({
+      server: 'Atlassian',
+      tool: 'getJiraIssue',
+    });
+  });
+
+  it('collapses plugin servers that repeat the plugin name', () => {
+    expect(parseMcpToolName('mcp__plugin_playwright_playwright__browser_navigate')).toEqual({
+      server: 'playwright',
+      tool: 'browser navigate',
+    });
+    expect(parseMcpToolName('mcp__plugin_figma_figma__get_screenshot')).toEqual({
+      server: 'figma',
+      tool: 'get screenshot',
+    });
+  });
+
+  it('returns null for non-MCP names', () => {
+    expect(parseMcpToolName('Bash')).toBeNull();
+    expect(parseMcpToolName('mcp__nounderscoretool')).toBeNull();
+  });
+});
 
 describe('parseBashCommandHead', () => {
   it('returns the first real token', () => {
@@ -120,6 +150,26 @@ describe('summarizeTool', () => {
   it('unknown tool shows first input value', () => {
     const out = summarizeTool({ name: 'MysteryTool', input: { thing: 'value' } }, null);
     expect(out).toBe('MysteryTool: value');
+  });
+
+  it('MCP tools get a server · tool label', () => {
+    const out = summarizeTool(
+      {
+        name: 'mcp__plugin_playwright_playwright__browser_navigate',
+        input: { url: 'http://x/' },
+      },
+      null,
+    );
+    expect(out).toBe('playwright · browser navigate: http://x/');
+  });
+});
+
+describe('iconForTool — MCP', () => {
+  it('MCP tools get the plug glyph', () => {
+    expect(iconForTool('mcp__plugin_figma_figma__get_screenshot', null)).toEqual({
+      kind: 'glyph',
+      text: '🔌',
+    });
   });
 });
 

@@ -123,3 +123,43 @@ describe('<PanelCard>', () => {
     expect(container.querySelector('.panel')).toHaveClass('ended');
   });
 });
+
+function renderTrayPanel(p: PanelState) {
+  return render(
+    <LightboxProvider>
+      <PanelCard panel={p} onRestore={() => {}} />
+    </LightboxProvider>,
+  );
+}
+
+describe('tray render mode', () => {
+  // The tray holds three kinds of panels: server-mini, allocator-overflow
+  // (server status still live/done), and client-mini'd. All of them must
+  // render as minis — the render mode keys on tray placement (`onRestore`
+  // is only supplied by the tray renderer), not on server lifecycle.
+  it('a done-status tray panel gets the mini hover toolbar, not the tool palette', () => {
+    const { container } = renderTrayPanel(panel({ status: 'done' }));
+    expect(container.querySelector('.mini-hover-toolbar')).toBeInTheDocument();
+    expect(container.querySelector('.panel-tool-palette')).toBeNull();
+  });
+
+  it('a live-status tray panel renders mini while keeping its live lifecycle class', () => {
+    const { container } = renderTrayPanel(panel({ status: 'live' }));
+    expect(container.querySelector('.panel')).toHaveClass('render-mini');
+    expect(container.querySelector('.panel')).toHaveClass('status-live');
+    expect(container.querySelector('.mini-hover-toolbar')).toBeInTheDocument();
+  });
+
+  it('a server-mini tray panel keeps status-mini (off LED) plus render-mini', () => {
+    const { container } = renderTrayPanel(panel({ status: 'mini' }));
+    expect(container.querySelector('.panel')).toHaveClass('status-mini');
+    expect(container.querySelector('.panel')).toHaveClass('render-mini');
+  });
+
+  it('a mini-status panel mounted in the grid (no onRestore) still renders full', () => {
+    const { container } = renderPanel(panel({ status: 'mini' }));
+    expect(container.querySelector('.panel')).toHaveClass('status-done');
+    expect(container.querySelector('.panel')).not.toHaveClass('render-mini');
+    expect(container.querySelector('.mini-hover-toolbar')).toBeNull();
+  });
+});

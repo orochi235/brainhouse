@@ -4,9 +4,9 @@ import {
   LinkifyText,
   useFilenameLinks,
 } from '../lib/filenameLinksContext.tsx';
-import { useLightbox } from '../lib/lightbox.tsx';
+import { useLightbox } from '../lib/lightboxContext.ts';
 import type { ViewItem } from '../lib/pipeline.ts';
-import { iconForTool, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
+import { iconForTool, parseMcpToolName, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
 import { CapsuleRow } from './CapsuleRow.tsx';
 import { Markdown } from './Markdown.tsx';
 import { SvgGlyph } from './SvgGlyph.tsx';
@@ -67,9 +67,12 @@ export function ToolCapsule({ item, startedAt }: { item: ToolItem; startedAt?: n
 function ToolLightboxContent({ item }: { item: ToolItem }) {
   const use = item.use;
   const result = item.result;
+  const mcp = use ? parseMcpToolName(use.name) : null;
   return (
     <>
-      <h3 className="lightbox-title">{use?.name ?? 'tool'}</h3>
+      <h3 className="lightbox-title" title={use?.name}>
+        {mcp ? `${mcp.server} · ${mcp.tool}` : (use?.name ?? 'tool')}
+      </h3>
       {use && (
         <>
           <div className="lightbox-section">input</div>

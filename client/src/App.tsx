@@ -18,7 +18,8 @@ import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { Layout } from './layout/Layout.tsx';
-import { LightboxProvider, useLightbox } from './lib/lightbox.tsx';
+import { LightboxProvider } from './lib/lightbox.tsx';
+import { useLightbox } from './lib/lightboxContext.ts';
 import {
   sortByOrder,
   useBrokenOutPanels,

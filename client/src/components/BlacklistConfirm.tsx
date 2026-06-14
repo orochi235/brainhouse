@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { trpc } from '../trpc.ts';
-import { useLightbox } from '../lib/lightbox.tsx';
+import { useLightbox } from '../lib/lightboxContext.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
 
 export function BlacklistConfirm({

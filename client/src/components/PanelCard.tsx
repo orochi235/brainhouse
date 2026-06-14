@@ -1,35 +1,37 @@
 import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
-import { CloseGlyph } from '../lib/CloseGlyph.tsx';
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import trashIcon from '../assets/icons/trash.svg?raw';
+import { getActiveDrag, setActiveDrag } from '../lib/activeDrag.ts';
+import { CloseGlyph } from '../lib/CloseGlyph.tsx';
+import { useClock } from '../lib/clock.ts';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
-import { getActiveDrag, setActiveDrag } from '../lib/activeDrag.ts';
-import { useLightbox } from '../lib/lightbox.tsx';
+import { useLightbox } from '../lib/lightboxContext.ts';
 import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
-import type { TraceAccumulator } from '../transforms/runner.ts';
-import { useTraceStore, useTracingFlag } from '../transforms/traceContext.tsx';
-import { useTransformToggles } from '../transforms/useTransformToggles.ts';
 import type { SubagentSpawn, ViewItem } from '../lib/pipeline-types.ts';
-import { TransformsModal } from './TransformsModal.tsx';
 import { projectLabel } from '../lib/project.ts';
-import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
 import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
+import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
+import type { TraceAccumulator } from '../transforms/runner.ts';
+import { useTraceStore, useTracingFlag } from '../transforms/traceContext.tsx';
+import { useTransformToggles } from '../transforms/useTransformToggles.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import { BlacklistConfirm } from './BlacklistConfirm.tsx';
 import { EventList } from './EventList.tsx';
 import { HoverPopover, TruncationTooltip } from './HoverPopover.tsx';
-import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
 import { MiniHoverToolbar } from './MiniHoverToolbar.tsx';
+import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
 import { StatusLight } from './StatusLight.tsx';
+import { SvgGlyph } from './SvgGlyph.tsx';
 import { TimelineLightbox } from './TimelineLightbox.tsx';
 import { TitleBar } from './TitleBar.tsx';
 import { TokenTooltip } from './TokenTooltip.tsx';
 import { ToolChip, ToolChips } from './ToolChips.tsx';
+import { TransformsModal } from './TransformsModal.tsx';
 
 /** How long after the user's last click in a panel we treat them as actively
  * reading it. Inside this window auto-scroll respects manual scroll
@@ -102,12 +104,6 @@ export function PanelCard({
   subagents,
   readOnly,
 }: Props) {
-  const [now, setNow] = useState(() => Date.now() / 1000);
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
-    return () => clearInterval(id);
-  }, []);
-
   const lightbox = useLightbox();
   const articleRef = useRef<HTMLElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -226,9 +222,7 @@ export function PanelCard({
   const toggles = useTransformToggles(panel.id);
   const traceStore = useTraceStore();
   const { items, checklist, pending, subagentSpawns } = useMemo(() => {
-    const trace: TraceAccumulator | undefined = tracing
-      ? { perEvent: [], stage2: [] }
-      : undefined;
+    const trace: TraceAccumulator | undefined = tracing ? { perEvent: [], stage2: [] } : undefined;
     const result = preprocessEvents(panel.events, {
       view: 'conversation',
       trace,
@@ -245,13 +239,14 @@ export function PanelCard({
   }, [panel.events, panel.id, tracing, toggles.isEnabled, traceStore]);
   const waiting = pending && panel.status === 'live';
   const progressPct = checklist ? progressPercent(checklist) : null;
-  // Mini is a sidebar-only render mode. When this panel is mounted into
-  // the main grid (no `onRestore` provided — only the tray supplies it),
-  // render it as a full window regardless of server-side status. The
-  // lifecycle invariant in App.tsx fires a server restore for any such
-  // panel, but this guard prevents a one-render flash of mini styling
-  // during the roundtrip.
-  const renderMini = panel.status === 'mini' && !!onRestore;
+  // Mini is a sidebar-only render mode keyed on tray placement, not server
+  // lifecycle: besides server-mini panels the tray also holds allocator
+  // overflow and client-mini'd panels whose status is still live/done, and
+  // those must render as minis too. `onRestore` is only supplied by the
+  // tray renderer, so a mini-status panel mounted into the main grid draws
+  // as a full window with no flash of mini styling while the lifecycle
+  // invariant in App.tsx fires its server restore.
+  const renderMini = !!onRestore;
 
   // Subagent at 100% progress: play a collapse animation, then unmount.
   // Parent panels are never auto-collapsed; their lifecycle stays
@@ -313,10 +308,13 @@ export function PanelCard({
         className={classNames(
           'panel',
           `panel-${panel.kind}`,
-          // Use the visual render mode for the status class — see
-          // `renderMini`. A mini-status panel rendered in the grid gets
+          // Lifecycle class only — render mode is the separate `render-mini`
+          // class so a live panel parked in the tray keeps its live styling.
+          // `status-mini` is reserved for server-mini panels (it drives the
+          // "off" LED color); a mini-status panel rendered in the grid gets
           // `status-done` so it doesn't pick up the compact mini CSS.
-          `status-${renderMini ? 'mini' : panel.status === 'mini' ? 'done' : panel.status}`,
+          `status-${panel.status === 'mini' && !renderMini ? 'done' : panel.status}`,
+          renderMini && 'render-mini',
           waiting && 'waiting',
           panel.awaiting_input && 'awaiting-input',
           progressPct !== null && 'has-progress',
@@ -334,14 +332,13 @@ export function PanelCard({
       >
         <PanelHeader
           panel={panel}
-          now={now}
           onHide={onHide}
           onRestore={onRestore}
           pinned={pinned}
           onTogglePin={onTogglePin}
           account={account}
           waiting={waiting}
-          waitingSince={waiting ? lastUserActivity(items, now) : null}
+          waitingSince={waiting ? lastUserActivity(items, panel.last_event_at) : null}
           brokenOut={brokenOut}
           onToggleBrokenOut={onToggleBrokenOut}
           parentTitle={parentTitle}
@@ -357,7 +354,7 @@ export function PanelCard({
             readOnly={readOnly}
           />
         )}
-        {checklist && <ChecklistPin items={checklist} now={now} />}
+        {checklist && <ChecklistPin items={checklist} />}
         {renderMini && onRestore && (
           <MiniHoverToolbar
             onRestore={onRestore}
@@ -401,7 +398,9 @@ export function PanelCard({
               cwd={panel.cwd}
               onBubbleClick={onBubbleClick}
             />
-            {waiting && <ThinkingIndicator started={lastUserActivity(items, now)} now={now} />}
+            {waiting && (
+              <ThinkingIndicator started={lastUserActivity(items, panel.last_event_at)} />
+            )}
             {panel.status !== 'live' &&
               (() => {
                 const cleared = panel.ended_provenance === 'hook_session_start_supersede';
@@ -464,7 +463,6 @@ function computeTurn(events: Event[], anchorUuid: string): Event[] {
 
 function PanelHeader({
   panel,
-  now,
   onHide,
   onRestore,
   pinned,
@@ -478,7 +476,6 @@ function PanelHeader({
   readOnly,
 }: {
   panel: PanelState;
-  now: number;
   onHide?: () => void;
   onRestore?: () => void;
   pinned?: boolean;
@@ -491,13 +488,17 @@ function PanelHeader({
   parentTitle?: string | null;
   readOnly?: boolean;
 }) {
+  // Subscribe to the shared 1Hz clock here (a small leaf) rather than in
+  // PanelCard, so the per-second tick re-renders only the header, not the
+  // whole panel + EventList subtree.
+  const now = useClock();
   const lightbox = useLightbox();
   const isLive = panel.status === 'live';
-  // See sibling note in PanelCard: mini is a tray-only render mode.
-  // `onRestore` is only supplied by the tray renderer, so a panel in the
-  // grid never matches this flag — it draws as a full window even if
-  // server-side status is still mini for the next render cycle.
-  const renderMini = panel.status === 'mini' && !!onRestore;
+  // See sibling note in PanelCard: mini is a tray-only render mode keyed
+  // on placement. `onRestore` is only supplied by the tray renderer, so a
+  // panel in the grid never matches this flag — it draws as a full window
+  // even if server-side status is still mini for the next render cycle.
+  const renderMini = !!onRestore;
   let idleLabel: string;
   if (isLive) {
     idleLabel = formatIdle(Math.max(0, now - panel.last_event_at));
@@ -559,10 +560,7 @@ function PanelHeader({
         }}
       />
     ) : (
-      <StatusLight
-        ended={panel.ended}
-        title={statusIconTitle(panel.status, !!waiting, !!pinned)}
-      />
+      <StatusLight ended={panel.ended} title={statusIconTitle(panel.status, !!waiting, !!pinned)} />
     );
 
   // Leading is at most 2 items so the rotated-T divider matches the
@@ -627,9 +625,7 @@ function PanelHeader({
           <span className="panel-waiting-elapsed">{waitingLabel}</span>
         </span>
       ) : (
-        <span className={renderMini ? 'panel-idle-inline' : 'panel-idle'}>
-          {idleLabel}
-        </span>
+        <span className={renderMini ? 'panel-idle-inline' : 'panel-idle'}>{idleLabel}</span>
       )}
     </>
   );
@@ -714,9 +710,9 @@ function PanelHeader({
         // a full-sized window, matching what the status-icon button
         // already does. Without this, the header click opens the
         // lightbox instead, which is the right behavior for *done*
-        // panels (inspect-in-place) but wrong for *mini* (the user is
-        // bringing the session back).
-        if (panel.status === 'mini' && onRestore) {
+        // panels in the grid (inspect-in-place) but wrong for tray
+        // rows (the user is bringing the session back).
+        if (renderMini && onRestore) {
           onRestore();
           return;
         }
@@ -902,11 +898,7 @@ function PanelToolPalette({
             onClick={(e) => {
               e.stopPropagation();
               lightbox.open(
-                <TransformsModal
-                  panelId={panel.id}
-                  events={panel.events}
-                  items={items}
-                />,
+                <TransformsModal panelId={panel.id} events={panel.events} items={items} />,
               );
             }}
           >
@@ -925,20 +917,15 @@ function PanelToolPalette({
           </ToolChip>
         )}
         {!readOnly && (
-        <ToolChip
-          title="Move to trash (reversible from prefs → Trash)"
-          onClick={(e) => {
-            e.stopPropagation();
-            trpc.remove.mutate({ panelId: panel.id });
-          }}
-        >
-          <span
-            className="svg-glyph"
-            aria-hidden="true"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: build-time bundled SVG markup.
-            dangerouslySetInnerHTML={{ __html: trashIcon }}
-          />
-        </ToolChip>
+          <ToolChip
+            title="Move to trash (reversible from prefs → Trash)"
+            onClick={(e) => {
+              e.stopPropagation();
+              trpc.remove.mutate({ panelId: panel.id });
+            }}
+          >
+            <SvgGlyph svg={trashIcon} className="svg-glyph" />
+          </ToolChip>
         )}
       </ToolChips>
     </div>
@@ -947,7 +934,8 @@ function PanelToolPalette({
 
 const CHECKLIST_ALL_DONE_LINGER_S = 5;
 
-function ChecklistPin({ items, now }: { items: ChecklistItem[]; now: number }) {
+function ChecklistPin({ items }: { items: ChecklistItem[] }) {
+  const now = useClock();
   const done = items.filter((i) => i.done).length;
   const pct = items.length === 0 ? 0 : (done / items.length) * 100;
   // Sort: open items first (in their original order), then completed items
@@ -955,8 +943,7 @@ function ChecklistPin({ items, now }: { items: ChecklistItem[]; now: number }) {
   // sort by completedAt ascending so the most-recently-finished sits at
   // the very bottom of the list (visually closest to the next open item).
   const withIndex = items.map((it, i) => {
-    const completedSeconds =
-      it.completedAt && it.done ? completedAgo(it.completedAt, now) : null;
+    const completedSeconds = it.completedAt && it.done ? completedAgo(it.completedAt, now) : null;
     const elapsedSeconds = computeElapsed(it, now);
     return { it, i, completedSeconds, elapsedSeconds };
   });
@@ -1243,7 +1230,8 @@ function focusPanel(id: string): void {
   window.setTimeout(() => el.classList.remove('focus-pulse'), 900);
 }
 
-function ThinkingIndicator({ started, now }: { started: number; now: number }) {
+function ThinkingIndicator({ started }: { started: number }) {
+  const now = useClock();
   const dt = Math.max(0, now - started);
   return (
     <div className="thinking-indicator">

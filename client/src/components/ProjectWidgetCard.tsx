@@ -27,7 +27,7 @@ import {
   type ProjectRollupSessionRow,
 } from '../lib/projectWidgets.ts';
 import { trpc } from '../trpc.ts';
-import { useLightbox } from '../lib/lightbox.tsx';
+import { useLightbox } from '../lib/lightboxContext.ts';
 import { worktreeColor } from '../lib/worktree.ts';
 import { BlacklistConfirm } from './BlacklistConfirm.tsx';
 import { StatusLight } from './StatusLight.tsx';

@@ -224,6 +224,18 @@ UI/server is meant to uphold. New entries go at the bottom.
   bubbles) render as a *user thought bubble* in the user column. The
   `body.hide-thinking` pref hides agent thought bubbles alongside the
   legacy thinking row.
+- **The 1Hz time tick is a leaf subscription, never a panel-level state.**
+  Elapsed/relative-time displays (idle counter, thinking timer, checklist
+  durations) read a single app-wide clock via `useClock()` (`lib/clock.ts`)
+  — one shared `setInterval` for the whole app, not one per panel. The
+  subscribing components are *leaves* (`PanelHeader`, `ThinkingIndicator`,
+  `ChecklistPin`), so the per-second tick re-renders only those small
+  subtrees, never `PanelCard` or its `EventList` body. This is load-bearing
+  for memory: when the tick lived in `PanelCard` as `useState`, every second
+  re-rendered + repainted the whole panel ×N, churning renderer-native
+  raster tiles into a PartitionAlloc high-water mark that never returned
+  (a visible tab grew to ~9 GB; headless stayed ~95 MB). Do not thread a
+  `now` prop down through `PanelCard` — subscribe at the leaf instead.
 
 ## Lifecycle
 

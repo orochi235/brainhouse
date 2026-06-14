@@ -5,7 +5,7 @@ import { buildEditorUrl, DEFAULT_EDITOR_TEMPLATE, resolveAbsolute } from '../lib
 import { FilenameLinksProvider, useFilenameLinks } from '../lib/filenameLinksContext.tsx';
 import { diffStats, reconstructFile } from '../lib/fileSnapshot.ts';
 import { formatClockTime, formatElapsed } from '../lib/format.ts';
-import { useLightbox } from '../lib/lightbox.tsx';
+import { useLightbox } from '../lib/lightboxContext.ts';
 import {
   type BubblePart,
   type FileChangeItem,
@@ -13,7 +13,13 @@ import {
   preprocessEvents,
   type ViewItem,
 } from '../lib/pipeline.ts';
-import { iconForTool, parseBashCommandHead, prettyJson, shortenPath, type ToolIcon } from '../lib/tools.ts';
+import {
+  iconForTool,
+  parseBashCommandHead,
+  prettyJson,
+  shortenPath,
+  type ToolIcon,
+} from '../lib/tools.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
 import { CapsuleRow } from './CapsuleRow.tsx';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
@@ -33,10 +39,7 @@ interface EventListProps {
 }
 
 export function EventList({ events, startedAt, cwd, onBubbleClick }: EventListProps) {
-  const { items } = useMemo(
-    () => preprocessEvents(events, { view: 'conversation' }),
-    [events],
-  );
+  const { items } = useMemo(() => preprocessEvents(events, { view: 'conversation' }), [events]);
   const { prefs } = usePrefs();
   const template = prefs.editor?.urlTemplate ?? DEFAULT_EDITOR_TEMPLATE;
   return (
@@ -508,10 +511,9 @@ function MetaEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
       ts={event.ts}
       startedAt={startedAt}
       onClick={() =>
-        lightbox.open(
-          <pre className="lightbox-text-content">{prettyJson(event.payload)}</pre>,
-          { variant: 'text' },
-        )
+        lightbox.open(<pre className="lightbox-text-content">{prettyJson(event.payload)}</pre>, {
+          variant: 'text',
+        })
       }
     >
       <span className="event-kind">meta · {label}</span>
