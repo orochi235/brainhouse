@@ -25,7 +25,8 @@ import {
   createPanel,
   createZone,
   type NodeId,
-  WindeaseStore,
+  type SplitNode,
+  Store,
 } from 'windease';
 
 export const ROOT_ID = asNodeId('root');
@@ -39,8 +40,8 @@ export type SlotId =
   | typeof MAIN_SLOT_ID
   | typeof SIDEBAR_SLOT_ID;
 
-function buildStore(): WindeaseStore {
-  const store = new WindeaseStore();
+function buildStore(): Store {
+  const store = new Store();
 
   // Root: vertical split. Small initial ratio so the topbar starts
   // close to its natural ~50px height. minSize on the top slot keeps a
@@ -95,13 +96,42 @@ function buildStore(): WindeaseStore {
   store.showNode(MAIN_SLOT_ID);
   store.showNode(SIDEBAR_SLOT_ID);
 
-  // Persist non-default initial split ratios so the first paint matches
-  // intent instead of binarySplit's default 0.5. Top hosts the topbar
-  // plus the ProcessesPanel when open — give it enough vertical space
-  // for a few process rows by default.
-  store.setContainerState(ROOT_ID, { ratio: 0.28 });
-  store.setContainerState(WORKAREA_ID, { ratio: 0.8 });
+  // Seed each container's splitStrategy state with an explicit SplitNode
+  // tree. Two reasons this must be explicit rather than relying on the
+  // strategy's initialState():
+  //   1. initialState() hardcodes a *horizontal* root split, but the root
+  //      must split vertically (top above workarea).
+  //   2. it seeds the non-default initial ratios so the first paint matches
+  //      intent instead of the strategy's 0.5 default.
+  // Top hosts the topbar plus the ProcessesPanel when open — give it enough
+  // vertical space for a few process rows by default.
+  store.setContainerState(ROOT_ID, {
+    kind: 'split',
+    direction: 'vertical',
+    ratio: 0.28,
+    a: { kind: 'leaf', id: TOP_SLOT_ID },
+    b: { kind: 'leaf', id: WORKAREA_ID },
+  } satisfies SplitNode);
+  store.setContainerState(WORKAREA_ID, {
+    kind: 'split',
+    direction: 'horizontal',
+    ratio: 0.8,
+    a: { kind: 'leaf', id: MAIN_SLOT_ID },
+    b: { kind: 'leaf', id: SIDEBAR_SLOT_ID },
+  } satisfies SplitNode);
   return store;
+}
+
+/** Update only the top-level ratio of a container's SplitNode state,
+ * preserving the rest of the tree. windease 0.6's splitStrategy stores its
+ * state as a SplitNode (ratio lives inside the tree), so callers that want
+ * to nudge the gutter must splice the ratio in rather than overwrite the
+ * state with a bare `{ ratio }` (which the strategy's tree-walk would
+ * dereference as a malformed split node and crash). */
+export function setSplitRatio(id: NodeId, ratio: number): void {
+  const cur = layoutStore.getContainerState(id) as SplitNode | undefined;
+  if (!cur || cur.kind !== 'split') return;
+  layoutStore.setContainerState(id, { ...cur, ratio });
 }
 
 export const layoutStore = buildStore();

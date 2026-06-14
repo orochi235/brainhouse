@@ -4,16 +4,16 @@
  * fills the viewport; everything beneath is positioned by binarySplit's
  * pixel rects, with drag-y / drag-x affordances at each gutter.
  */
-import { binarySplit, gridStrategy, stackStrategy } from 'windease';
+import { gridStrategy, splitStrategy, stackStrategy } from 'windease';
 import {
   Container,
+  Provider,
   StrategyRegistryProvider,
-  WindeaseProvider,
 } from 'windease/react';
 import { useEffect } from 'react';
 import { layoutChrome, type Slots, SlotsProvider } from './chrome.tsx';
 import { computeTopRatio } from './fit.ts';
-import { layoutStore, ROOT_ID, WORKAREA_ID } from './store.ts';
+import { layoutStore, ROOT_ID, setSplitRatio, WORKAREA_ID } from './store.ts';
 
 const SIDEBAR_MAX_PX = 400;
 /** Hard floor so a too-short measurement (e.g. ProcessesPanel mid-load
@@ -24,7 +24,10 @@ const TOP_MIN_PX = 48;
 const TOP_MAX_FRACTION = 0.4;
 
 const strategies = {
-  binarySplit,
+  // 0.6 renamed binarySplit → splitStrategy (binary by default). The registry
+  // key stays 'binarySplit' since store.ts nodes reference it by that id and
+  // our layout stays strictly two-children-per-level.
+  binarySplit: splitStrategy,
   grid: gridStrategy,
   stack: stackStrategy,
 };
@@ -98,7 +101,7 @@ export function Layout({ slots }: LayoutProps) {
       // Skip sub-pixel rewrites so we don't thrash the store.
       if (lastApplied !== null && Math.abs(ratio - lastApplied) < 0.5 / window.innerHeight) return;
       lastApplied = ratio;
-      layoutStore.setContainerState(ROOT_ID, { ratio });
+      setSplitRatio(ROOT_ID, ratio);
     };
 
     // Observe the unstretched inner pieces (not the flex-stretched panel
@@ -167,7 +170,7 @@ export function Layout({ slots }: LayoutProps) {
       const current = (layoutStore.getContainerState(WORKAREA_ID) as { ratio: number } | undefined)
         ?.ratio ?? 0.8;
       if (current < minRatio - 1e-6) {
-        layoutStore.setContainerState(WORKAREA_ID, { ratio: minRatio });
+        setSplitRatio(WORKAREA_ID, minRatio);
       }
     };
     apply();
@@ -186,7 +189,7 @@ export function Layout({ slots }: LayoutProps) {
   }, []);
 
   return (
-    <WindeaseProvider store={layoutStore}>
+    <Provider store={layoutStore}>
       <StrategyRegistryProvider strategies={strategies}>
         <SlotsProvider value={slots}>
           <Container
@@ -197,6 +200,6 @@ export function Layout({ slots }: LayoutProps) {
           />
         </SlotsProvider>
       </StrategyRegistryProvider>
-    </WindeaseProvider>
+    </Provider>
   );
 }
