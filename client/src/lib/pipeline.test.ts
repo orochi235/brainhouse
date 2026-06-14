@@ -1,5 +1,5 @@
 import type { Event } from '@server/parser.ts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { extractLastChecklist, preprocessEvents } from './pipeline.ts';
 
 let uid = 0;
@@ -27,6 +27,35 @@ const toolUse = (id: string, name = 'Bash', input: unknown = {}) =>
   ev('tool_use', { tool_use_id: id, name, input });
 const toolResult = (id: string, content: unknown = 'ok', is_error = false) =>
   ev('tool_result', { tool_use_id: id, content, is_error });
+
+describe('notification-anchor stage-2 safety', () => {
+  // Regression: the compact `notification-anchor` item carries its own
+  // anchorUuid/ts and has no backing `event`. The stage-2 anchor/timestamp
+  // helpers in coalesceBetweenChats + insertDayDividers must handle it
+  // instead of falling through to `item.event` (which threw at runtime).
+  it('a notification-anchor flows through the stage-2 transforms without throwing', () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const notif = '<task-notification><summary>job done</summary></task-notification>';
+    const { items } = preprocessEvents([
+      userText('day-one prompt', '2026-05-19T00:00:00Z'),
+      ev('assistant_text', { text: 'reply one' }, '2026-05-19T00:00:01Z'),
+      // Background-task completion on a later day → exercises both the
+      // coalesce anchor pass and the day-divider timestamp pass on the anchor.
+      ev(
+        'meta',
+        {
+          record_type: 'attachment',
+          raw: { type: 'attachment', attachment: { type: 'queued_command', prompt: notif } },
+        },
+        '2026-05-20T00:00:00Z',
+      ),
+      ev('assistant_text', { text: 'handled the background task' }, '2026-05-20T00:00:01Z'),
+    ]);
+    expect(errSpy).not.toHaveBeenCalled();
+    expect(items.some((i) => i.type === 'notification-anchor')).toBe(true);
+    errSpy.mockRestore();
+  });
+});
 
 describe('preprocessEvents', () => {
   it('user text becomes a user bubble', () => {

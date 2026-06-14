@@ -60,8 +60,17 @@ export const coalesceBetweenChats: Stage2Transform = {
   },
 };
 
+// Items that carry their own anchorUuid/ts (no backing `event`): the op
+// capsules plus terminal blocks and notification anchors. Kept in sync across
+// both helpers so neither falls through to `item.event` for them and crashes.
 function anchorOf(item: ViewItem): string {
-  if (item.type === 'tool' || item.type === 'file-change' || item.type === 'op-strip') {
+  if (
+    item.type === 'tool' ||
+    item.type === 'file-change' ||
+    item.type === 'op-strip' ||
+    item.type === 'terminal' ||
+    item.type === 'notification-anchor'
+  ) {
     return item.anchorUuid;
   }
   if (item.type === 'bubble') return item.event.uuid;
@@ -70,7 +79,13 @@ function anchorOf(item: ViewItem): string {
 }
 
 function anchorTs(item: ViewItem): string {
-  if (item.type === 'tool' || item.type === 'file-change' || item.type === 'op-strip') {
+  if (
+    item.type === 'tool' ||
+    item.type === 'file-change' ||
+    item.type === 'op-strip' ||
+    item.type === 'terminal' ||
+    item.type === 'notification-anchor'
+  ) {
     return item.ts;
   }
   if (item.type === 'bubble') return item.event.ts;
