@@ -237,6 +237,21 @@ UI/server is meant to uphold. New entries go at the bottom.
   (a visible tab grew to ~9 GB; headless stayed ~95 MB). Do not thread a
   `now` prop down through `PanelCard` — subscribe at the leaf instead.
 
+## Threaded replies (side-channel assistant turns)
+
+- A background-task `<task-notification>` `queued_command` record renders as
+  a compact one-line **notification anchor** entry in the conversation — never
+  as a raw user bubble.
+- An assistant turn triggered by a side channel (a `/btw` interjection or a
+  `<task-notification>` completion) shows a small, dimmed single-line quote of
+  what it is replying to, directly above the bubble body. The single-side
+  accent color encodes kind: `/btw` = neutral tint; task = a cool/info tint.
+- The old standalone `↩ btw` chip is **gone** — the quote line replaces it
+  and is self-describing.
+- Clicking the quote opens the panel/log lightbox and scrolls to + pulses the
+  original entry. When the target event is outside the client's live event
+  window it is fetched on demand via the `eventByUuid` query before scrolling.
+
 ## Lifecycle
 
 - A `SessionStart` hook with `source ∈ {clear, compact}` retires the prior

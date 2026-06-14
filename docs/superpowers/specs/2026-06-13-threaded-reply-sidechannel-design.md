@@ -1,7 +1,7 @@
 # Threaded-reply treatment for side-channel-triggered assistant turns
 
 Date: 2026-06-13
-Status: design approved, ready for implementation plan
+Status: implemented (see docs/superpowers/plans/2026-06-13-threaded-reply-sidechannel.md)
 
 ## Problem
 
@@ -143,7 +143,10 @@ pulses the `refUuid` entry.
 - Treatment attaches to the **assistant reply** (not the trigger bubble),
   mirroring `/btw`.
 - Task-notification raw bubble is **suppressed** in the conversation view;
-  its `<summary>` survives as the reply's quote.
+  its `<summary>` survives as the reply's quote. *(Implementation note:
+  "suppress" was revised to "render a compact anchor item" — the lightbox
+  uses the same conversation view, so a fully-suppressed notification would
+  have no scroll target for the quote click.)*
 - Task-notification click target = **the notification entry itself**
   (full summary/result), not the launching tool-use.
 - Jump destination = the **existing panel/log lightbox**, not the `⌁`
