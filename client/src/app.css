@@ -2363,27 +2363,55 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
     0 0 32px -4px color-mix(in srgb, var(--panel-theme-bg) 75%, transparent);
 }
 
-/* /btw — assistant response to a queued mid-turn interjection. Subtle
-   accent + "↩ btw" chip on the assistant bubble so the *reply* reads as
-   the one tied to the interjection. The user bubble carrying the queued
-   prompt renders normally. */
-.bubble.is-btw {
+/* Threaded-reply treatment — an assistant turn triggered by a side channel
+   (a /btw interjection or a background-task notification) carries a dimmed
+   quote of what it's replying to, plus a single-side accent whose color
+   encodes the kind. Replaces the old standalone "↩ btw" chip. */
+.bubble.has-reply {
   border-left: 2px solid color-mix(in srgb, var(--bubble-assistant-fg) 35%, transparent);
   padding-left: 0.55rem;
-  position: relative;
 }
-.bubble.is-btw::before {
-  content: "↩ btw";
-  display: inline-block;
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: lowercase;
-  opacity: 0.7;
-  margin-right: 0.4em;
-  padding: 0 0.3em;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--bubble-assistant-fg) 12%, transparent);
+.bubble.has-reply.is-task {
+  /* Cool/info tint distinguishes background-task replies from /btw. */
+  border-left-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.reply-quote {
+  display: block;
+  max-width: 100%;
+  margin: 0 0 0.2rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.72rem;
+  text-align: left;
+  color: color-mix(in srgb, currentColor 55%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.reply-quote:hover {
+  color: color-mix(in srgb, currentColor 80%, transparent);
+  text-decoration: underline;
+}
+/* Compact stand-in for a raw <task-notification> record. */
+.notification-anchor {
+  font-size: 0.72rem;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Event-level focus pulse — reuses the panel pulse motif so a jumped-to
+   entry flashes briefly. */
+.event.focus-pulse {
+  animation: event-focus-pulse 0.9s ease-out;
+  border-radius: 6px;
+}
+@keyframes event-focus-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 
 /* Struck-out text inside a user bubble — the user typed something,

@@ -35,6 +35,9 @@ interface Props {
   /** Suppress the trailing time slot entirely. Used by rows that have no
    * meaningful timestamp (dividers). Most rows leave this false. */
   hideTime?: boolean;
+  /** Scroll target identifier — written as `data-anchor-uuid` on the `<li>`
+   * so that jump-to logic can `querySelector('[data-anchor-uuid="…"]')`. */
+  anchorUuid?: string;
   onClick?: () => void;
   children?: ReactNode;
 }
@@ -46,11 +49,16 @@ export function CapsuleRow({
   className,
   trailing,
   hideTime,
+  anchorUuid,
   onClick,
   children,
 }: Props) {
   return (
-    <li className={classNames('event', `event-${kind}`, className)} onClick={onClick}>
+    <li
+      className={classNames('event', `event-${kind}`, className)}
+      data-anchor-uuid={anchorUuid}
+      onClick={onClick}
+    >
       {children}
       {!hideTime && ts !== undefined && (
         <span className="event-trailer">

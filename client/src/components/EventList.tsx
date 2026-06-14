@@ -36,15 +36,21 @@ interface EventListProps {
   /** Panel cwd — used to resolve relative paths into absolute editor deeplinks. */
   cwd?: string | null;
   onBubbleClick?: (event: Event) => void;
+  onReplyJump?: (refUuid: string) => void;
 }
 
-export function EventList({ events, startedAt, cwd, onBubbleClick }: EventListProps) {
+export function EventList({ events, startedAt, cwd, onBubbleClick, onReplyJump }: EventListProps) {
   const { items } = useMemo(() => preprocessEvents(events, { view: 'conversation' }), [events]);
   const { prefs } = usePrefs();
   const template = prefs.editor?.urlTemplate ?? DEFAULT_EDITOR_TEMPLATE;
   return (
     <FilenameLinksProvider cwd={cwd ?? null} template={template}>
-      <ViewItemList items={items} startedAt={startedAt} onBubbleClick={onBubbleClick} />
+      <ViewItemList
+        items={items}
+        startedAt={startedAt}
+        onBubbleClick={onBubbleClick}
+        onReplyJump={onReplyJump}
+      />
     </FilenameLinksProvider>
   );
 }
@@ -55,10 +61,12 @@ export function ViewItemList({
   items,
   startedAt,
   onBubbleClick,
+  onReplyJump,
 }: {
   items: ViewItem[];
   startedAt?: number;
   onBubbleClick?: (event: Event) => void;
+  onReplyJump?: (refUuid: string) => void;
 }) {
   // Tally each natural key as we go; collisions get suffixed with #2,
   // #3, etc. so React never sees a duplicate. The transform pipeline
@@ -74,7 +82,15 @@ export function ViewItemList({
         const n = (seen.get(base) ?? 0) + 1;
         seen.set(base, n);
         const key = n === 1 ? base : `${base}#${n}`;
-        return <Item key={key} item={item} startedAt={startedAt} onBubbleClick={onBubbleClick} />;
+        return (
+          <Item
+            key={key}
+            item={item}
+            startedAt={startedAt}
+            onBubbleClick={onBubbleClick}
+            onReplyJump={onReplyJump}
+          />
+        );
       })}
     </ul>
   );
@@ -87,6 +103,7 @@ function itemKey(item: ViewItem): string {
   if (item.type === 'op-strip') return `strip:${item.anchorUuid}`;
   if (item.type === 'interrupt-divider') return `int:${item.anchorUuid}`;
   if (item.type === 'day-divider') return `day:${item.date}:${item.anchorUuid}`;
+  if (item.type === 'notification-anchor') return `notif:${item.anchorUuid}`;
   return `${item.type}:${item.event.uuid}`;
 }
 
@@ -94,13 +111,24 @@ function Item({
   item,
   startedAt,
   onBubbleClick,
+  onReplyJump,
 }: {
   item: ViewItem;
   startedAt?: number;
   onBubbleClick?: (event: Event) => void;
+  onReplyJump?: (refUuid: string) => void;
 }) {
   if (item.type === 'bubble')
-    return <Bubble item={item} startedAt={startedAt} onBubbleClick={onBubbleClick} />;
+    return (
+      <Bubble
+        item={item}
+        startedAt={startedAt}
+        onBubbleClick={onBubbleClick}
+        onReplyJump={onReplyJump}
+      />
+    );
+  if (item.type === 'notification-anchor')
+    return <NotificationAnchor item={item} startedAt={startedAt} />;
   if (item.type === 'tool') return <ToolCapsule item={item} startedAt={startedAt} />;
   if (item.type === 'file-change') return <FileChangeRow item={item} startedAt={startedAt} />;
   if (item.type === 'terminal') return <TerminalCard item={item} startedAt={startedAt} />;
@@ -138,35 +166,62 @@ function Bubble({
   item,
   startedAt,
   onBubbleClick,
+  onReplyJump,
 }: {
   item: Extract<ViewItem, { type: 'bubble' }>;
   startedAt?: number;
   onBubbleClick?: (event: Event) => void;
+  onReplyJump?: (refUuid: string) => void;
 }) {
-  // Thought bubbles are exclusively for the agent's *thinking* events
-  // (the model's internal monologue). User-attributed thought bubbles
-  // were a category error: the user doesn't "have thoughts" the UI is
-  // privy to — they have typed messages. Synthetic `is_meta` user_texts
-  // (Skill preludes, hook-injected context) are still text the user
-  // didn't author, but they're not *thoughts*. Their visual treatment
-  // is TBD; for now they fall through to the default user bubble.
+  const reply = item.replyTo;
   return (
     <CapsuleRow
       kind={`${item.role}_text`}
       ts={item.event.ts}
       startedAt={startedAt}
-      className={classNames(item.canceled && 'canceled', item.btw && 'is-btw')}
+      anchorUuid={item.event.uuid}
+      className={classNames(item.canceled && 'canceled')}
       onClick={() => onBubbleClick?.(item.event)}
     >
-      <div className={classNames('bubble', item.btw && 'is-btw')}>
+      {reply && (
+        <button
+          type="button"
+          className="reply-quote"
+          title="Jump to the original"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReplyJump?.(reply.refUuid);
+          }}
+        >
+          ↩ {reply.quote}
+        </button>
+      )}
+      <div
+        className={classNames(
+          'bubble',
+          reply && 'has-reply',
+          // btw uses the neutral .has-reply accent; only task needs an override.
+          reply?.kind === 'task' && 'is-task',
+        )}
+      >
         {item.parts.map((part, i) => (
-          <BubblePartView
-            key={`${item.event.uuid}-${i}`}
-            part={part}
-            escape={item.role === 'user'}
-          />
+          <BubblePartView key={`${item.event.uuid}-${i}`} part={part} escape={item.role === 'user'} />
         ))}
       </div>
+    </CapsuleRow>
+  );
+}
+
+function NotificationAnchor({
+  item,
+  startedAt,
+}: {
+  item: Extract<ViewItem, { type: 'notification-anchor' }>;
+  startedAt?: number;
+}) {
+  return (
+    <CapsuleRow kind="notification-anchor" ts={item.ts} startedAt={startedAt} anchorUuid={item.anchorUuid}>
+      <div className="notification-anchor">⇣ {item.summary}</div>
     </CapsuleRow>
   );
 }
