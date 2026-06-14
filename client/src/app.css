@@ -2930,6 +2930,13 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   color: var(--muted);
   cursor: pointer;
 }
+.trace-filter-count {
+  background: color-mix(in srgb, var(--panel-border) 50%, transparent);
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-size: 0.85em;
+  padding: 0 0.35em;
+  border-radius: 0.6em;
+}
 .trace-filter-transforms summary {
   cursor: pointer;
   color: var(--muted);
@@ -6008,8 +6015,25 @@ body.hide-thinking .event-thought-agent {
 }
 
 .inspector-transforms-row {
-  grid-template-columns: 1.4fr 1fr auto auto 1fr 2fr;
+  grid-template-columns: auto auto 1fr;
+  grid-template-areas:
+    'name name name'
+    'key key key'
+    'stage views chips'
+    'desc desc desc';
   align-items: center;
+}
+.inspector-transforms-row .inspector-list-name { grid-area: name; }
+.inspector-transforms-row .inspector-list-key { grid-area: key; }
+.inspector-transforms-row .inspector-stage {
+  grid-area: stage;
+  justify-self: start;
+}
+.inspector-transforms-row .inspector-views { grid-area: views; }
+.inspector-transforms-row .inspector-list-chips { grid-area: chips; }
+.inspector-transforms-row .inspector-list-desc {
+  grid-area: desc;
+  white-space: normal;
 }
 
 .inspector-stage {

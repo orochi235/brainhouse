@@ -12,14 +12,14 @@
  * `useTransformToggles` directly.
  */
 
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { ViewItem } from '../lib/pipeline-types.ts';
 import { VIEW_TRANSFORMS } from '../transforms/registry.ts';
+import type { TraceRecord } from '../transforms/selectors/types.ts';
 import { serializeDebugSnapshot, serializeDebugSnapshotJson } from '../transforms/snapshot.ts';
 import { usePanelTrace, useTraceStore } from '../transforms/traceContext.tsx';
-import type { TraceRecord } from '../transforms/selectors/types.ts';
 import { useTransformToggles } from '../transforms/useTransformToggles.ts';
 
 interface TraceTabProps {
@@ -31,12 +31,21 @@ interface TraceTabProps {
   items: ViewItem[];
 }
 
-type StatusFilter = 'consumed' | 'errored' | 'not-matched';
+type StatusFilter = 'consumed' | 'errored' | 'noop' | 'not-matched';
 
 interface RowStatus {
   kind: 'consumed' | 'noop' | 'errored' | 'unmatched';
   touchedBy: { key: string; consumed: boolean }[];
 }
+
+const STATUS_FILTERS: StatusFilter[] = ['consumed', 'errored', 'noop', 'not-matched'];
+
+const STATUS_TOKEN: Record<RowStatus['kind'], StatusFilter> = {
+  consumed: 'consumed',
+  errored: 'errored',
+  noop: 'noop',
+  unmatched: 'not-matched',
+};
 
 function rowStatus(record: TraceRecord | undefined): RowStatus {
   if (!record) return { kind: 'unmatched', touchedBy: [] };
@@ -105,12 +114,8 @@ export function TraceTab({ panelId, events, items }: TraceTabProps) {
           for (const k of transformFilter) if (touchedKeys.has(k)) any = true;
           if (!any) return false;
         }
-        if (statusFilter.size > 0) {
-          const wantConsumed = statusFilter.has('consumed') && status.kind === 'consumed';
-          const wantErrored = statusFilter.has('errored') && status.kind === 'errored';
-          const wantUnmatched =
-            statusFilter.has('not-matched') && status.kind === 'unmatched';
-          if (!wantConsumed && !wantErrored && !wantUnmatched) return false;
+        if (statusFilter.size > 0 && !statusFilter.has(STATUS_TOKEN[status.kind])) {
+          return false;
         }
         return true;
       });
@@ -164,7 +169,31 @@ export function TraceTab({ panelId, events, items }: TraceTabProps) {
     showCopiedPill(asJson ? 'copied JSON' : 'copied Markdown');
   };
 
-  const transformKeys = useMemo(() => VIEW_TRANSFORMS.map((t) => t.key), []);
+  // Stage-2 transforms run once per pass, not per event, so they never
+  // appear in a row's touchedBy — offering them as row filters would
+  // only ever produce an empty list.
+  const transformKeys = useMemo(
+    () => VIEW_TRANSFORMS.filter((t) => t.stage === 1).map((t) => t.key),
+    [],
+  );
+
+  const filterCounts = useMemo(() => {
+    const status: Record<StatusFilter, number> = {
+      consumed: 0,
+      errored: 0,
+      noop: 0,
+      'not-matched': 0,
+    };
+    const byTransform = new Map<string, number>();
+    for (const event of events) {
+      const st = rowStatus(recordByUuid.get(event.uuid));
+      status[STATUS_TOKEN[st.kind]] += 1;
+      for (const t of st.touchedBy) {
+        byTransform.set(t.key, (byTransform.get(t.key) ?? 0) + 1);
+      }
+    }
+    return { status, byTransform };
+  }, [events, recordByUuid]);
 
   return (
     <div className="trace-tab">
@@ -177,7 +206,7 @@ export function TraceTab({ panelId, events, items }: TraceTabProps) {
           onChange={(e: ChangeEvent<HTMLInputElement>) => setFilterText(e.target.value)}
         />
         <div className="trace-filter-status">
-          {(['consumed', 'errored', 'not-matched'] as StatusFilter[]).map((s) => (
+          {STATUS_FILTERS.map((s) => (
             <label key={s} className="trace-filter-chip">
               <input
                 type="checkbox"
@@ -185,6 +214,7 @@ export function TraceTab({ panelId, events, items }: TraceTabProps) {
                 onChange={() => toggleStatusFilter(s)}
               />
               <span>{s}</span>
+              <span className="trace-filter-count">{filterCounts.status[s]}</span>
             </label>
           ))}
         </div>
@@ -199,6 +229,7 @@ export function TraceTab({ panelId, events, items }: TraceTabProps) {
                   onChange={() => toggleTransformFilter(k)}
                 />
                 <span>{k}</span>
+                <span className="trace-filter-count">{filterCounts.byTransform.get(k) ?? 0}</span>
               </label>
             ))}
           </div>
@@ -249,10 +280,7 @@ export function TraceTab({ panelId, events, items }: TraceTabProps) {
                   {status.touchedBy.map((t) => (
                     <span
                       key={t.key}
-                      className={classNames(
-                        'trace-touched-chip',
-                        !t.consumed && 'is-dim',
-                      )}
+                      className={classNames('trace-touched-chip', !t.consumed && 'is-dim')}
                     >
                       {t.key}
                     </span>
@@ -294,7 +322,14 @@ interface DetailPaneProps {
   event: Event;
   eventIndex: number;
   record: TraceRecord | undefined;
-  stage2: { transformKey: string; ran: boolean; mutatedItems: boolean; beforeLen: number; afterLen: number; error?: { message: string } }[];
+  stage2: {
+    transformKey: string;
+    ran: boolean;
+    mutatedItems: boolean;
+    beforeLen: number;
+    afterLen: number;
+    error?: { message: string };
+  }[];
   items: ViewItem[];
   toggles: Record<string, boolean>;
   onCopyMarkdown: () => void;
@@ -314,9 +349,7 @@ function DetailPane({
   copyPill,
 }: DetailPaneProps) {
   const finalItems = record
-    ? record.finalItemIndices
-        .map((i) => items[i])
-        .filter((it): it is ViewItem => it !== undefined)
+    ? record.finalItemIndices.map((i) => items[i]).filter((it): it is ViewItem => it !== undefined)
     : [];
   return (
     <div className="trace-detail">
@@ -358,10 +391,7 @@ function DetailPane({
               return (
                 <tr
                   key={s.transformKey}
-                  className={classNames(
-                    disabled && 'trace-row-disabled',
-                    s.error && 'is-errored',
-                  )}
+                  className={classNames(disabled && 'trace-row-disabled', s.error && 'is-errored')}
                 >
                   <td>
                     {s.transformKey}
