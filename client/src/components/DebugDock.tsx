@@ -21,6 +21,19 @@ export const STRIP_MAX_FRACTION = 0.7;
 
 const STRIP_HEIGHT_KEY = 'brainhouse:debug:stripHeight';
 const DEFAULT_STRIP_PX = 280;
+const PANEL_OPEN_KEY = 'brainhouse:debug:panelOpen';
+
+/** Whether the debug panel is currently shown. Distinct from debug
+ * *mode* (the prefs switch that reveals the panel toggle in the first
+ * place): mode can be on while the user has collapsed the panel away.
+ * Defaults to open so enabling debug mode reveals the panel. */
+export function loadPanelOpen(): boolean {
+  try { return localStorage.getItem(PANEL_OPEN_KEY) !== '0'; } catch { return true; }
+}
+
+export function savePanelOpen(open: boolean): void {
+  try { localStorage.setItem(PANEL_OPEN_KEY, open ? '1' : '0'); } catch {}
+}
 
 /** Clamp a desired strip height to [MIN, fraction·container]. The floor
  * wins when the container is so short that the fraction would fall below

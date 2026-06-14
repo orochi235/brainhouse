@@ -2,7 +2,7 @@ import classNames from 'classnames';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnTooltip } from './components/ConnTooltip.tsx';
-import { DebugDock } from './components/DebugDock.tsx';
+import { DebugDock, loadPanelOpen, savePanelOpen } from './components/DebugDock.tsx';
 import { DebugTile } from './components/DebugTile.tsx';
 import { UptimeClock } from './components/UptimeClock.tsx';
 import { FlowsModal } from './components/FlowsModal.tsx';
@@ -219,11 +219,20 @@ function AppMain() {
     try { localStorage.setItem('brainhouse:processesPanelOpen', processesPanelOpen ? '1' : '0'); } catch {}
   }, [processesPanelOpen]);
   const { prefs, refetch: refetchPrefs } = usePrefs();
-  // One debug switch, not two: the ?debug query param overrides the
-  // persisted prefs.debug.enabled flag (see lib/debugMode.ts). Everything
-  // debug — topbar cluster, uptime clock, DebugTile, slot-count math —
-  // reads this single value.
+  // Debug *mode* — the master dev-affordances switch. The ?debug query
+  // param overrides the persisted prefs.debug.enabled flag (see
+  // lib/debugMode.ts). Gates the topbar dev cluster, the uptime clock,
+  // and the 🐛 panel-toggle button itself.
   const debugMode = debugEnabled(prefs.debug?.enabled);
+  // Debug *panel* visibility — independent of mode. Only meaningful while
+  // debugMode is on; the 🐛 button toggles it and it persists client-side.
+  const [debugPanelOpen, setDebugPanelOpen] = useState<boolean>(loadPanelOpen);
+  const toggleDebugPanel = () =>
+    setDebugPanelOpen((open) => {
+      const next = !open;
+      savePanelOpen(next);
+      return next;
+    });
   useEffect(() => {
     if (!debugMode) return;
     document.body.setAttribute('data-debug', '1');
@@ -714,20 +723,20 @@ function AppMain() {
             >
               ≡
             </button>
-            <button
-              type="button"
-              className="theme-toggle debug-toggle"
-              title={debugMode ? 'Hide debug panel' : 'Show debug panel'}
-              aria-pressed={debugMode}
-              onClick={async () => {
-                // Flips the unified debug switch (prefs.debug.enabled); a
-                // ?debug query param, if present, still overrides it.
-                await trpc.prefs.update.mutate({ debug: { enabled: !debugMode } });
-                await refetchPrefs();
-              }}
-            >
-              🐛
-            </button>
+            {/* Panel toggle — only present in debug mode (set via prefs or
+              * ?debug). Shows/hides the debug panel without leaving debug
+              * mode; debug mode itself is owned by the prefs switch. */}
+            {debugMode && (
+              <button
+                type="button"
+                className="theme-toggle debug-toggle"
+                title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+                aria-pressed={debugPanelOpen}
+                onClick={toggleDebugPanel}
+              >
+                🐛
+              </button>
+            )}
             <button
               type="button"
               className="theme-toggle"
@@ -895,7 +904,7 @@ function AppMain() {
             <p className="empty">no sessions yet — try `+ mock session`</p>
           )}
         </main>
-        {debugMode && (
+        {debugMode && debugPanelOpen && (
           <DebugDock>
             <DebugTile
               client={{

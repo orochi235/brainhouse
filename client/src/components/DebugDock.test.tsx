@@ -4,7 +4,9 @@ import {
   clampStripHeight,
   DebugDock,
   DEBUG_STRIP_MIN_PX,
+  loadPanelOpen,
   loadStripHeight,
+  savePanelOpen,
   saveStripHeight,
   STRIP_MAX_FRACTION,
 } from './DebugDock.tsx';
@@ -45,6 +47,21 @@ describe('strip height persistence', () => {
   it('re-clamps a stored height that no longer fits the container', () => {
     saveStripHeight(900);
     expect(loadStripHeight(400)).toBe(400 * STRIP_MAX_FRACTION);
+  });
+});
+
+describe('debug panel open state', () => {
+  afterEach(() => localStorage.clear());
+
+  it('defaults to open when nothing is stored', () => {
+    expect(loadPanelOpen()).toBe(true);
+  });
+
+  it('round-trips the open flag', () => {
+    savePanelOpen(false);
+    expect(loadPanelOpen()).toBe(false);
+    savePanelOpen(true);
+    expect(loadPanelOpen()).toBe(true);
   });
 });
 

@@ -683,7 +683,7 @@ function DebugSection({ draft, setDraft }: SectionProps) {
   return (
     <Section
       title="Debug"
-      hint="Reveal dev affordances in the UI — extra toolbar buttons (spawn mock subagents, preview animations), scenario picker, etc. Leave off in normal use."
+      hint="Reveal dev affordances in the UI — the extra toolbar buttons (spawn mock subagents, preview animations), the scenario picker, and the 🐛 button that shows/hides the debug panel. Leave off in normal use."
     >
       <CheckboxField
         label="Debug mode"
