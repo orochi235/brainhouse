@@ -52,7 +52,7 @@ export const tagBtwUserText: Stage1Transform = {
   kind: 'view',
   stage: 1,
   key: 'built-in.tag-btw-user-text',
-  name: '/btw queued prompt → flag next assistant bubble',
+  name: '/btw + task-notification queued prompt → reply quote on next assistant bubble',
   description:
     'Detects queued /btw prompts and background task-notifications from the side channel. /btw interjections (queued_command attachment payloads or queue-operation/user_text pairs) emit a plain user bubble and set pendingReply { kind: "btw" }. Task-notification payloads emit a compact notification-anchor item (not a user bubble) and set pendingReply { kind: "task" }. The next assistant bubble consumes pendingReply into replyTo. Consumes noisy queue-operation bookkeeping records.',
   matches: ['meta.any', 'user-text.any'],
@@ -96,6 +96,9 @@ export const tagBtwUserText: Stage1Transform = {
           }
 
           // Real /btw: emit the interjection as a plain user bubble.
+          // refUuid intentionally points at this synthetic user bubble's uuid
+          // (which is the meta event's uuid) so the quote can scroll to the
+          // rendered bubble.
           items.push({
             type: 'bubble',
             event: { ...event, kind: 'user_text', payload: { text: prompt } } as Event,
@@ -121,13 +124,25 @@ export const tagBtwUserText: Stage1Transform = {
       return false;
     }
     ctx.scratch.pendingBtw.splice(idx, 1);
-    items.push({
-      type: 'bubble',
-      event,
-      role: 'user',
-      parts: [{ kind: 'text', text }],
-    });
-    ctx.scratch.pendingReply = { kind: 'btw', quote: text, refUuid: event.uuid };
+    if (isTaskNotification(trimmed)) {
+      // Deferred task-notification: same classification as the inline path.
+      const summary = parseSummary(text);
+      items.push({
+        type: 'notification-anchor',
+        anchorUuid: event.uuid,
+        summary,
+        ts: event.ts,
+      });
+      ctx.scratch.pendingReply = { kind: 'task', quote: summary, refUuid: event.uuid };
+    } else {
+      items.push({
+        type: 'bubble',
+        event,
+        role: 'user',
+        parts: [{ kind: 'text', text }],
+      });
+      ctx.scratch.pendingReply = { kind: 'btw', quote: text, refUuid: event.uuid };
+    }
     return true;
   },
 };

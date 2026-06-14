@@ -954,6 +954,22 @@ describe('preprocessEvents', () => {
       expect(asst.replyTo?.refUuid).toBe(anchor.anchorUuid);
     });
 
+    it('deferred-delivery task-notification (queue-op then user_text) becomes a compact anchor, not a btw bubble', () => {
+      const notif = '<task-notification><summary>deferred job done</summary></task-notification>';
+      const { items } = preprocessEvents([
+        queueOp(notif),
+        userText(notif),
+        asstText('handled it'),
+      ]);
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      expect(bubbles).toHaveLength(1); // only the assistant reply, no raw-XML user bubble
+      const anchor = items.find((i) => i.type === 'notification-anchor');
+      expect(anchor).toMatchObject({ type: 'notification-anchor', summary: 'deferred job done' });
+      const asst = bubbles[0];
+      if (asst?.type !== 'bubble') throw new Error('expected assistant bubble');
+      expect(asst.replyTo).toMatchObject({ kind: 'task', quote: 'deferred job done' });
+    });
+
     it('a normal top-line user_text clears a pending task reply', () => {
       const notif = '<task-notification><summary>job done</summary></task-notification>';
       const { items } = preprocessEvents([
