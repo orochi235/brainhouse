@@ -17,6 +17,7 @@ import { SelectorStoreProvider } from './transforms/selectors/store.tsx';
 import { TraceProvider } from './transforms/traceContext.tsx';
 import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { debugEnabled } from './lib/debugMode.ts';
+import { startMemTelemetry } from './lib/telemetry.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { Layout } from './layout/Layout.tsx';
@@ -226,6 +227,13 @@ function AppMain() {
     if (!debugMode) return;
     document.body.setAttribute('data-debug', '1');
     return () => document.body.removeAttribute('data-debug');
+  }, [debugMode]);
+  // Memory telemetry: sample JS heap + DOM/element counts over time so the
+  // multi-GB non-JS footprint creep can be charted. Debug-only; inspect via
+  // window.__mem.dump(). See lib/telemetry.ts.
+  useEffect(() => {
+    if (!debugMode) return;
+    return startMemTelemetry();
   }, [debugMode]);
   // Filter out blacklisted session IDs before anything downstream touches
   // the panel set — that way every consumer (notifications, project
