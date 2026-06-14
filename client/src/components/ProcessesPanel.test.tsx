@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ProcessesPanel } from './ProcessesPanel.tsx';
 
 vi.mock('../useProcesses.ts', () => ({
@@ -16,10 +17,16 @@ vi.mock('../useProcesses.ts', () => ({
 }));
 
 describe('ProcessesPanel', () => {
-  it('renders one row per process with key columns', () => {
+  it('renders a port-binding process row with key columns in Network view', async () => {
     render(<ProcessesPanel allPanels={new Map()} />);
-    expect(screen.getByText('100')).toBeInTheDocument();
-    expect(screen.getByText(/vite/)).toBeInTheDocument();
-    expect(screen.getByText(/5173/)).toBeInTheDocument();
+    // The fixture is a dev server bound to :5173 with no Claude ancestor,
+    // so it lives in Network view — the Sessions tree only shows Claude
+    // sessions and their descendants. The Ports column is network-only too.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /network/i }));
+    expect(screen.getByText('100')).toBeInTheDocument(); // PID
+    expect(screen.getByText('node vite')).toBeInTheDocument(); // Command
+    expect(screen.getByText('vite 5.4.2')).toBeInTheDocument(); // Framework (network-only)
+    expect(screen.getByText(/5173/)).toBeInTheDocument(); // Ports (network-only)
   });
 });
