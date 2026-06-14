@@ -723,6 +723,20 @@ function AppMain() {
             </button>
             <button
               type="button"
+              className="theme-toggle debug-toggle"
+              title={debugMode ? 'Hide debug panel' : 'Show debug panel'}
+              aria-pressed={debugMode}
+              onClick={async () => {
+                // Flips the unified debug switch (prefs.debug.enabled); a
+                // ?debug query param, if present, still overrides it.
+                await trpc.prefs.update.mutate({ debug: { enabled: !debugMode } });
+                await refetchPrefs();
+              }}
+            >
+              🐛
+            </button>
+            <button
+              type="button"
               className="theme-toggle"
               title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
