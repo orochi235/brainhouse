@@ -1088,4 +1088,16 @@ describe('SessionStore', () => {
       expect(p.event_count).toBe(p.events.length);
     }
   });
+
+  it('eventByUuid returns the in-memory event by uuid, or null when absent', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { session_id: 'S', uuid: 'known-uuid', payload: { text: 'hi' } }));
+    // Found: correct panel + uuid
+    expect(store.eventByUuid('S', 'known-uuid')?.uuid).toBe('known-uuid');
+    // Not found: correct panel, wrong uuid
+    expect(store.eventByUuid('S', 'no-such-uuid')).toBeNull();
+    // Not found: unknown panel
+    expect(store.eventByUuid('no-such-panel', 'known-uuid')).toBeNull();
+  });
 });

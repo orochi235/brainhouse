@@ -66,6 +66,12 @@ export const appRouter = t.router({
 
   snapshot: t.procedure.query(({ ctx }) => ({ panels: ctx.monitor.store.snapshot() })),
 
+  eventByUuid: t.procedure
+    .input(z.object({ panelId: z.string(), uuid: z.string() }))
+    .query(({ ctx, input }) => ({
+      event: ctx.monitor.store.eventByUuid(input.panelId, input.uuid),
+    })),
+
   forceStatus: t.procedure
     .input(z.object({ panelId: z.string(), status: PanelStatus }))
     .mutation(({ ctx, input }) => {

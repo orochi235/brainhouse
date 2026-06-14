@@ -629,6 +629,16 @@ export class SessionStore {
     return this.panels.get(panelId);
   }
 
+  /** Look up a single event by uuid within a panel's in-memory window
+   * (capped well above the client's live window). Returns null if the panel
+   * or event isn't resident. No JSONL re-scan — events evicted past the
+   * server cap are unavailable. */
+  eventByUuid(panelId: string, uuid: string): Event | null {
+    const panel = this.panels.get(panelId);
+    if (!panel) return null;
+    return panel.events.find((e) => e.uuid === uuid) ?? null;
+  }
+
   private ensurePanel(
     event: Event,
     now: number,
