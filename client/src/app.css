@@ -260,6 +260,17 @@ body {
 .is-debug-button:hover {
   border-color: var(--debug-color);
 }
+/* Debug-only browser-session uptime readout in the topbar cluster. Muted
+ * debug tint + tabular figures so the ticking digits don't reflow. */
+.topbar-uptime {
+  align-self: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--debug-color);
+  opacity: 0.8;
+  white-space: nowrap;
+}
 .conn {
   font-size: 0.75rem;
   color: var(--muted);

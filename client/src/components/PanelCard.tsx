@@ -5,6 +5,7 @@ import trashIcon from '../assets/icons/trash.svg?raw';
 import { getActiveDrag, setActiveDrag } from '../lib/activeDrag.ts';
 import { CloseGlyph } from '../lib/CloseGlyph.tsx';
 import { useClock } from '../lib/clock.ts';
+import { debugEnabled } from '../lib/debugMode.ts';
 import { formatIdle, formatIdleCoarse, formatTokens } from '../lib/format.ts';
 import { renderInlineCode } from '../lib/inlineCode.tsx';
 import { useLightbox } from '../lib/lightboxContext.ts';
@@ -803,7 +804,7 @@ function PanelToolPalette({
 }) {
   const lightbox = useLightbox();
   const { prefs } = usePrefs();
-  const debug = prefs.debug?.enabled === true && !readOnly;
+  const debug = debugEnabled(prefs.debug?.enabled) && !readOnly;
   const isParent = panel.kind === 'parent';
   const isSubWithParent = panel.kind === 'subagent' && !!panel.parent_panel_id;
   return (

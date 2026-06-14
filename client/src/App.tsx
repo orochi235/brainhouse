@@ -3,6 +3,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnTooltip } from './components/ConnTooltip.tsx';
 import { DebugTile } from './components/DebugTile.tsx';
+import { UptimeClock } from './components/UptimeClock.tsx';
 import { FlowsModal } from './components/FlowsModal.tsx';
 import { HoverPopover } from './components/HoverPopover.tsx';
 import { PanelCard } from './components/PanelCard.tsx';
@@ -15,6 +16,7 @@ import { TransformsModal } from './components/TransformsModal.tsx';
 import { SelectorStoreProvider } from './transforms/selectors/store.tsx';
 import { TraceProvider } from './transforms/traceContext.tsx';
 import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
+import { debugEnabled } from './lib/debugMode.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { Layout } from './layout/Layout.tsx';
@@ -200,13 +202,7 @@ function useReplayEntry(): ReplaySource | ReplayInlineSource | null {
 
 function AppMain() {
   const searchParams = new URLSearchParams(window.location.search);
-  const debugMode = searchParams.get('debug') === '1';
   const freezeMode = searchParams.get('freeze') === '1';
-  useEffect(() => {
-    if (!debugMode) return;
-    document.body.setAttribute('data-debug', '1');
-    return () => document.body.removeAttribute('data-debug');
-  }, [debugMode]);
   useEffect(() => {
     if (!freezeMode) return;
     document.body.setAttribute('data-freeze', '1');
@@ -221,6 +217,16 @@ function AppMain() {
     try { localStorage.setItem('brainhouse:processesPanelOpen', processesPanelOpen ? '1' : '0'); } catch {}
   }, [processesPanelOpen]);
   const { prefs, refetch: refetchPrefs } = usePrefs();
+  // One debug switch, not two: the ?debug query param overrides the
+  // persisted prefs.debug.enabled flag (see lib/debugMode.ts). Everything
+  // debug — topbar cluster, uptime clock, DebugTile, slot-count math —
+  // reads this single value.
+  const debugMode = debugEnabled(prefs.debug?.enabled);
+  useEffect(() => {
+    if (!debugMode) return;
+    document.body.setAttribute('data-debug', '1');
+    return () => document.body.removeAttribute('data-debug');
+  }, [debugMode]);
   // Filter out blacklisted session IDs before anything downstream touches
   // the panel set — that way every consumer (notifications, project
   // rollups, slot allocator, the grid/dock render trees) sees a
@@ -665,7 +671,7 @@ function AppMain() {
             * reads as one mode-switchable area; muted lime tint
             * (--debug-color) reinforces the grouping. Neutral
             * always-visible controls (clear all, stats) follow. */}
-          {prefs.debug?.enabled && (
+          {debugMode && (
             <>
               <button
                 type="button"
@@ -684,6 +690,7 @@ function AppMain() {
               <ScenariosButton />
               <TransformsButton />
               <FlowsButton />
+              <UptimeClock />
             </>
           )}
           <button type="button" className="debug-spawn" onClick={dismissAll}>
