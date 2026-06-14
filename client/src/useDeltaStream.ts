@@ -12,6 +12,21 @@ import { trpc } from './trpc.ts';
  * as live updates.
  */
 
+/** Max events kept in memory per panel. Older events live in the
+ * session JSONL on disk and are re-fetched on scroll-back via the
+ * `panelHistory` query. Mirrors the server's own cap policy. */
+export const LIVE_WINDOW = 1500;
+/** Trim in chunks so splices are occasional, not per-event. */
+export const EVICT_CHUNK = 150;
+
+/** Append `e`, then drop the oldest chunk if we've crossed the cap.
+ * Returns a new array (never mutates `existing`). */
+function appendCapped(existing: Event[], e: Event): Event[] {
+  const next = [...existing, e];
+  if (next.length > LIVE_WINDOW) return next.slice(next.length - (LIVE_WINDOW - EVICT_CHUNK));
+  return next;
+}
+
 export interface PanelState extends PanelDto {
   events: Event[];
   /** Server has told us this panel is gone; we keep it mounted briefly so
@@ -54,7 +69,8 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
       return { ...state, status: action.status };
     case 'snapshot': {
       const panels = new Map<string, PanelState>();
-      for (const p of action.panels) panels.set(p.id, { ...p, events: p.events });
+      for (const p of action.panels)
+        panels.set(p.id, { ...p, events: p.events.slice(-LIVE_WINDOW) });
       return { ...state, panels };
     }
     case 'delta': {
@@ -65,7 +81,7 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
         // `events` only rides on the upsert when the server is reseeding
         // history (dock-restore). Otherwise keep the events we have so a
         // routine DTO refresh doesn't blow away the panel's transcript.
-        const events = d.events ?? existing?.events ?? [];
+        const events = (d.events ?? existing?.events ?? []).slice(-LIVE_WINDOW);
         panels.set(d.panel.id, { ...d.panel, events });
       } else if (d.op === 'event_append') {
         const existing = panels.get(d.panel_id);
@@ -77,7 +93,7 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
           // arrival time here.
           panels.set(d.panel_id, {
             ...existing,
-            events: [...existing.events, d.event],
+            events: appendCapped(existing.events, d.event),
             last_event_at: Date.now() / 1000,
           });
         }
