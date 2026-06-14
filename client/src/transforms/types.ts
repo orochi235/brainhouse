@@ -14,7 +14,7 @@
  */
 
 import type { Event } from '@server/parser.ts';
-import type { ChecklistItem, SubagentSpawn, ViewItem } from '../lib/pipeline-types.ts';
+import type { ChecklistItem, ReplyTo, SubagentSpawn, ViewItem } from '../lib/pipeline-types.ts';
 
 export interface ViewPipelineScratch {
   /** Tool_use ids whose result we've already absorbed elsewhere (e.g. an
@@ -33,10 +33,11 @@ export interface ViewPipelineScratch {
    * whose trimmed text matches is rendered as the queued prompt and the
    * entry is popped. */
   pendingBtw: string[];
-  /** Set when a /btw prompt has just been emitted as a user bubble; the
-   * next assistant_text bubble consumes it and renders with `btw:true`.
-   * Cleared on a non-/btw user_text (a fresh prompt ends the chain). */
-  pendingBtwAssistant: boolean;
+  /** Descriptor for the next assistant bubble to consume when the turn was
+   * triggered by a side channel (`/btw` or a `<task-notification>`). The
+   * assistant_text bubble copies it into `replyTo` and clears it. Cleared on
+   * a non-/btw user_text (a fresh top-line prompt ends the chain). */
+  pendingReply: ReplyTo | null;
 }
 
 export interface ViewContext {

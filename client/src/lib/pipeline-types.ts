@@ -88,17 +88,38 @@ export interface OpStripItem {
   ts: string;
 }
 
+/** What an assistant turn is replying to when it was triggered by a side
+ * channel rather than a normal top-line prompt. `btw` = a `/btw`
+ * interjection; `task` = a background-task `<task-notification>`
+ * completion. `quote` is the dimmed one-line preview shown above the
+ * reply; `refUuid` is the original entry the quote jumps to. */
+export interface ReplyTo {
+  kind: 'btw' | 'task';
+  quote: string;
+  refUuid: string;
+}
+
 export interface BubbleItem {
   type: 'bubble';
   event: Event;
   role: 'user' | 'assistant';
   parts: BubblePart[];
   canceled?: boolean;
-  /** This assistant bubble responds to a `/btw` queued interjection. The
-   * user bubble carrying the queued prompt itself renders normally; this
-   * flag drives the "↩ btw" chip + accent on the reply so the response
-   * (not the prompt) is what's marked. */
-  btw?: boolean;
+  /** Set when this assistant bubble was triggered by a side channel; drives
+   * the threaded-reply quote line above the bubble body. Subsumes the old
+   * `btw` boolean (`replyTo.kind === 'btw'`). */
+  replyTo?: ReplyTo;
+}
+
+/** Compact, dimmed stand-in for a background-task `<task-notification>`
+ * record. We don't render the raw notification markup as a user bubble, but
+ * we keep this one-line anchor in the flow so the threaded-reply quote on
+ * the following assistant turn has a real `data-anchor-uuid` to jump to. */
+export interface NotificationAnchorItem {
+  type: 'notification-anchor';
+  anchorUuid: string;
+  summary: string;
+  ts: string;
 }
 
 export type ViewItem =
@@ -107,6 +128,7 @@ export type ViewItem =
   | FileChangeItem
   | TerminalItem
   | OpStripItem
+  | NotificationAnchorItem
   | { type: 'thinking'; event: Event; canceled?: boolean }
   | { type: 'system'; event: Event }
   | { type: 'meta'; event: Event }
