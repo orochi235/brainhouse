@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { CopyableId } from '../lib/CopyableId.tsx';
-import { formatIdle } from '../lib/format.ts';
+import { formatDurationShort, formatIdle } from '../lib/format.ts';
 import { CLI_ICONS } from '../lib/tools.ts';
 import { badgeColor, deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import type { PanelState } from '../useDeltaStream.ts';
@@ -41,7 +41,9 @@ const PROVENANCE_CLASS: Record<Row['provenance'], string> = {
   discovered: 'process-dot process-dot-discovered',
 };
 
-const fmtUptime = formatIdle;
+// Uptime reads better coarse — two most significant units, not the
+// minute-level precision the Idle column wants.
+const fmtUptime = formatDurationShort;
 
 function isLoopback(addr: string): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '0.0.0.0' || addr === '*';

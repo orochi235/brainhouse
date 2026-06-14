@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatClockTime, formatElapsed, formatIdle, formatIdleCoarse } from './format.ts';
+import {
+  formatClockTime,
+  formatDurationShort,
+  formatElapsed,
+  formatIdle,
+  formatIdleCoarse,
+} from './format.ts';
 
 describe('formatIdle', () => {
   it('sub-minute → seconds', () => {
@@ -27,6 +33,28 @@ describe('formatIdle', () => {
     expect(formatIdle(86400 + 3 * 60)).toBe('1d 0h 3m');
     expect(formatIdle(86400 + 13 * 3600 + 3 * 60)).toBe('1d 13h 3m');
     expect(formatIdle(86400 * 2 + 5)).toBe('2d');
+  });
+});
+
+describe('formatDurationShort', () => {
+  it('matches formatIdle for durations that already span ≤2 units', () => {
+    expect(formatDurationShort(45)).toBe('45s');
+    expect(formatDurationShort(60)).toBe('1m');
+    expect(formatDurationShort(90)).toBe('1m 30s');
+    expect(formatDurationShort(3600)).toBe('1h');
+    expect(formatDurationShort(3660)).toBe('1h 1m');
+  });
+
+  it('caps at the two most significant units, dropping the rest', () => {
+    // formatIdle would render these with three units.
+    expect(formatDurationShort(86400 + 13 * 3600 + 3 * 60)).toBe('1d 13h');
+    expect(formatDurationShort(86400 + 13 * 3600 + 3 * 60 + 5)).toBe('1d 13h');
+  });
+
+  it('drops a trailing zero second unit', () => {
+    expect(formatDurationShort(86400)).toBe('1d');
+    expect(formatDurationShort(86400 + 3 * 60)).toBe('1d'); // 0 hours → just days
+    expect(formatDurationShort(86400 + 3600)).toBe('1d 1h');
   });
 });
 

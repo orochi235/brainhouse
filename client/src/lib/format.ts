@@ -22,6 +22,23 @@ export function formatIdle(seconds: number): string {
   return secs ? `${minutes}m ${secs}s` : `${minutes}m`;
 }
 
+/** Like formatIdle, but capped at the two most significant units —
+ * "1d 13h" rather than "1d 13h 3m". Trailing zero units are dropped, so a
+ * duration just over a boundary collapses to one unit ("1d", "1h"). Used
+ * for the processes Uptime column, where coarse-but-glanceable beats
+ * exact. */
+export function formatDurationShort(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  if (total < 60) return `${total}s`;
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (days > 0) return hours ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  return secs ? `${minutes}m ${secs}s` : `${minutes}m`;
+}
+
 /** Coarse: only the largest unit. For closed/archived sessions. */
 export function formatIdleCoarse(seconds: number): string {
   if (seconds < 60) return `${Math.floor(seconds)}s`;
