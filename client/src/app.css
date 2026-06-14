@@ -4297,11 +4297,39 @@ body.replay-drop-target::after {
   border: 1px dashed var(--panel-border);
   background: var(--panel-bg);
 }
-.debug-tile-slot {
-  grid-column: span 2;
-  min-width: 0;
+/* Main workarea becomes a vertical stack when the debug dock is active:
+   the session grid flexes to fill, the resizable debug strip sits below. */
+.main-stack {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.main-stack > .session-grid {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+/* Drag handle along the strip's top edge. Mirrors the 4px windease
+   gutters so the resize affordance reads the same as the dock/top
+   gutters; a slightly taller box gives an easier grab target. */
+.debug-strip-handle {
+  flex: 0 0 auto;
+  height: 6px;
+  margin: -1px 0;
+  cursor: row-resize;
+  background: var(--panel-border);
+  touch-action: none;
+}
+.debug-strip-handle:hover {
+  background: var(--debug-color);
+}
+.debug-strip {
+  flex: 0 0 auto;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .debug-tile-meta {
   font-size: 0.7rem;

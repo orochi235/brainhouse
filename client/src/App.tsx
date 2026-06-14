@@ -2,6 +2,7 @@ import classNames from 'classnames';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnTooltip } from './components/ConnTooltip.tsx';
+import { DebugDock } from './components/DebugDock.tsx';
 import { DebugTile } from './components/DebugTile.tsx';
 import { UptimeClock } from './components/UptimeClock.tsx';
 import { FlowsModal } from './components/FlowsModal.tsx';
@@ -478,12 +479,9 @@ function AppMain() {
       cwd: p.cwd ?? null,
       last_event_at: p.last_event_at,
     }));
-  // Debug mode renders an extra tile in the grid; reserve a slot for it so
-  // it counts toward the cap instead of growing the grid past slotCount.
-  const effectiveSlotCount = Math.max(
-    0,
-    prefs.workspace.slotCount - (debugMode ? 1 : 0),
-  );
+  // The debug panel docks below the grid (see DebugDock) rather than
+  // occupying a grid cell, so it no longer eats into the slot budget.
+  const effectiveSlotCount = prefs.workspace.slotCount;
   // Manually-primary panels (user pulled them out of the dock) get the
   // same unconditional grid-slot treatment as pinned. Merging at the
   // call site keeps the allocator simple — it only knows "pinned".
@@ -580,7 +578,6 @@ function AppMain() {
   // the budget:
   //   - the cells already consumed by grid panels (one each, plus an
   //     extra cell for every wide panel, since wide consumes two);
-  //   - the debug tile's reserved slot (when ?debug=1);
   //   - any live tray panels. A live session sitting in the dock —
   //     whether server-mini'd through idle-out or user-mini'd by the
   //     user — has a "rightful claim" on a slot, and widgets must
@@ -600,8 +597,7 @@ function AppMain() {
     prefs.workspace.slotCount -
       orderedGridPanels.length -
       wideCountForBudget -
-      liveTrayCount -
-      (debugMode ? 1 : 0),
+      liveTrayCount,
   );
   const pinnedRollups: typeof allProjectRollups = [];
   const unpinnedRollups: typeof allProjectRollups = [];
@@ -647,11 +643,8 @@ function AppMain() {
   // becomes a 5-slot tile (still picks a nice integer cols/rows). Mirrors
   // `wideCountForBudget` above — kept separate so each consumer is local.
   const wideCount = wideCountForBudget;
-  // Debug mode adds an extra grid-slot for the DebugTile; include it in
-  // the layout count so the grid sizes its rows for n+1 items instead of
-  // overflowing into a 0-height auto-row.
   const slots =
-    orderedGridPanels.length + projectRollups.length + wideCount + (debugMode ? 1 : 0);
+    orderedGridPanels.length + projectRollups.length + wideCount;
   const { ref: gridRef, cols, rows } = useGridLayout(slots);
   const gridStyle = {
     gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
@@ -751,7 +744,7 @@ function AppMain() {
             </>
           ),
           main: (
-            <>
+            <div className="main-stack">
         <main
           className="session-grid"
           ref={gridRef}
@@ -898,26 +891,26 @@ function AppMain() {
               />
             </div>
           ))}
-          {debugMode && (
-            <div className="grid-slot debug-tile-slot">
-              <DebugTile
-                client={{
-                  allPanels: panels,
-                  gridIds: orderedGridPanels.map((p) => p.id),
-                  dockIds: trayPanels.map((p) => p.id),
-                  isHidden,
-                  isClientMini,
-                  isPinned: (id) => pinned.has(id),
-                  isBrokenOut: (id) => brokenOut.has(id),
-                }}
-              />
-            </div>
-          )}
           {orderedGridPanels.length === 0 && trayPanels.length === 0 && status === 'live' && (
             <p className="empty">no sessions yet — try `+ mock session`</p>
           )}
         </main>
-            </>
+        {debugMode && (
+          <DebugDock>
+            <DebugTile
+              client={{
+                allPanels: panels,
+                gridIds: orderedGridPanels.map((p) => p.id),
+                dockIds: trayPanels.map((p) => p.id),
+                isHidden,
+                isClientMini,
+                isPinned: (id) => pinned.has(id),
+                isBrokenOut: (id) => brokenOut.has(id),
+              }}
+            />
+          </DebugDock>
+        )}
+            </div>
           ),
           sidebar: dockVisible ? (
           <aside
