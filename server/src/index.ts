@@ -41,6 +41,7 @@ async function main() {
     eventsIndexRetentionDays: storage.eventsIndexRetentionDays,
     autoMinimizeOnClear: workspace.autoMinimizeOnClear,
     tracker,
+    isAutoTitleEnabled: () => prefs.get().display.autoTitle,
   });
   await monitor.start();
   tracker.start();

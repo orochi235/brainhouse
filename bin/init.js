@@ -48,11 +48,6 @@ export function hookRegistry(hooksDir) {
   // session's context, paying near-zero token cost instead of spawning
   // fresh `claude -p` subprocesses.
   entries.push({
-    role: 'auto-title-inline',
-    event: 'UserPromptSubmit',
-    command: `node ${quote(path.join(hooksDir, 'auto-title-inline.mjs'))}`,
-  });
-  entries.push({
     role: 'context-reminder',
     event: 'UserPromptSubmit',
     command: `node ${quote(path.join(hooksDir, 'context-reminder.mjs'))}`,

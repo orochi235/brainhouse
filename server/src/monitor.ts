@@ -17,6 +17,11 @@ import type { ProcessTracker } from './processes/index.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
 import { type PanelTheme, readPanelTheme } from './theme.js';
+import {
+  isRealUserText,
+  isSubstantiveAssistantText,
+  Titler,
+} from './titler.js';
 import { TranscriptWatcher } from './watcher.js';
 
 export interface MonitorOptions {
@@ -48,6 +53,10 @@ export interface MonitorOptions {
    * bash_intent / bash_id_map are forwarded here; stop / session_end
    * are forwarded as well (in addition to the panel-lifecycle handling). */
   tracker?: ProcessTracker | null;
+  /** Returns true when `display.autoTitle` is enabled. Read fresh on each
+   * evaluation so a runtime prefs flip takes effect without a restart.
+   * Defaults to `() => true` when omitted. */
+  isAutoTitleEnabled?: () => boolean;
 }
 
 const DEFAULT_EVENTS_RETENTION_DAYS = 30;
@@ -84,6 +93,7 @@ export class TranscriptMonitor {
   private eventsIndexRetentionDays: number;
   private autoMinimizeOnClear: boolean;
   private tracker: ProcessTracker | null = null;
+  private readonly titler: Titler;
   /** rootPath → label. Used to translate watcher "sourceRoot" into a
    * human-readable account name on each ingest. */
   private readonly accountLabels: Map<string, string>;
@@ -113,6 +123,14 @@ export class TranscriptMonitor {
     this.eventsIndexRetentionDays = opts.eventsIndexRetentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS;
     this.autoMinimizeOnClear = opts.autoMinimizeOnClear ?? true;
     this.tracker = opts.tracker ?? null;
+    const isAutoTitleEnabled = opts.isAutoTitleEnabled ?? (() => true);
+    this.titler = new Titler({
+      getPanel: (panelId) => this.store.panel(panelId),
+      isAutoTitleEnabled,
+      applyAutoTitle: (panelId, proposed) => {
+        for (const d of this.store.applyAutoTitle(panelId, proposed)) this.broadcast(d);
+      },
+    });
     const dir = opts.hookEventsDir === undefined ? defaultEventsDir() : opts.hookEventsDir;
     if (dir) {
       this.hookWatcher = new HookEventWatcher(dir, (e) => this.applyHookEvent(e));
@@ -321,6 +339,9 @@ export class TranscriptMonitor {
       // NOT flip `ended` — a parent session can take another prompt later
       // and shouldn't visually dim on Stop alone.
       this.store.recordSessionEnd(sid, 'hook_stop');
+      // Stop is the strongest "turn complete" signal; bypass the debounce
+      // so the titler fires immediately (if eligibility gates pass).
+      this.titler.scheduleEvaluation(sid, 'stop');
       return;
     }
     if (event.kind === 'subagent_stop') {
@@ -401,6 +422,15 @@ export class TranscriptMonitor {
   ingest(event: Event, sourceRoot?: string): void {
     const accountLabel = sourceRoot ? (this.accountLabels.get(sourceRoot) ?? null) : null;
     for (const delta of this.store.apply(event, { accountLabel })) this.broadcast(delta);
+    // Out-of-band auto-titler trigger sites.
+    if (event.kind === 'user_text') {
+      const text = (event.payload as { text?: string }).text;
+      if (isRealUserText(text)) this.titler.scheduleEvaluation(event.session_id, 'user_text');
+    } else if (event.kind === 'assistant_text') {
+      const text = (event.payload as { text?: string }).text;
+      if (isSubstantiveAssistantText(text))
+        this.titler.scheduleEvaluation(event.session_id, 'assistant_text');
+    }
   }
 
   /** Dev affordance: wipe a panel's in-memory + persisted state, then
@@ -479,6 +509,10 @@ export class TranscriptMonitor {
     // emits another panel_upsert with the theme attached.
     if (delta.op === 'panel_upsert' && delta.panel.cwd && !delta.panel.theme) {
       void this.loadThemeFor(delta.panel.id, delta.panel.cwd);
+    }
+    // Drop any pending titler timer when a panel is reaped.
+    if (delta.op === 'panel_remove') {
+      this.titler.dispose(delta.panel_id);
     }
   }
 
