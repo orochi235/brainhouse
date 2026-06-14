@@ -183,19 +183,24 @@ function Bubble({
       className={classNames(item.canceled && 'canceled')}
       onClick={() => onBubbleClick?.(item.event)}
     >
-      {reply && (
-        <button
-          type="button"
-          className="reply-quote"
-          title="Jump to the original"
-          onClick={(e) => {
-            e.stopPropagation();
-            onReplyJump?.(reply.refUuid);
-          }}
-        >
-          ↩ {reply.quote}
-        </button>
-      )}
+      {reply &&
+        (onReplyJump ? (
+          <button
+            type="button"
+            className="reply-quote"
+            title="Jump to the original"
+            onClick={(e) => {
+              e.stopPropagation();
+              onReplyJump(reply.refUuid);
+            }}
+          >
+            ↩ {reply.quote}
+          </button>
+        ) : (
+          // No jump handler wired (e.g. inside the lightbox itself) — show the
+          // quote as static context rather than a dead-looking button.
+          <span className="reply-quote reply-quote-static">↩ {reply.quote}</span>
+        ))}
       <div
         className={classNames(
           'bubble',

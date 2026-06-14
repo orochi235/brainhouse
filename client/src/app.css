@@ -2395,6 +2395,15 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   color: color-mix(in srgb, currentColor 80%, transparent);
   text-decoration: underline;
 }
+/* Static variant — rendered when there's no jump handler (e.g. the quote
+   shown inside the lightbox itself); same look, but not interactive. */
+.reply-quote-static {
+  cursor: default;
+}
+.reply-quote-static:hover {
+  color: color-mix(in srgb, currentColor 55%, transparent);
+  text-decoration: none;
+}
 /* Compact stand-in for a raw <task-notification> record. */
 .notification-anchor {
   font-size: 0.72rem;
