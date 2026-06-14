@@ -35,6 +35,10 @@ export interface MemSample {
   /** measureUserAgentSpecificMemory() total, MB — null unless the API is
    * available (cross-origin isolated). Backfilled async after the sample. */
   uaMemMB: number | null;
+  /** Per-type byte breakdown (MB) from measureUserAgentSpecificMemory —
+   * e.g. { JavaScript, DOM, Canvas, Shared }. The lever for "which bucket
+   * is growing" when the JS heap stays flat. Null until backfilled. */
+  uaBreakdownMB: Record<string, number> | null;
 }
 
 const RING_MAX = 5000;
@@ -60,15 +64,22 @@ function takeSample(): MemSample {
     images: document.querySelectorAll('img').length,
     canvases: document.querySelectorAll('canvas').length,
     uaMemMB: null,
+    uaBreakdownMB: null,
   };
 }
 
+interface UaMemResult {
+  bytes: number;
+  breakdown: Array<{ bytes: number; types: string[] }>;
+}
+
 /** Best-effort detailed breakdown — only resolves where the API exists
- * (cross-origin isolated contexts). Backfills the sample in place. */
+ * (cross-origin isolated contexts). Backfills the sample in place with the
+ * total and a per-type aggregate (JavaScript / DOM / Canvas / Shared / …). */
 function backfillUaMem(sample: MemSample): void {
   const measure = (
     performance as Performance & {
-      measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>;
+      measureUserAgentSpecificMemory?: () => Promise<UaMemResult>;
     }
   ).measureUserAgentSpecificMemory;
   if (typeof measure !== 'function') return;
@@ -76,6 +87,15 @@ function backfillUaMem(sample: MemSample): void {
     .call(performance)
     .then((r) => {
       sample.uaMemMB = mb(r.bytes);
+      const byType: Record<string, number> = {};
+      for (const entry of r.breakdown ?? []) {
+        // Entries with no types are unattributed; bucket them as "Other".
+        const key = entry.types.length ? entry.types.join('+') : 'Other';
+        byType[key] = (byType[key] ?? 0) + entry.bytes;
+      }
+      for (const k of Object.keys(byType)) byType[k] = mb(byType[k] ?? 0);
+      sample.uaBreakdownMB = byType;
+      console.debug(`[mem] t=${sample.t}s uaTotal=${sample.uaMemMB}MB breakdown=`, byType);
     })
     .catch(() => {});
 }

@@ -65,6 +65,15 @@ async function main() {
     },
   });
 
+  // Cross-origin isolation so the client's measureUserAgentSpecificMemory()
+  // telemetry works (it gates on crossOriginIsolated). COEP: credentialless
+  // keeps cross-origin subresources loading (without credentials) rather than
+  // blocking them. Remove this hook to restore normal cross-origin loading.
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('Cross-Origin-Opener-Policy', 'same-origin');
+    reply.header('Cross-Origin-Embedder-Policy', 'credentialless');
+  });
+
   await app.register(fastifyTRPCPlugin, {
     prefix: '/trpc',
     trpcOptions: {
