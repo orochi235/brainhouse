@@ -76,7 +76,13 @@ export async function listProcesses(): Promise<PsRow[]> {
   return parsePsOutput(stdout);
 }
 
-export async function listListeningPorts(): Promise<PortRow[]> {
+/** Returns the listening-socket rows, or `null` when the lsof call
+ * itself failed (timeout under load, fork/exec storm, spawn error). The
+ * `null` vs `[]` distinction matters: a genuine empty result means "no
+ * listeners," but a failure means "we don't know" — and the port
+ * sweeper must NOT treat the latter as "every port disappeared," or
+ * every network row flickers out and back on the next good sample. */
+export async function listListeningPorts(): Promise<PortRow[] | null> {
   try {
     const { stdout } = await execFileAsync(
       'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pPn'],
@@ -84,7 +90,7 @@ export async function listListeningPorts(): Promise<PortRow[]> {
     );
     return parseLsofOutput(stdout);
   } catch {
-    return [];
+    return null;
   }
 }
 

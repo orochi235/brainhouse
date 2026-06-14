@@ -110,6 +110,13 @@ export class ProcessTracker extends EventEmitter {
     if (this.subscribers === 0) return;
     try {
       const portRows = await this.listPorts();
+      // A null result means the lsof call failed (timeout / fork-exec
+      // storm), NOT that every listener vanished. Bail without touching
+      // the cache — otherwise we'd re-broadcast `ports: []` for every
+      // row and the Network view oscillates between its real port-binders
+      // and zero on each bad sample. (Same stickiness rationale as the
+      // is_http cache below.)
+      if (portRows === null) return;
       // Direct-listener ports keyed by pid. Each port also carries the
       // latest cached `is_http` result (null when never probed); the
       // probe itself runs out-of-band below.
