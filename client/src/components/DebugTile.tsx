@@ -194,6 +194,14 @@ function ClientContents({
       orphans.push(p);
     }
   }
+  // Total subagent panels regardless of where they're routed. The
+  // "nested" count below only catches subagents rendered in the in-card
+  // nested slot; subagents shown as their own grid/dock windows land in
+  // those buckets instead, so without this total the summary reads
+  // "nested as subagent = 0" even when subagents are clearly on screen.
+  const subagentCount = Array.from(allPanels.values()).filter(
+    (p) => p.kind === 'subagent',
+  ).length;
   const serverPanels = serverState ? new Set(serverState.panels.map((p) => p.id)) : null;
 
   const now = Date.now() / 1000;
@@ -358,7 +366,11 @@ function ClientContents({
               <td>{dockIds.length}</td>
             </tr>
             <tr>
-              <td>nested as subagent</td>
+              <td>subagents (any slot)</td>
+              <td>{subagentCount}</td>
+            </tr>
+            <tr>
+              <td>rendered nested under parent</td>
               <td>{nestedSubs.length}</td>
             </tr>
             <tr>
