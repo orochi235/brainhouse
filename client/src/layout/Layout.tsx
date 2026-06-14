@@ -12,7 +12,7 @@ import {
 } from 'windease/react';
 import { useEffect } from 'react';
 import { layoutChrome, type Slots, SlotsProvider } from './chrome.tsx';
-import { computeTopRatio } from './fit.ts';
+import { computeTopRatio, type FitState, nextFitRatio } from './fit.ts';
 import { layoutStore, ROOT_ID, setSplitRatio, WORKAREA_ID } from './store.ts';
 
 const SIDEBAR_MAX_PX = 400;
@@ -58,7 +58,7 @@ export function Layout({ slots }: LayoutProps) {
   // write — that's a manual drag, and the user now owns the size.
   useEffect(() => {
     let active = true;
-    let lastApplied: number | null = null;
+    let fitState: FitState = { last: null, prev: null };
     let raf = 0;
     let ro: ResizeObserver | null = null;
     let mo: MutationObserver | null = null;
@@ -98,10 +98,12 @@ export function Layout({ slots }: LayoutProps) {
         maxFraction: TOP_MAX_FRACTION,
       });
       if (ratio === null) return;
-      // Skip sub-pixel rewrites so we don't thrash the store.
-      if (lastApplied !== null && Math.abs(ratio - lastApplied) < 0.5 / window.innerHeight) return;
-      lastApplied = ratio;
-      setSplitRatio(ROOT_ID, ratio);
+      // Gate the write through the stability helper: skips sub-pixel rewrites
+      // and damps the wrap-induced two-value oscillation (see nextFitRatio).
+      const { apply, state } = nextFitRatio(fitState, ratio, 0.5 / window.innerHeight);
+      fitState = state;
+      if (apply === null) return;
+      setSplitRatio(ROOT_ID, apply);
     };
 
     // Observe the unstretched inner pieces (not the flex-stretched panel
@@ -139,8 +141,8 @@ export function Layout({ slots }: LayoutProps) {
     const off = layoutStore.events.on('container.stateChanged', (e) => {
       if (e.id !== ROOT_ID) return;
       const to = (e.to as { ratio?: number } | undefined)?.ratio;
-      if (to === undefined || lastApplied === null) return;
-      if (Math.abs(to - lastApplied) > 1e-6) active = false;
+      if (to === undefined || fitState.last === null) return;
+      if (Math.abs(to - fitState.last) > 1e-6) active = false;
     });
 
     const onResize = () => fit();
