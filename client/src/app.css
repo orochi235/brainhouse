@@ -1222,25 +1222,25 @@ body.hide-context .panel-context {
 /* Mini panels size to fit their contents (header + optional checklist).
  * The transcript body is hidden — anything inside the header is responsible
  * for its own abbreviation. */
-.panel.status-mini:not(.project-widget),
+.panel.render-mini:not(.project-widget),
 .session-dock .panel {
   flex: 0 0 auto;
   max-width: 100%;
   cursor: grab;
 }
-.panel.status-mini > .panel-body,
+.panel.render-mini > .panel-body,
 .session-dock .panel > .panel-body {
   display: none;
 }
-.panel.status-mini .panel-header {
+.panel.render-mini .panel-header {
   align-items: flex-start;
 }
-.panel.status-mini .panel-header > .title-bar-body {
+.panel.render-mini .panel-header > .title-bar-body {
   flex: 1 1 100%;
   width: 100%;
   min-width: 0;
 }
-.panel.status-mini .panel-title {
+.panel.render-mini .panel-title {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -1252,7 +1252,7 @@ body.hide-context .panel-context {
   flex-shrink: 0;
   white-space: nowrap;
 }
-.panel.status-mini:active,
+.panel.render-mini:active,
 .session-dock .panel:active {
   cursor: grabbing;
 }
@@ -1753,42 +1753,28 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   color: #ef4444;
   border-color: #ef4444;
 }
-/* Trash on mini panels: hidden until you hover the panel itself. Keeps
- * the dock clean unless you're actually targeting a panel for cleanup.
- * Focus-within keeps it reachable for keyboard users. */
-.panel.status-mini .panel-trash {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-.panel.status-mini:hover .panel-trash,
-.panel.status-mini:focus-within .panel-trash {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 /* Hover-revealed action toolbar for mini panels. Sits along the bottom
  * edge of the mini row; the panel's overflow:hidden clips it when
  * translated below. */
-.panel.status-mini .mini-hover-toolbar {
+.panel.render-mini .mini-hover-toolbar {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  height: 24px;
+  height: 28px;
   transform: translateY(100%);
   opacity: 0;
   transition:
-    transform 150ms ease-out,
-    opacity 150ms ease-out;
+    transform 80ms ease-out,
+    opacity 80ms ease-out;
   pointer-events: none;
   z-index: 2;
 }
 
-.panel.status-mini:hover .mini-hover-toolbar,
-.panel.status-mini:focus-within .mini-hover-toolbar {
+.panel.render-mini:hover .mini-hover-toolbar,
+.panel.render-mini:focus-within .mini-hover-toolbar {
   transform: translateY(0);
   opacity: 1;
   pointer-events: auto;
@@ -1808,8 +1794,8 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
 
 .mini-hover-toolbar__btn .svg-glyph {
   display: inline-flex;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
 }
 
 .mini-hover-toolbar__btn .svg-glyph svg {
