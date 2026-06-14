@@ -41,14 +41,22 @@ export function ThreadedReplyLightbox({
   useEffect(() => {
     if (scrolled.current) return;
     if (!events.some((e) => e.uuid === refUuid)) return;
-    const raf = requestAnimationFrame(() => {
+    let raf = 0;
+    let attempts = 0;
+    const tryScroll = () => {
       const el = document.querySelector<HTMLElement>(`[data-anchor-uuid="${CSS.escape(refUuid)}"]`);
-      if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('focus-pulse');
-      window.setTimeout(() => el.classList.remove('focus-pulse'), 900);
-      scrolled.current = true;
-    });
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('focus-pulse');
+        window.setTimeout(() => el.classList.remove('focus-pulse'), 900);
+        scrolled.current = true;
+        return;
+      }
+      // Node may not be committed yet on the first frame(s); retry a bounded
+      // number of times before giving up so a backfilled target isn't missed.
+      if (attempts++ < 10) raf = requestAnimationFrame(tryScroll);
+    };
+    raf = requestAnimationFrame(tryScroll);
     return () => cancelAnimationFrame(raf);
   }, [events, refUuid]);
 
