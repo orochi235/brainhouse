@@ -126,8 +126,21 @@ export function Layout({ slots }: LayoutProps) {
         raf = requestAnimationFrame(attach);
         return;
       }
+      let hadPanel = !!slot.querySelector('.processes-panel');
       ro = new ResizeObserver(() => fit());
       mo = new MutationObserver(() => {
+        // Toggling the ProcessesPanel on/off is a structural content
+        // change, not a content-size tweak: any prior manual gutter drag
+        // (which parked `active` at false) no longer applies. Re-arm the
+        // auto-fit and clear its history so the top resizes to the new
+        // content — otherwise a stale ratio leaves a dead gap below the
+        // topbar when the panel is off (or clips it on the next resize).
+        const hasPanel = !!slot.querySelector('.processes-panel');
+        if (hasPanel !== hadPanel) {
+          hadPanel = hasPanel;
+          active = true;
+          fitState = { last: null, prev: null };
+        }
         reobserve(slot);
         fit();
       });
