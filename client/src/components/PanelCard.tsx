@@ -27,6 +27,7 @@ import { MiniHoverToolbar } from './MiniHoverToolbar.tsx';
 import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
 import { StatusLight } from './StatusLight.tsx';
 import { SvgGlyph } from './SvgGlyph.tsx';
+import { ThreadedReplyLightbox } from './ThreadedReplyLightbox.tsx';
 import { TimelineLightbox } from './TimelineLightbox.tsx';
 import { TitleBar } from './TitleBar.tsx';
 import { TokenTooltip } from './TokenTooltip.tsx';
@@ -397,6 +398,11 @@ export function PanelCard({
               startedAt={panel.started_at}
               cwd={panel.cwd}
               onBubbleClick={onBubbleClick}
+              onReplyJump={(refUuid) =>
+                lightbox.open(<ThreadedReplyLightbox panel={panel} refUuid={refUuid} />, {
+                  theme: panel.theme,
+                })
+              }
             />
             {waiting && (
               <ThinkingIndicator started={lastUserActivity(items, panel.last_event_at)} />
