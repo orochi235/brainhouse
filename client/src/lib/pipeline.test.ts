@@ -756,10 +756,7 @@ describe('preprocessEvents', () => {
     });
   });
 
-  // tagBtwUserText is temporarily disabled in the registry — the /btw
-  // detection has been firing on the wrong assistant bubble. Re-enable the
-  // transform + this suite together when the heuristic is reworked.
-  describe.skip('/btw queued prompt → marks next assistant bubble', () => {
+  describe('/btw queued prompt → marks next assistant bubble', () => {
     const queueOp = (content: string) =>
       ev('meta', {
         record_type: 'queue-operation',
@@ -786,10 +783,10 @@ describe('preprocessEvents', () => {
       if (btwUser?.type !== 'bubble' || btwAsst?.type !== 'bubble') {
         throw new Error('expected bubbles');
       }
-      expect(btwUser.btw).toBeUndefined();
+      expect(btwUser.replyTo).toBeUndefined();
       const text = btwUser.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
       expect(text).toBe('also rename foo to bar');
-      expect(btwAsst.btw).toBe(true);
+      expect(btwAsst.replyTo?.kind).toBe('btw');
     });
 
     it('matches against trimmed text (whitespace tolerated on either side)', () => {
@@ -802,8 +799,8 @@ describe('preprocessEvents', () => {
       expect(bubbles).toHaveLength(2);
       const [u, a] = bubbles;
       if (u?.type !== 'bubble' || a?.type !== 'bubble') throw new Error('expected bubbles');
-      expect(u.btw).toBeUndefined();
-      expect(a.btw).toBe(true);
+      expect(u.replyTo).toBeUndefined();
+      expect(a.replyTo?.kind).toBe('btw');
     });
 
     it('non-/btw user_text passes through without flagging the next assistant', () => {
@@ -812,7 +809,7 @@ describe('preprocessEvents', () => {
       expect(bubbles).toHaveLength(2);
       for (const b of bubbles) {
         if (b.type !== 'bubble') throw new Error('expected bubble');
-        expect(b.btw).toBeUndefined();
+        expect(b.replyTo).toBeUndefined();
       }
     });
 
@@ -839,10 +836,10 @@ describe('preprocessEvents', () => {
       const [u, a] = bubbles;
       if (u?.type !== 'bubble' || a?.type !== 'bubble') throw new Error('expected bubbles');
       expect(u.role).toBe('user');
-      expect(u.btw).toBeUndefined();
+      expect(u.replyTo).toBeUndefined();
       const text = u.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
       expect(text).toBe('what does that first part mean?');
-      expect(a.btw).toBe(true);
+      expect(a.replyTo?.kind).toBe('btw');
     });
 
     it('queued_command attachment alone still flags the next assistant', () => {
@@ -860,7 +857,7 @@ describe('preprocessEvents', () => {
       expect(bubbles).toHaveLength(2);
       const a = bubbles[1];
       if (a?.type !== 'bubble') throw new Error('expected bubble');
-      expect(a.btw).toBe(true);
+      expect(a.replyTo?.kind).toBe('btw');
     });
 
     it('non-queued attachment shapes fall through (defaultEventItem absorbs them)', () => {
@@ -890,9 +887,9 @@ describe('preprocessEvents', () => {
         asstText('reply two'),
       ]);
       const bubbles = items.filter((i) => i.type === 'bubble');
-      const flags = bubbles.map((i) => (i.type === 'bubble' ? i.btw : undefined));
+      const flags = bubbles.map((i) => (i.type === 'bubble' ? i.replyTo?.kind : undefined));
       // user, assistant(btw), user, assistant(btw)
-      expect(flags).toEqual([undefined, true, undefined, true]);
+      expect(flags).toEqual([undefined, 'btw', undefined, 'btw']);
     });
 
     it('ignores non-enqueue queue-operation records (dequeue etc.)', () => {
@@ -908,7 +905,7 @@ describe('preprocessEvents', () => {
       expect(bubbles).toHaveLength(2);
       for (const b of bubbles) {
         if (b.type !== 'bubble') throw new Error('expected bubble');
-        expect(b.btw).toBeUndefined();
+        expect(b.replyTo).toBeUndefined();
       }
     });
 
@@ -922,8 +919,55 @@ describe('preprocessEvents', () => {
         asstText('reply'),
       ]);
       const bubbles = items.filter((i) => i.type === 'bubble');
-      const flags = bubbles.map((i) => (i.type === 'bubble' ? i.btw : undefined));
+      const flags = bubbles.map((i) => (i.type === 'bubble' ? i.replyTo?.kind : undefined));
       expect(flags).toEqual([undefined, undefined]);
+    });
+
+    it('task-notification queued_command emits a compact anchor (not a user bubble) and sets kind:task', () => {
+      const notif =
+        '<task-notification>\n' +
+        '  <task-id>bi525uvu1</task-id>\n' +
+        '  <status>completed</status>\n' +
+        '  <summary>Background command "Search for Homebrew formula" completed (exit code 0)</summary>\n' +
+        '</task-notification>';
+      const { items } = preprocessEvents([
+        ev('meta', {
+          record_type: 'attachment',
+          raw: { type: 'attachment', attachment: { type: 'queued_command', prompt: notif } },
+        }),
+        asstText('Found it — formula is `foo`.'),
+      ]);
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      expect(bubbles).toHaveLength(1); // only the assistant reply
+      const anchor = items.find((i) => i.type === 'notification-anchor');
+      expect(anchor).toMatchObject({
+        type: 'notification-anchor',
+        summary: 'Background command "Search for Homebrew formula" completed (exit code 0)',
+      });
+      const asst = bubbles[0];
+      if (asst?.type !== 'bubble') throw new Error('expected assistant bubble');
+      expect(asst.replyTo).toMatchObject({
+        kind: 'task',
+        quote: 'Background command "Search for Homebrew formula" completed (exit code 0)',
+      });
+      if (anchor?.type !== 'notification-anchor') throw new Error('expected anchor');
+      expect(asst.replyTo?.refUuid).toBe(anchor.anchorUuid);
+    });
+
+    it('a normal top-line user_text clears a pending task reply', () => {
+      const notif = '<task-notification><summary>job done</summary></task-notification>';
+      const { items } = preprocessEvents([
+        ev('meta', {
+          record_type: 'attachment',
+          raw: { type: 'attachment', attachment: { type: 'queued_command', prompt: notif } },
+        }),
+        userText('a brand new prompt'),
+        asstText('replying to the new prompt'),
+      ]);
+      const bubbles = items.filter((i) => i.type === 'bubble');
+      const asst = bubbles[bubbles.length - 1];
+      if (asst?.type !== 'bubble') throw new Error('expected assistant bubble');
+      expect(asst.replyTo).toBeUndefined();
     });
   });
 

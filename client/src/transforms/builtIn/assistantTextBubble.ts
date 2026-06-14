@@ -44,14 +44,14 @@ export const assistantTextBubble: Stage1Transform = {
       last.ack = text;
       return true;
     }
-    const btw = ctx.scratch.pendingBtwAssistant;
-    ctx.scratch.pendingBtwAssistant = false;
+    const replyTo = ctx.scratch.pendingReply;
+    ctx.scratch.pendingReply = null;
     items.push({
       type: 'bubble',
       event,
       role: 'assistant',
       parts: [{ kind: 'text', text: event.payload.text ?? '' }],
-      ...(btw ? { btw: true } : {}),
+      ...(replyTo ? { replyTo } : {}),
     });
     return true;
   },
