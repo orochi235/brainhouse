@@ -1100,4 +1100,77 @@ describe('SessionStore', () => {
     // Not found: unknown panel
     expect(store.eventByUuid('no-such-panel', 'known-uuid')).toBeNull();
   });
+
+  describe('subagent title from parent Task join', () => {
+    const taskEvent = (toolUseId: string, description: string, subagentType: string) =>
+      ev('tool_use', {
+        session_id: 'S',
+        uuid: `task-${toolUseId}`,
+        payload: {
+          tool_use_id: toolUseId,
+          name: 'Task',
+          input: { description, subagent_type: subagentType },
+        },
+      });
+
+    it('titles a subagent from the parent Task tool_use (parent-first order)', () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      store.apply(taskEvent('tu1', 'Audit the auth flow', 'general-purpose'));
+      store.apply(
+        ev('user_text', {
+          session_id: 'S',
+          agent_id: 'agent-1',
+          uuid: 'su1',
+          payload: { text: 'go', source_tool_use_id: 'tu1' },
+        }),
+      );
+      const sub = store.panel('agent-1');
+      expect(sub?.kind).toBe('subagent');
+      expect(sub?.title).toBe('Audit the auth flow');
+      expect(sub?.agent_type).toBe('general-purpose');
+    });
+
+    it('resolves when the parent Task arrives after the child (child-first order)', () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      store.apply(
+        ev('user_text', {
+          session_id: 'S',
+          agent_id: 'agent-2',
+          uuid: 'su1',
+          payload: { text: 'go', source_tool_use_id: 'tu2' },
+        }),
+      );
+      expect(store.panel('agent-2')?.title).toContain('subagent ·');
+      store.apply(taskEvent('tu2', 'Map the cache layer', 'Explore'));
+      expect(store.panel('agent-2')?.title).toBe('Map the cache layer');
+      expect(store.panel('agent-2')?.agent_type).toBe('Explore');
+    });
+
+    it("does not override a subagent's own meta title", () => {
+      const store = new SessionStore({ clock: new FakeClock().now });
+      store.apply(
+        ev('meta', {
+          session_id: 'S',
+          agent_id: 'agent-3',
+          uuid: 'm1',
+          payload: {
+            record_type: 'subagent-meta',
+            raw: { agentType: 'Plan', description: 'Own description' },
+          },
+        }),
+      );
+      expect(store.panel('agent-3')?.title).toBe('Own description');
+      store.apply(taskEvent('tu3', 'Different description', 'Explore'));
+      store.apply(
+        ev('user_text', {
+          session_id: 'S',
+          agent_id: 'agent-3',
+          uuid: 'su1',
+          payload: { text: 'go', source_tool_use_id: 'tu3' },
+        }),
+      );
+      expect(store.panel('agent-3')?.title).toBe('Own description');
+      expect(store.panel('agent-3')?.agent_type).toBe('Plan');
+    });
+  });
 });

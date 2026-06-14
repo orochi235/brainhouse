@@ -338,6 +338,7 @@ export class SessionStore {
     }
     const titleBefore = panel.title;
     this.maybeUpdateTitle(panel, event, deltas);
+    this.maybeJoinSubagentTitle(panel, event, deltas);
     this.maybeAdoptCwd(panel, event, deltas);
     deltas.push({ op: 'event_append', panel_id: panel.id, event });
     // Auto-title proposals from in-band events (substantive follow-up
@@ -786,6 +787,81 @@ export class SessionStore {
     }
   }
 
+  /** Recover a subagent's title from the parent's spawning `Task` tool_use
+   * when the subagent has no `.meta.json` of its own (older spawns leave
+   * the panel stuck on the `subagent · <id>` placeholder). The Task call's
+   * `input.description` is the same string the harness writes into the meta
+   * sidecar, and `subagent_type` feeds the agent-type subtitle — so this is
+   * a pure fallback for the same data, joined on the `source_tool_use_id`
+   * the subagent's first message carries. Runs in both directions so it
+   * resolves regardless of whether the parent's Task event or the child
+   * panel is observed first. */
+  private maybeJoinSubagentTitle(panel: Panel, event: Event, deltas: Delta[]): void {
+    // Direction 1: the subagent's first message reveals which Task spawned
+    // it; resolve against the parent (whose Task event is usually already in).
+    if (panel.kind === 'subagent' && event.kind === 'user_text') {
+      const src = event.payload.source_tool_use_id;
+      if (src) this.applyParentTaskTitle(panel, src, deltas);
+      return;
+    }
+    // Direction 2: a parent's Task tool_use lands after the child panel —
+    // title any of this parent's subagents waiting on this tool_use_id.
+    if (event.kind === 'tool_use' && event.payload.name === 'Task') {
+      const tuid = event.payload.tool_use_id;
+      if (!tuid) return;
+      for (const child of this.panels.values()) {
+        if (child.kind !== 'subagent' || child.parent_panel_id !== panel.id) continue;
+        if (subagentSpawnToolUseId(child) === tuid) {
+          this.applyParentTaskTitle(child, tuid, deltas);
+        }
+      }
+    }
+  }
+
+  /** Title a subagent panel from the parent `Task` tool_use identified by
+   * `toolUseId`. No-op unless the lookup succeeds and the panel's title is
+   * still weak (the placeholder or a bare agent-type) and not manually
+   * renamed — the subagent's own meta, when present, always wins (and
+   * carries the same description anyway). */
+  private applyParentTaskTitle(panel: Panel, toolUseId: string, deltas: Delta[]): void {
+    if (panel.manually_renamed || panel.parent_panel_id === null) return;
+    const placeholder = initialTitle(panel.id, 'subagent');
+    const titleIsWeak =
+      panel.title === placeholder ||
+      (panel.agent_type !== null && panel.title === panel.agent_type);
+    // Already fully resolved (real title + known agent type): nothing to do.
+    if (!titleIsWeak && panel.agent_type !== null) return;
+    const parent = this.panels.get(panel.parent_panel_id);
+    if (!parent) return;
+    const task = parent.events.find(
+      (e): e is Extract<Event, { kind: 'tool_use' }> =>
+        e.kind === 'tool_use' &&
+        e.payload.name === 'Task' &&
+        e.payload.tool_use_id === toolUseId,
+    );
+    if (!task) return;
+    const input = (task.payload.input ?? {}) as { description?: string; subagent_type?: string };
+    const description = (input.description ?? '').trim();
+    const subagentType = (input.subagent_type ?? '').trim();
+    let changed = false;
+    if (subagentType && panel.agent_type === null) {
+      panel.agent_type = subagentType;
+      changed = true;
+    }
+    if (description && panel.task_description === null) {
+      panel.task_description = description;
+    }
+    const best = description || subagentType;
+    if (best && titleIsWeak) {
+      const next = best.length > 80 ? `${best.slice(0, 79)}…` : best;
+      if (next !== panel.title) {
+        panel.title = next;
+        changed = true;
+      }
+    }
+    if (changed) deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+  }
+
   /** In-band auto-title trigger. Returns a proposed title, or null when
    * the event isn't a re-title signal.
    *
@@ -1085,6 +1161,18 @@ function initialTitle(panelId: string, kind: PanelKind): string {
     return `subagent · ${short.slice(0, 10)}`;
   }
   return panelId.slice(0, 8);
+}
+
+/** The tool_use_id of the parent `Task` call that spawned a subagent, read
+ * from the `source_tool_use_id` on the subagent's first user message. Null
+ * until that message has been seen (or if it's since been evicted). */
+function subagentSpawnToolUseId(panel: Panel): string | null {
+  for (const e of panel.events) {
+    if (e.kind === 'user_text' && e.payload.source_tool_use_id) {
+      return e.payload.source_tool_use_id;
+    }
+  }
+  return null;
 }
 
 // ---- Panel ↔ Store row conversions ----
