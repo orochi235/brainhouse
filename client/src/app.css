@@ -123,6 +123,11 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
+  /* When the auto-fit caps the slot (TOP_MAX_FRACTION) the panel is shorter
+   * than its content, so it must scroll internally rather than clip. The
+   * base rule sets overflow:hidden for the non-slot context; restore auto
+   * here. */
+  overflow: auto;
 }
 .layout-slot-main > .session-grid,
 .layout-slot-sidebar > .session-dock {

@@ -12,12 +12,16 @@ import {
 } from 'windease/react';
 import { useEffect } from 'react';
 import { layoutChrome, type Slots, SlotsProvider } from './chrome.tsx';
+import { computeTopRatio } from './fit.ts';
 import { layoutStore, ROOT_ID, WORKAREA_ID } from './store.ts';
 
 const SIDEBAR_MAX_PX = 400;
 /** Hard floor so a too-short measurement (e.g. ProcessesPanel mid-load
  * with no rows yet) doesn't pin the gutter on top of the topbar. */
 const TOP_MIN_PX = 48;
+/** Cap the top at this fraction of the viewport so a long process list
+ * scrolls inside ProcessesPanel instead of eating the workspace below. */
+const TOP_MAX_FRACTION = 0.4;
 
 const strategies = {
   binarySplit,
@@ -30,62 +34,105 @@ export interface LayoutProps {
 }
 
 export function Layout({ slots }: LayoutProps) {
-  // On first paint, shrink the top section to fit its actual content
-  // (topbar + ProcessesPanel-if-open) instead of the default ratio.
-  // Children of `.layout-slot-top` are non-flex-stretching, so their
-  // offsetHeight reflects natural height.
+  // Keep the top section sized to its actual content (topbar +
+  // ProcessesPanel-if-open) by writing the root binarySplit ratio. The
+  // top's children don't flex-grow vertically, so their offsetHeights are
+  // intrinsic; we sum those to get the natural height and convert it to a
+  // ratio (clamped to [TOP_MIN_PX, TOP_MAX_FRACTION] — see fit.ts).
   //
-  // Re-fits via ResizeObserver while content is still settling
-  // (ProcessesPanel rows stream in async after the subscription
-  // connects). Stops the first time something other than this hook
-  // changes the root ratio — once the user drags the gutter, they
-  // own the size.
+  // Three things made earlier versions fail and are handled here:
+  //  1. The slot is mounted by a nested windease Container that may not
+  //     exist when this effect first runs — so we retry across frames
+  //     until it appears instead of bailing forever (which left the slot
+  //     stuck at the default ratio).
+  //  2. ProcessesPanel is `flex: 1` and stretches to the slot, so observing
+  //     ITS box re-fires on our own writes (and fights a manual drag). We
+  //     observe the unstretched inner pieces (topbar, panel header/table)
+  //     instead, which only change on real content changes.
+  //  3. ratio is a viewport fraction, so it must be recomputed on window
+  //     resize.
+  // Stops refitting the first time the ratio changes to a value we didn't
+  // write — that's a manual drag, and the user now owns the size.
   useEffect(() => {
-    const slot = document.querySelector<HTMLElement>('.layout-slot-top');
-    if (!slot) return;
-
     let active = true;
     let lastApplied: number | null = null;
+    let raf = 0;
+    let ro: ResizeObserver | null = null;
+    let mo: MutationObserver | null = null;
 
-    const fit = () => {
-      if (!active) return;
-      const vh = window.innerHeight;
-      if (vh <= 0) return;
-      // Sum the children's TRUE natural heights:
-      // - Topbar (and any other simple block): offsetHeight is fine.
-      // - ProcessesPanel: it's `flex: 1 1 auto`, so its own offsetHeight /
-      //   scrollHeight both report the *box* size assigned by flex (the
-      //   slot height minus the topbar) — that's a circular reading.
-      //   The panel's natural size lives in its inner pieces: the
-      //   header chrome + the table itself, which are unstretched.
+    const measure = (slot: HTMLElement): number => {
       let naturalH = 0;
       for (const c of Array.from(slot.children)) {
         const el = c as HTMLElement;
         if (el.classList.contains('processes-panel')) {
-          // Read the panel's intrinsic content, not its flex-stretched box.
-          const header = el.querySelector<HTMLElement>(':scope > header');
-          const table = el.querySelector<HTMLElement>(':scope > table');
-          const padTop = parseFloat(getComputedStyle(el).paddingTop) || 0;
-          const padBot = parseFloat(getComputedStyle(el).paddingBottom) || 0;
-          const marTop = parseFloat(getComputedStyle(el).marginTop) || 0;
-          const marBot = parseFloat(getComputedStyle(el).marginBottom) || 0;
-          naturalH +=
-            (header?.offsetHeight ?? 0) +
-            (table?.offsetHeight ?? 0) +
-            padTop + padBot + marTop + marBot;
+          // Intrinsic content = sum of the panel's (unstretched) children
+          // plus the panel's own box chrome. Robust to header+table vs
+          // header+empty-state, and not circular with the flex-stretched box.
+          const cs = getComputedStyle(el);
+          const chrome =
+            (parseFloat(cs.paddingTop) || 0) +
+            (parseFloat(cs.paddingBottom) || 0) +
+            (parseFloat(cs.marginTop) || 0) +
+            (parseFloat(cs.marginBottom) || 0) +
+            (parseFloat(cs.borderTopWidth) || 0) +
+            (parseFloat(cs.borderBottomWidth) || 0);
+          let inner = 0;
+          for (const piece of Array.from(el.children)) inner += (piece as HTMLElement).offsetHeight;
+          naturalH += inner + chrome;
         } else {
           naturalH += el.offsetHeight;
         }
       }
-      if (naturalH <= 0) return; // children not yet laid out
-      const target = Math.max(TOP_MIN_PX, naturalH);
-      const ratio = Math.min(0.95, target / vh);
+      return naturalH;
+    };
+
+    const fit = () => {
+      if (!active) return;
+      const slot = document.querySelector<HTMLElement>('.layout-slot-top');
+      if (!slot) return;
+      const ratio = computeTopRatio(measure(slot), window.innerHeight, {
+        minPx: TOP_MIN_PX,
+        maxFraction: TOP_MAX_FRACTION,
+      });
+      if (ratio === null) return;
+      // Skip sub-pixel rewrites so we don't thrash the store.
+      if (lastApplied !== null && Math.abs(ratio - lastApplied) < 0.5 / window.innerHeight) return;
       lastApplied = ratio;
       layoutStore.setContainerState(ROOT_ID, { ratio });
     };
 
-    // Stop refitting the moment user (or anyone else) changes the ratio
-    // to a value we didn't write — that's a manual drag.
+    // Observe the unstretched inner pieces (not the flex-stretched panel
+    // box), re-targeting whenever the slot's subtree changes.
+    const reobserve = (slot: HTMLElement) => {
+      ro?.disconnect();
+      for (const c of Array.from(slot.children)) {
+        const el = c as HTMLElement;
+        if (el.classList.contains('processes-panel')) {
+          for (const piece of Array.from(el.children)) ro?.observe(piece as Element);
+        } else {
+          ro?.observe(el);
+        }
+      }
+    };
+
+    const attach = () => {
+      const slot = document.querySelector<HTMLElement>('.layout-slot-top');
+      if (!slot) {
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      ro = new ResizeObserver(() => fit());
+      mo = new MutationObserver(() => {
+        reobserve(slot);
+        fit();
+      });
+      reobserve(slot);
+      mo.observe(slot, { childList: true, subtree: true });
+      fit();
+    };
+
+    // Stop refitting the moment the ratio changes to a value we didn't
+    // write — that's a manual drag.
     const off = layoutStore.events.on('container.stateChanged', (e) => {
       if (e.id !== ROOT_ID) return;
       const to = (e.to as { ratio?: number } | undefined)?.ratio;
@@ -93,36 +140,16 @@ export function Layout({ slots }: LayoutProps) {
       if (Math.abs(to - lastApplied) > 1e-6) active = false;
     });
 
-    // ResizeObserver covers the topbar growing (e.g. font swap). For
-    // the ProcessesPanel we watch its subtree (rows arriving don't
-    // change the panel's outer box, only its scrollHeight), so a
-    // separate MutationObserver picks those up.
-    const ro = new ResizeObserver(() => fit());
-    for (const child of Array.from(slot.children)) ro.observe(child);
-
-    const contentMo = new MutationObserver(() => fit());
-    const observePanel = () => {
-      const panel = slot.querySelector('.processes-panel');
-      if (panel) contentMo.observe(panel, { childList: true, subtree: true });
-    };
-    observePanel();
-
-    // Children may be added/removed (ProcessesPanel toggle on/off).
-    const structureMo = new MutationObserver(() => {
-      for (const child of Array.from(slot.children)) ro.observe(child);
-      contentMo.disconnect();
-      observePanel();
-      fit();
-    });
-    structureMo.observe(slot, { childList: true });
-
-    fit();
+    const onResize = () => fit();
+    window.addEventListener('resize', onResize);
+    attach();
 
     return () => {
       active = false;
-      ro.disconnect();
-      contentMo.disconnect();
-      structureMo.disconnect();
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+      mo?.disconnect();
+      window.removeEventListener('resize', onResize);
       off();
     };
   }, []);
