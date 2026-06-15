@@ -433,6 +433,41 @@ export class TranscriptMonitor {
     }
   }
 
+  /** Resolve the transcript JSONL that owns a panel's events, or null if
+   * it can't be found on disk. Read-only — no store/broadcast side
+   * effects. Used by the `panelHistory` query for lazy scroll-back.
+   *
+   * Parent panels are `<root>/<encoded cwd>/<panelId>.jsonl`. Subagent
+   * panel ids are the `agent-` prefix-stripped basename (see
+   * `panelIdentity`), so their file is `agent-<panelId>.jsonl` under the
+   * owning parent's `subagents/` dir — we try that first, then the bare
+   * form for robustness. */
+  sourceFileForPanel(panelId: string): string | null {
+    const panel = this.store.panel(panelId);
+    if (!panel) return null;
+    const owner =
+      panel.kind === 'parent'
+        ? panel
+        : panel.parent_panel_id
+          ? this.store.panel(panel.parent_panel_id)
+          : null;
+    if (!owner?.cwd) return null;
+    const encoded = encodeCwdToProjectDir(owner.cwd);
+    for (const root of this.watcher.roots) {
+      if (panel.kind === 'parent') {
+        const candidate = path.join(root, encoded, `${panelId}.jsonl`);
+        if (existsSync(candidate)) return candidate;
+      } else {
+        const dir = path.join(root, encoded, owner.id, 'subagents');
+        for (const name of [`agent-${panelId}.jsonl`, `${panelId}.jsonl`]) {
+          const candidate = path.join(dir, name);
+          if (existsSync(candidate)) return candidate;
+        }
+      }
+    }
+    return null;
+  }
+
   /** Dev affordance: wipe a panel's in-memory + persisted state, then
    * re-read its JSONL from byte 0 so it reconstructs from the log under
    * the current set of transforms / derivation rules. Cascades to all
