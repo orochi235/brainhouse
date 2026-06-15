@@ -15,6 +15,7 @@ import { projectLabel } from '../lib/project.ts';
 import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
 import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
+import { useScrollBackfill } from '../lib/useScrollBackfill.ts';
 import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import type { TraceAccumulator } from '../transforms/runner.ts';
 import { useTraceStore, useTracingFlag } from '../transforms/traceContext.tsx';
@@ -109,6 +110,21 @@ export function PanelCard({
   const lightbox = useLightbox();
   const articleRef = useRef<HTMLElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  // Lazy scroll-back: the live window (panel.events) is capped, but the
+  // server can re-parse older events from the transcript JSONL on demand.
+  // `mergedEvents` prepends any fetched history; scrolling near the top
+  // fetches more, returning to the bottom drops the buffer.
+  const hasOlderHistory = panel.event_count > panel.events.length;
+  const {
+    mergedEvents,
+    reset: resetBackfill,
+    onScroll: onBackfillScroll,
+  } = useScrollBackfill({
+    bodyRef,
+    panelId: panel.id,
+    liveEvents: panel.events,
+    hasMore: hasOlderHistory,
+  });
   /** Inner wrapper around the body's children, sized by content. We observe
    * this with ResizeObserver to catch height changes that don't go through
    * the `events.length` effect — async markdown/hljs rendering, tool-result
@@ -381,6 +397,11 @@ export function PanelCard({
             const el = e.currentTarget;
             // 32px slack so a near-bottom scroll still counts as "at bottom".
             stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+            // Scroll-back: fetch older history when near the top; returning
+            // to the bottom drops the backfill buffer so deep scroll-back
+            // never becomes standing memory.
+            onBackfillScroll();
+            if (stickToBottomRef.current) resetBackfill();
             // Persist position for refresh-recovery (sessionStorage, 60s TTL).
             // Debounced via the same requestAnimationFrame the browser is
             // already firing for scroll, so we don't write storage on every
@@ -395,7 +416,7 @@ export function PanelCard({
         >
           <div className="panel-body-content" ref={contentRef}>
             <EventList
-              events={panel.events}
+              events={mergedEvents}
               startedAt={panel.started_at}
               cwd={panel.cwd}
               onBubbleClick={onBubbleClick}

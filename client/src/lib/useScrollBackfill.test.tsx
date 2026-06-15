@@ -1,6 +1,6 @@
+import type { Event } from '@server/parser.ts';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Event } from '@server/parser.ts';
 import { useScrollBackfill } from './useScrollBackfill.ts';
 
 const queryMock = vi.fn();

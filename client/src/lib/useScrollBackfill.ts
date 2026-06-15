@@ -53,7 +53,10 @@ export function useScrollBackfill({ bodyRef, panelId, liveEvents, hasMore }: Arg
         beforeUuid: cursor,
         limit: HISTORY_PAGE,
       });
-      if (res.events.length) setOlder((prev) => [...res.events, ...prev]);
+      // tRPC infers a structurally-equivalent but nominally-distinct Event
+      // union across the client boundary; the server returns Event[].
+      const fetched = res.events as Event[];
+      if (fetched.length) setOlder((prev) => [...fetched, ...prev]);
       setMoreBelowCursor(res.hasMore);
     } finally {
       inFlight.current = false;
@@ -67,6 +70,9 @@ export function useScrollBackfill({ bodyRef, panelId, liveEvents, hasMore }: Arg
 
   // Restore scroll position after older events are prepended so the
   // viewport stays anchored on the same event instead of jumping.
+  // `older` is the intentional trigger — the effect re-runs on each
+  // prepend to consume the captured anchor, even though it isn't read.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: older drives the re-run.
   useLayoutEffect(() => {
     const el = bodyRef.current;
     if (el && anchorRef.current != null) {

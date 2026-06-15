@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Event } from './parser.js';
 import { sliceHistory } from './history.js';
+import type { Event } from './parser.js';
 
 function ev(uuid: string): Event {
   return { kind: 'assistant_text', uuid, parent_uuid: null, ts: '2026-01-01T00:00:00Z' } as Event;
