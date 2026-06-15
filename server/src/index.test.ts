@@ -1,6 +1,7 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import path from 'node:path';
+import path, { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TranscriptMonitor } from './monitor.js';
 import { PrefsStore } from './prefs.js';
@@ -99,5 +100,38 @@ describe('appRouter', () => {
     await caller.remove({ panelId: 'S' });
     await caller.bin.purge({ panelId: 'S' });
     expect(monitor.store.panel('S')).toBeUndefined();
+  });
+});
+
+describe('panelHistory', () => {
+  it('returns older events parsed from the panel JSONL', async () => {
+    // String-content assistant lines → one assistant_text event each, with
+    // the bare record uuid (no content-block `:i` suffix).
+    const line = (uuid: string, text: string) =>
+      JSON.stringify({
+        type: 'assistant',
+        uuid,
+        timestamp: '2026-01-01T00:00:00Z',
+        message: { content: text },
+      });
+    const dir = mkdtempSync(join(tmpdir(), 'bh-hist-'));
+    const file = join(dir, 'S.jsonl');
+    writeFileSync(file, [line('u1', 'one'), line('u2', 'two'), line('u3', 'three')].join('\n'));
+
+    const monitor = { sourceFileForPanel: (id: string) => (id === 'S' ? file : null) } as never;
+    const prefs = { get: () => ({}) } as never;
+    const caller = appRouter.createCaller({ monitor, prefs });
+
+    const res = await caller.panelHistory({ panelId: 'S', beforeUuid: 'u3', limit: 10 });
+    expect(res.events.map((e) => e.uuid)).toEqual(['u1', 'u2']);
+    expect(res.hasMore).toBe(false);
+  });
+
+  it('returns empty when the panel has no resolvable file', async () => {
+    const monitor = { sourceFileForPanel: () => null } as never;
+    const prefs = { get: () => ({}) } as never;
+    const caller = appRouter.createCaller({ monitor, prefs });
+    const res = await caller.panelHistory({ panelId: 'nope', beforeUuid: 'x', limit: 10 });
+    expect(res).toEqual({ events: [], hasMore: false });
   });
 });

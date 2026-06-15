@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { simulateCounterSubagent, simulateMockSession, spawnSubagentIn } from './debug.js';
 import { collectDebugState } from './debugState.js';
 import { aggregateFlows } from './flows.js';
+import { sliceHistory } from './history.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
 import type { ProcessTracker, ProcessRow } from './processes/index.js';
@@ -415,6 +416,24 @@ export const appRouter = t.router({
    * the `/debug` tile to surface state independent of any rendering
    * filters. Not part of the normal client/server contract. */
   debugState: t.procedure.query(({ ctx }) => collectDebugState(ctx.monitor)),
+
+  /** Lazy scroll-back: re-parse a panel's transcript JSONL and return the
+   * `limit` events immediately before `beforeUuid`. Read-only; the full
+   * history lives in the JSONL, not the in-memory live window. */
+  panelHistory: t.procedure
+    .input(
+      z.object({
+        panelId: z.string(),
+        beforeUuid: z.string(),
+        limit: z.number().int().positive().max(2000).default(500),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const file = ctx.monitor.sourceFileForPanel(input.panelId);
+      if (!file) return { events: [], hasMore: false };
+      const { events } = await loadJsonlAsPanel(file);
+      return sliceHistory(events, input.beforeUuid, input.limit);
+    }),
 
   deltas: t.procedure.subscription(async function* ({ ctx, signal }) {
     // Initial snapshot so a fresh subscriber doesn't have to make a separate
