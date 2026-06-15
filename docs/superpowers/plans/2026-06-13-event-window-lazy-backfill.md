@@ -1,5 +1,19 @@
 # Bounded Live Event Window + Lazy JSONL Backfill — Implementation Plan
 
+> **STATUS: COMPLETE (2026-06-15).** All tasks landed on `main`:
+> - Task 1 — `a0a0d0e` cap per-panel live window at 1500
+> - Task 2 — `5a8e8e3` pure `sliceHistory` helper
+> - Task 3 — `4f03197` read-only `sourceFileForPanel` resolver
+> - Task 4 — `fd38eef` `panelHistory` tRPC query
+> - Task 5 — `c4d071c` `useScrollBackfill` hook
+> - Task 6 — `2ac490a` lazy scroll-back wiring in PanelCard
+>
+> Server path verified live against real transcripts; client hook
+> confirmed firing on scroll-to-top. Two follow-ups (synth-uuid trim
+> boundary, other scroll surfaces) tracked in `TODO.md`. Task 3's
+> subagent branch was adjusted from the plan: subagent files are
+> `agent-<panelId>.jsonl` (panel id is the prefix-stripped basename).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cap the client's per-panel event retention (the source of multi-GB renderer growth) while letting the user scroll back past the live window by lazily re-parsing the session JSONL on demand.

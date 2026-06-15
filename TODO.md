@@ -1,5 +1,27 @@
 # brainhouse — project todos
 
+## Lazy scroll-back — follow-ups
+
+The bounded live window (`LIVE_WINDOW=1500` in `useDeltaStream.ts`) plus
+lazy `panelHistory` backfill shipped (see
+`docs/superpowers/plans/2026-06-13-event-window-lazy-backfill.md`).
+Verified live: server re-parses the on-disk JSONL and returns the
+correct older slice; the client hook fires on scroll-to-top.
+
+Known gap:
+- **Synthetic-uuid trim boundary.** `sliceHistory` matches the cursor
+  by uuid against the raw JSONL parse. If the oldest *retained* live
+  event is a synthesized uuid (e.g. `synth:last-prompt:…`, transform-
+  injected events) it isn't in the raw file, so `findIndex` misses and
+  backfill returns empty + `hasMore=false` — scroll-back goes dead for
+  that panel even though older raw events exist. Only bites panels that
+  exceed the cap *and* whose trim boundary lands on a synth event. Fix:
+  pick the cursor as the oldest live event whose uuid exists on disk, or
+  fall back to a ts-based slice when the uuid isn't found.
+- **Other scroll surfaces.** Only PanelCard's main body is wired. The
+  broken-out/expanded view and TraceTab reuse `EventList` with their own
+  scroll containers — replicate the `useScrollBackfill` wiring there.
+
 ## Timeline view — follow-ups
 
 Initial pass shipped: a `<Timeline>` component with kind-colored lanes,
