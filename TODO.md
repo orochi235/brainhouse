@@ -1,5 +1,43 @@
 # brainhouse — project todos
 
+## Memory-leak hunt — remaining items
+
+The two dominant renderer leaks are fixed: unbounded per-panel `Event[]`
+retention (`LIVE_WINDOW` cap) and **React dev-mode `performance.measure()`
+accumulation** (2M+ `PerformanceMeasure` objects → 158MB+ native memory;
+now reaped every 10s in DEV via `startMeasureReaper`, prod emits none).
+
+Still open (smaller, real growers — confirmed by audit + heap profiling):
+- **[HIGH] Subprocess tracking flags processes as ended too early now.**
+  Regression noticed 2026-06-15 — processes we're tracking get marked
+  `ended` much sooner than they actually exit. Likely tied to the
+  in-flight process-panel / monitor `hydrate`/`startWatching` work or an
+  end-detection heuristic change. Investigate `server/src/monitor.ts`
+  end signals + `processes/` tracker.
+- **Possible dropped messages in session `7c0e7044-e4b4-4437-8432-beb5e6098aed`.**
+  Mike noticed some messages appear missing in that panel (event_count
+  679, under the 1500 live cap — so NOT the window trim). Check whether a
+  transform is hiding/collapsing them, a parse gap in `parser.ts`, or a
+  real backfill/merge bug. Compare rendered events vs the raw JSONL.
+- **Trace store never prunes** — `transforms/traceContext.tsx:26` `panels`
+  Map keeps one full `PanelTrace` per panel ever traced; `clear()` exists
+  but is never called and doesn't `delete` the key. Wire a `forget(panelId)`
+  into the `panel_remove` path (and TraceTab unmount).
+- **Transform-toggles map never prunes** — `transforms/useTransformToggles.ts:22`
+  module Map gains an entry per panel ever mounted, never removed. Delete
+  the entry when its `listeners` set empties (or on `panel_remove`).
+- **scrollMemory sessionStorage** — `lib/scrollMemory.ts` keys not cleared
+  on `panel_remove` (60s TTL only evicts on re-load). sessionStorage, not
+  heap; low severity.
+- **Server-side slow growers** (not the task-manager symptom, but real over
+  days): `processes/httpProbe.ts` `cache` is add-only with an unused
+  `retainOnly()` eviction method (wire it into `maybeSweepPorts`);
+  `session.ts` `repoRootCache`, `watcher.ts` `offsets`, and
+  `reconciler.ts` session-keyed maps only shrink on clean `session_end`.
+
+The clean prune pattern to copy is `lib/hiddenPanels.ts` (prunes all its
+per-panel refs against the live panel set every render).
+
 ## Lazy scroll-back — follow-ups
 
 The bounded live window (`LIVE_WINDOW=1500` in `useDeltaStream.ts`) plus
