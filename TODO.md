@@ -8,17 +8,27 @@ accumulation** (2M+ `PerformanceMeasure` objects → 158MB+ native memory;
 now reaped every 10s in DEV via `startMeasureReaper`, prod emits none).
 
 Still open (smaller, real growers — confirmed by audit + heap profiling):
-- **[HIGH] Subprocess tracking flags processes as ended too early now.**
-  Regression noticed 2026-06-15 — processes we're tracking get marked
-  `ended` much sooner than they actually exit. Likely tied to the
-  in-flight process-panel / monitor `hydrate`/`startWatching` work or an
-  end-detection heuristic change. Investigate `server/src/monitor.ts`
-  end signals + `processes/` tracker.
-- **Possible dropped messages in session `7c0e7044-e4b4-4437-8432-beb5e6098aed`.**
-  Mike noticed some messages appear missing in that panel (event_count
-  679, under the 1500 live cap — so NOT the window trim). Check whether a
-  transform is hiding/collapsing them, a parse gap in `parser.ts`, or a
-  real backfill/merge bug. Compare rendered events vs the raw JSONL.
+- **[HIGH] Active sessions/subagents render as idle/done while still running
+  (and sometimes the reverse).** Investigated 2026-06-15. NOT the clock
+  refactor (clock.ts + IdleCell math verified correct) and NOT data loss
+  (`7c0e7044` reconciles exactly vs its on-disk transcript — every dialogue
+  turn present). Root cause: the server flips `live → done` once
+  `now - last_event_at >= idleSeconds` (`session.ts:381`), and `idleSeconds`
+  defaults to **60s** (`prefs.ts:63`, unchanged since 2026-05-19). Confirmed
+  live: this session showed server `status:"done"` at 93s idle while
+  actively running. ROOT CAUSE (confirmed): liveness is inferred from
+  transcript-write recency, but Claude Code flushes transcript records in
+  BURSTS at turn/step boundaries — during a long agentic turn there are
+  gaps >60s with no write. Verified the watcher is NOT lagging (disk's
+  newest record age == server's `last_event_at`), so it's the heuristic vs
+  bursty writes, not a tail-latency bug and not the clock refactor.
+  Candidate fixes: (a) raise `idleSeconds` (quick; done lingers longer);
+  (b) process-aware liveness — don't mark `done` while the owning `claude`
+  process is still alive (the ProcessTracker already knows); (c) drive
+  done off an explicit end signal (Stop hook / process exit), using idle
+  only for display. (b)/(c) are the real fix; (a) is the band-aid. Note
+  tRPC v11 `httpSubscriptionLink` auto-reconnects, so the client `onError →
+  offline` path is not the cause (still worth hardening).
 - **Trace store never prunes** — `transforms/traceContext.tsx:26` `panels`
   Map keeps one full `PanelTrace` per panel ever traced; `clear()` exists
   but is never called and doesn't `delete` the key. Wire a `forget(panelId)`
