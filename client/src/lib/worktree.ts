@@ -52,11 +52,11 @@ export function deriveWorktree(cwd: string | null | undefined): WorktreeInfo | n
  * needing a crypto dependency, and a fixed saturation/lightness so
  * colors play well alongside the panel chrome.
  */
-export function worktreeColor(key: string): string {
+export function worktreeColor(key: string, sat = 65, light = 55): string {
   let h = 5381;
   for (let i = 0; i < key.length; i++) h = ((h << 5) + h + key.charCodeAt(i)) | 0;
   const hue = ((h % 360) + 360) % 360;
-  return `hsl(${hue} 65% 55%)`;
+  return `hsl(${hue} ${sat}% ${light}%)`;
 }
 
 /** Parse a `#RRGGBB` hex color into HSL components. Returns null on
@@ -88,9 +88,11 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
  * clamped to floors so dark / desaturated themes still pop on a small
  * chip. Brainhouse's deep-violet panel theme #320053 would otherwise
  * render as near-black; this lifts it to a vibrant purple while
- * keeping the same hue identity. */
-export function badgeColor(input: string, minS = 65, minL = 55): string {
+ * keeping the same hue identity. `maxS` caps saturation so vivid
+ * themes can be toned down without losing their hue. */
+export function badgeColor(input: string, minS = 65, minL = 55, maxS = 100): string {
   const hsl = hexToHsl(input);
   if (!hsl) return input;
-  return `hsl(${Math.round(hsl.h)} ${Math.max(hsl.s, minS)}% ${Math.max(hsl.l, minL)}%)`;
+  const s = Math.min(Math.max(hsl.s, minS), maxS);
+  return `hsl(${Math.round(hsl.h)} ${s}% ${Math.max(hsl.l, minL)}%)`;
 }

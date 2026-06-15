@@ -57,6 +57,29 @@ class TraceStoreImpl {
     this.notify(panelId);
   }
 
+  /** Release a panel's entry once it's gone for good. If something is
+   * still subscribed (shouldn't happen for a removed panel, but guard
+   * anyway) we only drop the heavy trace payload and keep the entry
+   * wired; otherwise the whole entry is deleted. */
+  forget(panelId: string): void {
+    const e = this.panels.get(panelId);
+    if (!e) return;
+    if (e.listeners.size > 0) {
+      e.trace = undefined;
+      return;
+    }
+    this.panels.delete(panelId);
+  }
+
+  /** Forget every panel the server no longer knows about. Mirrors the
+   * prune-against-live-set pattern in lib/hiddenPanels.ts so the store
+   * doesn't accumulate one `PanelTrace` per panel ever traced. */
+  prune(liveIds: Set<string>): void {
+    for (const id of this.panels.keys()) {
+      if (!liveIds.has(id)) this.forget(id);
+    }
+  }
+
   isTracing(panelId: string): boolean {
     return this.panels.get(panelId)?.tracing ?? false;
   }

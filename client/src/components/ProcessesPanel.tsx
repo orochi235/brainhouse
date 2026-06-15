@@ -241,7 +241,8 @@ export function ProcessesPanel({
   for (const p of allPanels.values()) {
     const key = p.repo_root ?? p.cwd;
     if (!key || !p.theme) continue;
-    if (!projectThemes.has(key)) projectThemes.set(key, badgeColor(p.theme.background));
+    // Cap saturation so vivid themes read as muted chips, not neon.
+    if (!projectThemes.has(key)) projectThemes.set(key, badgeColor(p.theme.background, 45, 32, 45));
   }
   // Show the Account column only when more than one distinct label
   // appears across panels OR rows — counting row.account_label here
@@ -283,15 +284,16 @@ export function ProcessesPanel({
       return next;
     });
   };
-  // 1-Hz tick to refresh the per-row Idle column (sessions view only).
-  // Uptime is server-pushed so doesn't need this; idle = now − panel.last_event_at
-  // is purely a client-side derivation.
-  const [now, setNow] = useState(() => Date.now() / 1000);
-  useEffect(() => {
-    if (viewMode !== 'sessions') return;
-    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
-    return () => clearInterval(id);
-  }, [viewMode]);
+  // Per-render snapshot of wall-clock, used ONLY to break ties when the
+  // user sorts by the Idle column. Deliberately NOT a per-second state +
+  // setInterval: that would re-render + repaint the whole (large) process
+  // table every tick, churning renderer-native raster tiles into a
+  // PartitionAlloc high-water mark that never returns (see lib/clock.ts).
+  // The live per-second Idle display is driven by a leaf clock
+  // subscription inside ProcessRow's IdleCell instead. Idle-sort order is
+  // recomputed whenever the panel re-renders on a data delta, which is
+  // frequent enough — it doesn't need to re-sort once a second.
+  const nowForSort = Date.now() / 1000;
   useEffect(() => {
     try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch {}
   }, [viewMode]);
@@ -336,7 +338,7 @@ export function ProcessesPanel({
       roots = roots.slice().sort((a, b) => {
         const pa = a.session_id ? allPanels.get(a.session_id) ?? null : null;
         const pb = b.session_id ? allPanels.get(b.session_id) ?? null : null;
-        return cmp(sortValue(a, pa, k, now), sortValue(b, pb, k, now), sort.dir);
+        return cmp(sortValue(a, pa, k, nowForSort), sortValue(b, pb, k, nowForSort), sort.dir);
       });
     } else {
       roots = roots.slice().sort((a, b) => b.uptime_s - a.uptime_s);
@@ -359,7 +361,7 @@ export function ProcessesPanel({
       ? filtered.slice().sort((a, b) => {
           const pa = a.session_id ? allPanels.get(a.session_id) ?? null : null;
           const pb = b.session_id ? allPanels.get(b.session_id) ?? null : null;
-          return cmp(sortValue(a, pa, sort.key!, now), sortValue(b, pb, sort.key!, now), sort.dir);
+          return cmp(sortValue(a, pa, sort.key!, nowForSort), sortValue(b, pb, sort.key!, nowForSort), sort.dir);
         })
       : filtered.slice().sort(sortRows);
     display = ordered.map(row => ({ row, depth: 0 }));
@@ -465,7 +467,7 @@ export function ProcessesPanel({
               expandable={isRoot && hasChildren}
               expanded={expandedRoots.has(row.pid)}
               onToggleExpand={isRoot && hasChildren ? () => toggleRoot(row.pid) : undefined}
-              now={viewMode === 'sessions' ? now : null}
+              showIdle={viewMode === 'sessions'}
             />
           ))}</tbody>
         </table>

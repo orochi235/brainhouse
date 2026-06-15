@@ -43,15 +43,12 @@ async function main() {
     tracker,
     isAutoTitleEnabled: () => prefs.get().display.autoTitle,
   });
-  await monitor.start();
-  tracker.start();
-  // Identify the brainhouse server's own pid in the processes table.
-  // The framework + version stamp the self row so the Network view
-  // surfaces it as `brainhouse vX.Y.Z` and the UI applies the purple
-  // diamond status glyph. No synthetic account_label — brainhouse
-  // isn't a Claude account, and the chip would mislead.
-  tracker.registerSelf(null, 'brainhouse', readBrainhouseVersion());
-  await runStartupDiscovery(tracker);
+  // Hydrate persisted panels synchronously, but DON'T start the slow
+  // transcript walk / process discovery yet — those run after the HTTP
+  // port is bound (below) so the dev client never races a dead socket.
+  // The tRPC snapshot/deltas bootstrap already serves these hydrated
+  // panels the moment a client connects.
+  monitor.hydrate();
 
   // pino-pretty's default ANSI emission (color resets, attribute clears)
   // visibly wipes terminal background tints in some terminals — opt out
@@ -130,6 +127,19 @@ async function main() {
   const displayHost = HOST === '::' ? 'localhost' : HOST;
   app.log.info(`brainhouse listening at http://${displayHost}:${PORT}`);
   for (const r of roots) app.log.info(`  watch: ${r}`);
+
+  // Heavy bootstrap, now that the port is live: walk the transcript roots
+  // and discover the process table. Both stream into already-connected
+  // clients via the deltas / processes subscriptions — no refresh needed.
+  await monitor.startWatching();
+  tracker.start();
+  // Identify the brainhouse server's own pid in the processes table.
+  // The framework + version stamp the self row so the Network view
+  // surfaces it as `brainhouse vX.Y.Z` and the UI applies the purple
+  // diamond status glyph. No synthetic account_label — brainhouse
+  // isn't a Claude account, and the chip would mislead.
+  tracker.registerSelf(null, 'brainhouse', readBrainhouseVersion());
+  await runStartupDiscovery(tracker);
 
   // One-shot onboarding nudge: if the user clearly uses subagents but
   // hasn't installed the hook dispatcher, completion will be guessed via

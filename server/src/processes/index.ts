@@ -133,21 +133,25 @@ export class ProcessTracker extends EventEmitter {
       // probe itself runs out-of-band below.
       const ownPorts = new Map<number, ProcessRow['ports']>();
       const unprobed = new Set<number>();
+      const listening = new Set<number>();
       for (const r of portRows) {
         const stamped = r.ports.map((p) => {
+          listening.add(p.port);
           const known = this.httpProbe.get(p.port);
           if (known === null) unprobed.add(p.port);
           return { ...p, is_http: known };
         });
         ownPorts.set(r.pid, stamped);
       }
-      // Cache is sticky for the server's lifetime. We don't evict on
-      // absence because lsof momentarily returning empty (timeout, race
-      // during a fork/exec storm) would otherwise wipe the cache and
-      // make every linked port flicker back to plain text on the next
-      // tick. Port reuse across processes within a single brainhouse
-      // run is rare enough that the false-positive risk is worth
-      // accepting in trade.
+      // Evict is_http cache entries for ports no longer listening. This
+      // is safe *only* because the `portRows === null` bail above means
+      // we never reach here on an lsof failure/timeout — a transient
+      // empty result (the flicker risk) surfaces as null, not as an
+      // empty array. A genuinely-empty array means nothing is listening,
+      // so dropping every cached entry is correct: a dead → reused port
+      // then gets re-probed instead of inheriting the prior binder's
+      // result.
+      this.httpProbe.retainOnly(listening);
 
       // Reverse-ancestor lookup: for each tracked row R, find all
       // tracked rows D where R.pid ∈ D.original_ancestors. Anyone in

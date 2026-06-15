@@ -1,6 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { __resetTogglesForTests, useTransformToggles } from './useTransformToggles.ts';
+import {
+  __resetTogglesForTests,
+  pruneToggles,
+  readToggles,
+  useTransformToggles,
+} from './useTransformToggles.ts';
 
 describe('useTransformToggles', () => {
   beforeEach(() => {
@@ -41,6 +46,27 @@ describe('useTransformToggles', () => {
     act(() => a.result.current.set('foo', false));
     expect(a.result.current.isEnabled('foo')).toBe(false);
     expect(b.result.current.isEnabled('foo')).toBe(true);
+  });
+
+  it('prune drops in-memory entries for forgotten panels but keeps localStorage', () => {
+    const a = renderHook(() => useTransformToggles('gone'));
+    act(() => a.result.current.set('foo', false));
+    a.unmount(); // no live subscribers left
+
+    pruneToggles(new Set(['stillAlive']));
+
+    // localStorage survives, so a fresh subscriber re-hydrates the value.
+    const b = renderHook(() => useTransformToggles('gone'));
+    expect(b.result.current.isEnabled('foo')).toBe(false);
+  });
+
+  it('prune leaves entries with live subscribers wired', () => {
+    const a = renderHook(() => useTransformToggles('p1'));
+    act(() => a.result.current.set('foo', false));
+    // p1 is still mounted; prune must not orphan its subscription.
+    pruneToggles(new Set());
+    act(() => a.result.current.set('bar', false));
+    expect(readToggles('p1')).toEqual({ foo: false, bar: false });
   });
 
   it('resetAll restores defaults and clears storage', () => {

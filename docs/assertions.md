@@ -229,13 +229,19 @@ UI/server is meant to uphold. New entries go at the bottom.
   durations) read a single app-wide clock via `useClock()` (`lib/clock.ts`)
   — one shared `setInterval` for the whole app, not one per panel. The
   subscribing components are *leaves* (`PanelHeader`, `ThinkingIndicator`,
-  `ChecklistPin`), so the per-second tick re-renders only those small
-  subtrees, never `PanelCard` or its `EventList` body. This is load-bearing
-  for memory: when the tick lived in `PanelCard` as `useState`, every second
+  `ChecklistPin`, and the Processes widget's `IdleCell`), so the per-second
+  tick re-renders only those small subtrees, never `PanelCard`/`EventList`
+  nor the (potentially large) process table. This is load-bearing for
+  memory: when the tick lived in `PanelCard` as `useState`, every second
   re-rendered + repainted the whole panel ×N, churning renderer-native
   raster tiles into a PartitionAlloc high-water mark that never returned
-  (a visible tab grew to ~9 GB; headless stayed ~95 MB). Do not thread a
-  `now` prop down through `PanelCard` — subscribe at the leaf instead.
+  (a visible tab grew to ~9 GB; headless stayed ~95 MB). The same trap
+  recurred in `ProcessesPanel`, whose panel-level `now` state repainted the
+  entire process/session table every second — fixed by moving the read into
+  the leaf `IdleCell` (`useClock()`); `ProcessesPanel` keeps only a
+  per-render `Date.now()` *snapshot* for idle-column sorting, never a tick.
+  Do not thread a `now` prop down through `PanelCard` or `ProcessRow` —
+  subscribe at the leaf instead.
 
 ## Threaded replies (side-channel assistant turns)
 
@@ -412,3 +418,13 @@ UI/server is meant to uphold. New entries go at the bottom.
 - **Ephemeral UI state** — drag-hover ghosts, lightbox open/closed,
   scroll positions — lives in component state or `sessionStorage` and
   doesn't outlive the tab.
+- **Per-panel client stores are released when the server forgets a
+  panel.** Any module-scoped store keyed by panel id (the trace store,
+  transform-toggle map, scroll-memory keys) must not grow unbounded over
+  a long-lived tab. They're pruned against the *unfiltered* `allPanels`
+  set in `AppMain` — so a blacklisted-but-live session keeps its state —
+  with each store guarding entries that still have live subscribers.
+  When adding a new per-panel store, wire it into that prune effect
+  rather than relying on a TTL or a never-called `clear()`. Server-side,
+  the `is_http` probe cache is the analogue: `retainOnly()` drops entries
+  for ports no longer listening after each (non-null) lsof sweep.

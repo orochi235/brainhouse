@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearScrollPosition, loadScrollPosition, saveScrollPosition } from './scrollMemory.ts';
+import {
+  clearScrollPosition,
+  loadScrollPosition,
+  pruneScrollPositions,
+  saveScrollPosition,
+} from './scrollMemory.ts';
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -45,5 +50,23 @@ describe('scrollMemory', () => {
     saveScrollPosition('b', 200);
     expect(loadScrollPosition('a')).toBe(100);
     expect(loadScrollPosition('b')).toBe(200);
+  });
+
+  it('prune drops entries for panels not in the live set', () => {
+    saveScrollPosition('a', 100);
+    saveScrollPosition('b', 200);
+    saveScrollPosition('c', 300);
+    pruneScrollPositions(new Set(['b']));
+    expect(loadScrollPosition('a')).toBeNull();
+    expect(loadScrollPosition('b')).toBe(200);
+    expect(loadScrollPosition('c')).toBeNull();
+  });
+
+  it('prune leaves unrelated sessionStorage keys untouched', () => {
+    sessionStorage.setItem('unrelated', 'keep me');
+    saveScrollPosition('a', 100);
+    pruneScrollPositions(new Set());
+    expect(loadScrollPosition('a')).toBeNull();
+    expect(sessionStorage.getItem('unrelated')).toBe('keep me');
   });
 });

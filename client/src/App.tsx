@@ -15,7 +15,8 @@ import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
 import { SelectorStoreProvider } from './transforms/selectors/store.tsx';
-import { TraceProvider } from './transforms/traceContext.tsx';
+import { TraceProvider, useTraceStore } from './transforms/traceContext.tsx';
+import { pruneToggles } from './transforms/useTransformToggles.ts';
 import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { debugEnabled } from './lib/debugMode.ts';
 import { startMemTelemetry } from './lib/telemetry.ts';
@@ -32,7 +33,7 @@ import {
   useWidePanels,
 } from './lib/panelOrder.ts';
 import { useTheme } from './lib/preferences.ts';
-import { clearScrollPosition } from './lib/scrollMemory.ts';
+import { clearScrollPosition, pruneScrollPositions } from './lib/scrollMemory.ts';
 import { withViewTransition } from './lib/viewTransition.ts';
 import { buildProjectRollups } from './lib/projectWidgets.ts';
 import { useIdleDeferred, useUserActive } from './lib/useIdleDeferred.ts';
@@ -245,6 +246,21 @@ function AppMain() {
     if (!debugMode) return;
     return startMemTelemetry();
   }, [debugMode]);
+  // Prune per-panel client state for sessions the server has fully
+  // forgotten. The trace store, transform-toggle map, and scroll-memory
+  // keys are each keyed by panel id and would otherwise grow for the life
+  // of the tab — one entry per panel ever seen. Mirrors the prune pattern
+  // in lib/hiddenPanels.ts. Keyed on the *unfiltered* allPanels set so a
+  // blacklisted-but-still-live session keeps its state (unblacklisting
+  // restores it without a reload).
+  const traceStore = useTraceStore();
+  useEffect(() => {
+    const liveIds = new Set(allPanels.keys());
+    traceStore.prune(liveIds);
+    pruneToggles(liveIds);
+    pruneScrollPositions(liveIds);
+  }, [allPanels, traceStore]);
+
   // Filter out blacklisted session IDs before anything downstream touches
   // the panel set — that way every consumer (notifications, project
   // rollups, slot allocator, the grid/dock render trees) sees a
@@ -583,15 +599,19 @@ function AppMain() {
     !isHidden({ id: r.widget.id, last_event_at: r.widget.last_event_at } as PanelState),
   );
   // Widgets are *fill-only*: a true last resort. We render them only in
-  // grid slots that no real session needs. Three subtractions go into
+  // grid cells that no real session needs. Three subtractions go into
   // the budget:
   //   - the cells already consumed by grid panels (one each, plus an
   //     extra cell for every wide panel, since wide consumes two);
-  //   - any live tray panels. A live session sitting in the dock —
-  //     whether server-mini'd through idle-out or user-mini'd by the
-  //     user — has a "rightful claim" on a slot, and widgets must
-  //     defer. This keeps the user from seeing project widgets in the
-  //     main grid while a real session is parked in the minibar.
+  //   - EVERY session parked in the dock, live or not. Any session in
+  //     the tray — server-mini'd through idle-out, user-mini'd, or
+  //     overflowed by the allocator — is real work the user can pull
+  //     back at any moment, so it has a rightful claim on a cell and
+  //     widgets must defer. A project widget is a synthesized aggregate;
+  //     it's strictly a fallback for when no real session, gridded or
+  //     parked, wants the space. (Earlier this counted only *live* tray
+  //     panels, which let widgets preempt idle-but-valid parked
+  //     sessions — the opposite of fallback.)
   //
   // A pinned widget (pseudo-id `project:<repo>`) always shows
   // regardless of the fill budget, mirroring how pinned session
@@ -600,13 +620,16 @@ function AppMain() {
     (n, p) => n + (wide.has(p.id) ? 1 : 0),
     0,
   );
-  const liveTrayCount = trayPanels.filter((p) => p.status === 'live').length;
+  // Count only TOP-LEVEL parked sessions: minimized subagents
+  // (clientMiniSubs, appended onto trayPanels) live under a parent and
+  // never claim a top-level cell, so they don't suppress widgets.
+  const parkedSessionCount = trayPanels.length - clientMiniSubs.length;
   const widgetSlotBudget = Math.max(
     0,
     prefs.workspace.slotCount -
       orderedGridPanels.length -
       wideCountForBudget -
-      liveTrayCount,
+      parkedSessionCount,
   );
   const pinnedRollups: typeof allProjectRollups = [];
   const unpinnedRollups: typeof allProjectRollups = [];

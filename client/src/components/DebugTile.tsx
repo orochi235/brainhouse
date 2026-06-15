@@ -10,7 +10,7 @@
  * obvious.
  */
 
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { CopyableId } from '../lib/CopyableId.tsx';
 import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import { trpc } from '../trpc.ts';
@@ -116,33 +116,53 @@ export interface DebugTileClientView {
 export function DebugTile({ client }: { client: DebugTileClientView }) {
   const [state, setState] = useState<DebugState | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
   const [showServer, setShowServer] = useState(false);
 
+  // Single poll loop: fetch once on open, then every POLL_MS. We drive the
+  // interval straight off a local `fetchState` rather than bumping a `tick`
+  // counter through a second effect — a `tick` state would re-render the
+  // whole tile on every poll even before the data came back.
   useEffect(() => {
     if (!showServer) return;
     let cancelled = false;
-    trpc.debugState
-      .query()
-      .then((s) => {
-        if (!cancelled) {
-          setState(s);
-          setErr(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setErr(String(e));
-      });
+    const fetchState = () => {
+      trpc.debugState
+        .query()
+        .then((s) => {
+          if (!cancelled) {
+            setState(s);
+            setErr(null);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) setErr(String(e));
+        });
+    };
+    fetchState();
+    const h = setInterval(fetchState, POLL_MS);
     return () => {
       cancelled = true;
+      clearInterval(h);
     };
-  }, [tick, showServer]);
-
-  useEffect(() => {
-    if (!showServer) return;
-    const h = setInterval(() => setTick((n) => n + 1), POLL_MS);
-    return () => clearInterval(h);
   }, [showServer]);
+
+  // Stable set of server-known panel ids for ClientContents' cross-ref.
+  // Keyed on the (sorted) id list, NOT the fetched object's identity, so a
+  // poll that returns the same panels reuses the same Set reference and the
+  // memoized client panel tree doesn't re-render/repaint. Same
+  // renderer-native raster-tile concern as the Processes Idle column — a
+  // large, growing table must not repaint on every interval tick.
+  const serverPanelKey = state
+    ? state.panels
+        .map((p) => p.id)
+        .sort()
+        .join(',')
+    : '';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: serverPanelKey is the content digest of state.panels; state itself is intentionally excluded.
+  const serverPanelIds = useMemo(
+    () => (state ? new Set(state.panels.map((p) => p.id)) : null),
+    [serverPanelKey],
+  );
 
   return (
     <article className="panel debug-tile" data-debug>
@@ -159,7 +179,7 @@ export function DebugTile({ client }: { client: DebugTileClientView }) {
         <span className="debug-tile-meta">{client.allPanels.size} client panels</span>
       </header>
       <div className="panel-body debug-tile-body">
-        <ClientContents client={client} serverState={showServer ? state : null} />
+        <ClientContents client={client} serverPanelIds={showServer ? serverPanelIds : null} />
         {showServer && (
           <>
             {err && <div className="debug-error">{err}</div>}
@@ -171,12 +191,17 @@ export function DebugTile({ client }: { client: DebugTileClientView }) {
   );
 }
 
-function ClientContents({
+// Memoized so the server-state poll (which fires setState on the parent
+// every POLL_MS) doesn't re-render + repaint this — potentially large and
+// growing — client panel tree. It only depends on `client` and the stable
+// `serverPanelIds` set, so it re-renders on real client/server-set changes,
+// not on every poll tick. See lib/clock.ts for the raster-tile rationale.
+const ClientContents = memo(function ClientContents({
   client,
-  serverState,
+  serverPanelIds,
 }: {
   client: DebugTileClientView;
-  serverState: DebugState | null;
+  serverPanelIds: Set<string> | null;
 }) {
   const { allPanels, gridIds, dockIds, isHidden, isClientMini, isPinned, isBrokenOut } = client;
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' } | null>(null);
@@ -202,7 +227,7 @@ function ClientContents({
   const subagentCount = Array.from(allPanels.values()).filter(
     (p) => p.kind === 'subagent',
   ).length;
-  const serverPanels = serverState ? new Set(serverState.panels.map((p) => p.id)) : null;
+  const serverPanels = serverPanelIds;
 
   const now = Date.now() / 1000;
 
@@ -417,7 +442,7 @@ function ClientContents({
       </Section>
     </div>
   );
-}
+});
 
 // CopyableId moved to ../lib/CopyableId.tsx so the processes panel can
 // reuse the same chip without duplication.
@@ -712,7 +737,7 @@ function WorktreeBadge({ cwd }: { cwd: string | null }) {
   return (
     <span
       className="panel-worktree-chip"
-      style={{ ['--panel-worktree-color' as string]: worktreeColor(wt.key) }}
+      style={{ ['--panel-worktree-color' as string]: worktreeColor(wt.key, 45, 32) }}
       title={`worktree: ${wt.key}`}
     >
       <span className="panel-worktree-swatch" aria-hidden="true" />

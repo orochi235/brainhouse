@@ -14,14 +14,11 @@ import path from 'node:path';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
 import type { Event } from './parser.js';
 import type { ProcessTracker } from './processes/index.js';
+import { deriveAccountLabel } from './roots.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
 import { type PanelTheme, readPanelTheme } from './theme.js';
-import {
-  isRealUserText,
-  isSubstantiveAssistantText,
-  Titler,
-} from './titler.js';
+import { isRealUserText, isSubstantiveAssistantText, Titler } from './titler.js';
 import { TranscriptWatcher } from './watcher.js';
 
 export interface MonitorOptions {
@@ -145,9 +142,20 @@ export class TranscriptMonitor {
   }
 
   async start({ watch = true }: { watch?: boolean } = {}): Promise<void> {
+    this.hydrate();
+    await this.startWatching({ watch });
+  }
+
+  /** Fast, synchronous-ish hydration from persisted state. Split out of
+   * {@link start} so a host that binds an HTTP port can run this BEFORE
+   * listening — the tRPC `snapshot`/`deltas` bootstrap then serves the
+   * last-known panels the instant a client connects, while the slow
+   * {@link startWatching} walk streams the rest in live. No-op when
+   * persistence is disabled. */
+  hydrate(): void {
     // Hydrate from persisted state BEFORE the watcher kicks in so any
     // bootstrap replays land on top of last-known panel state rather than
-    // starting fresh. No-op when persistence is disabled.
+    // starting fresh.
     this.store.hydrate();
     // After hydrate, every panel.events[] is empty (we only persist panel
     // metadata, not full event payloads). Wipe bootstrap_offsets so the
@@ -163,6 +171,16 @@ export class TranscriptMonitor {
     for (const dto of this.store.snapshot()) {
       if (dto.cwd && !dto.theme) void this.loadThemeFor(dto.id, dto.cwd);
     }
+  }
+
+  /** The slow half of boot: walk every transcript root, attach the hook
+   * watcher, and start the periodic loops. A host that serves HTTP should
+   * bind its port before calling this so the dev client never races a dead
+   * socket (which spams the vite proxy with ECONNREFUSED and drops the
+   * bootstrap subscriptions). Late subscribers still get a complete picture
+   * — the tRPC snapshot reads live store state, which the walk mutates in
+   * place. */
+  async startWatching({ watch = true }: { watch?: boolean } = {}): Promise<void> {
     await this.watcher.start({ watch });
     // Bootstrap-time subagent replays produce panels with no SubagentStop
     // hook to drive a real end. Sweep any whose last event is older than
@@ -327,7 +345,12 @@ export class TranscriptMonitor {
         // rather than pushing it down into the hook scripts.
         const enriched =
           event.kind === 'session_pid' && event.claude_config_dir
-            ? { ...event, account_label: this.accountLabels.get(event.claude_config_dir) ?? null }
+            ? {
+                ...event,
+                account_label:
+                  this.accountLabels.get(event.claude_config_dir) ??
+                  deriveAccountLabel(event.claude_config_dir),
+              }
             : event;
         this.tracker.handleHookRecord(enriched);
         return;
@@ -424,7 +447,12 @@ export class TranscriptMonitor {
    * `sourceRoot` is the root the event came from; resolved to an account
    * label before being stamped on the panel. */
   ingest(event: Event, sourceRoot?: string): void {
-    const accountLabel = sourceRoot ? (this.accountLabels.get(sourceRoot) ?? null) : null;
+    // Prefer an explicitly-configured prefs.roots label; otherwise
+    // derive it from the `.claude*` config-dir segment of the root so
+    // multi-account setups badge every session with zero config.
+    const accountLabel = sourceRoot
+      ? (this.accountLabels.get(sourceRoot) ?? deriveAccountLabel(sourceRoot))
+      : null;
     for (const delta of this.store.apply(event, { accountLabel })) this.broadcast(delta);
     // Out-of-band auto-titler trigger sites.
     if (event.kind === 'user_text') {

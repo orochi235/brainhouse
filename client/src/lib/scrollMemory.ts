@@ -67,3 +67,25 @@ export function clearScrollPosition(panelId: string): void {
     // ignore
   }
 }
+
+/** Drop stored scroll positions for panels the server has forgotten.
+ * The 60s TTL only evicts lazily on re-load, so over a long-lived tab
+ * sessionStorage accumulates one dead key per removed panel; this
+ * clears them eagerly against the live panel set. */
+export function pruneScrollPositions(liveIds: Set<string>): void {
+  const s = safeStorage();
+  if (!s) return;
+  const stale: string[] = [];
+  for (let i = 0; i < s.length; i += 1) {
+    const k = s.key(i);
+    if (!k || !k.startsWith(KEY_PREFIX)) continue;
+    if (!liveIds.has(k.slice(KEY_PREFIX.length))) stale.push(k);
+  }
+  for (const k of stale) {
+    try {
+      s.removeItem(k);
+    } catch {
+      // ignore
+    }
+  }
+}

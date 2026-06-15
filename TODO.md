@@ -24,21 +24,27 @@ Still open (smaller, real growers — confirmed by audit + heap profiling):
   subagents key off their parent session. Injected like the `clock` dep.
   Still-worth-doing follow-up: harden the `useDeltaStream` `onError → offline`
   path (tRPC v11 auto-reconnects, so not the cause, but defensive).
-- **Trace store never prunes** — `transforms/traceContext.tsx:26` `panels`
-  Map keeps one full `PanelTrace` per panel ever traced; `clear()` exists
-  but is never called and doesn't `delete` the key. Wire a `forget(panelId)`
-  into the `panel_remove` path (and TraceTab unmount).
-- **Transform-toggles map never prunes** — `transforms/useTransformToggles.ts:22`
-  module Map gains an entry per panel ever mounted, never removed. Delete
-  the entry when its `listeners` set empties (or on `panel_remove`).
-- **scrollMemory sessionStorage** — `lib/scrollMemory.ts` keys not cleared
-  on `panel_remove` (60s TTL only evicts on re-load). sessionStorage, not
-  heap; low severity.
-- **Server-side slow growers** (not the task-manager symptom, but real over
-  days): `processes/httpProbe.ts` `cache` is add-only with an unused
-  `retainOnly()` eviction method (wire it into `maybeSweepPorts`);
-  `session.ts` `repoRootCache`, `watcher.ts` `offsets`, and
-  `reconciler.ts` session-keyed maps only shrink on clean `session_end`.
+- **[FIXED 2026-06-15] Trace store / transform-toggles / scrollMemory
+  never prune.** All three keyed per panel id, growing one entry per
+  panel ever seen for the life of the tab. Fixed with a single prune
+  effect in `App.tsx` (`AppMain`) keyed on the *unfiltered* `allPanels`
+  set — so a blacklisted-but-still-live session keeps its state — that
+  drives `TraceStore.prune()` (drops the heavy `PanelTrace`, deletes the
+  entry when no listeners remain), `pruneToggles()` (drops the in-memory
+  Map entry; localStorage left intact so toggles re-hydrate on reuse),
+  and `pruneScrollPositions()` (clears dead sessionStorage keys eagerly
+  rather than waiting on the 60s TTL). Mirrors the `lib/hiddenPanels.ts`
+  pattern. Each store guards entries that still have live subscribers.
+- **[FIXED 2026-06-15] httpProbe cache add-only.** Wired the existing
+  `retainOnly()` into `maybeSweepPorts`: the `portRows === null` bail
+  already filters lsof failures (the flicker risk surfaces as null, not
+  an empty array), so when we reach the eviction the listening-port set
+  is authoritative — dropping cached `is_http` for vanished ports lets a
+  dead → reused port re-probe instead of inheriting the prior binder's
+  result.
+- **Server-side slow growers** (still open): `session.ts` `repoRootCache`,
+  `watcher.ts` `offsets`, and `reconciler.ts` session-keyed maps only
+  shrink on clean `session_end`.
 
 The clean prune pattern to copy is `lib/hiddenPanels.ts` (prunes all its
 per-panel refs against the live panel set every render).

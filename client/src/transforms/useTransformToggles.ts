@@ -128,6 +128,18 @@ export function readToggles(panelId: string): ToggleMap {
   return getState(panelId).map;
 }
 
+/** Drop in-memory toggle state for panels the server has forgotten.
+ * The module Map otherwise gains an entry (plus a listener set) per
+ * panel ever mounted and never sheds it. localStorage is left intact,
+ * so the toggles re-hydrate via `load()` if the same panel id ever
+ * comes back. Entries that are still subscribed are left wired. */
+export function pruneToggles(liveIds: Set<string>): void {
+  for (const [id, s] of panels) {
+    if (liveIds.has(id) || s.listeners.size > 0) continue;
+    panels.delete(id);
+  }
+}
+
 /** Test-only: drop all in-module state. */
 export function __resetTogglesForTests(): void {
   panels.clear();

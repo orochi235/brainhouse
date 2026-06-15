@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useState } from 'react';
+import { useClock } from '../lib/clock.ts';
 import { CopyableId } from '../lib/CopyableId.tsx';
 import { formatDurationShort, formatIdle } from '../lib/format.ts';
 import { CLI_ICONS } from '../lib/tools.ts';
@@ -87,7 +88,7 @@ export function ProcessRow({
   expandable = false,
   expanded = false,
   onToggleExpand,
-  now = null,
+  showIdle = false,
 }: {
   row: Row;
   panel: PanelState | null;
@@ -115,10 +116,13 @@ export function ProcessRow({
   expanded?: boolean;
   /** Click handler for the caret. Undefined disables the affordance. */
   onToggleExpand?: () => void;
-  /** Wall-clock seconds, ticking from the parent panel. When non-null
-   * (sessions view), the row renders an Idle column = now − panel.last_event_at.
-   * Null in network view, where the column doesn't exist. */
-  now?: number | null;
+  /** Sessions view renders an Idle column (= now − panel.last_event_at).
+   * The cell ({@link IdleCell}) subscribes to the shared 1Hz clock itself
+   * — we deliberately do NOT thread a per-second `now` prop down here, as
+   * that would re-render + repaint the whole table every tick (the
+   * renderer-native raster leak documented in lib/clock.ts). Network view
+   * omits the column. */
+  showIdle?: boolean;
 }) {
   const kill = () => {
     if (!window.confirm(`Send SIGTERM to PID ${row.pid}?`)) return;
@@ -308,29 +312,7 @@ export function ProcessRow({
             '—'
           )}
         </td>
-        {now !== null && (() => {
-          const idleSec = panel ? Math.max(0, now - panel.last_event_at) : null;
-          // 0 = fresh, 6 = ancient. Bumps at 5m, 30m, 2h, 6h, 24h, 7d.
-          // CSS picks the per-bucket color (full --fg → progressively
-          // darker via color-mix).
-          const bucket =
-            idleSec === null ? null :
-            idleSec < 300 ? 0 :
-            idleSec < 1800 ? 1 :
-            idleSec < 7200 ? 2 :
-            idleSec < 21600 ? 3 :
-            idleSec < 86400 ? 4 :
-            idleSec < 604800 ? 5 :
-            6;
-          return (
-            <td
-              className={bucket !== null ? `process-idle idle-bucket-${bucket}` : 'process-idle'}
-              title={panel ? 'time since last event in this session' : 'no session activity tracked'}
-            >
-              {idleSec === null ? '—' : formatIdle(idleSec)}
-            </td>
-          );
-        })()}
+        {showIdle && <IdleCell panel={panel} />}
         <td>{fmtUptime(row.uptime_s)}</td>
         <td>
           {/* Tail-stdout toggle (▾) is hidden until the logs UX is
@@ -340,5 +322,38 @@ export function ProcessRow({
         </td>
       </tr>
     </>
+  );
+}
+
+/**
+ * The Idle column cell. A LEAF clock subscriber: it reads the shared 1Hz
+ * clock via `useClock()` so only this `<td>` re-renders each second — the
+ * parent `ProcessRow` and the surrounding (potentially large) process
+ * table do not. Threading a per-second `now` down from `ProcessesPanel`
+ * instead would re-render + repaint the whole table every tick, churning
+ * renderer-native raster tiles into a PartitionAlloc high-water mark that
+ * never returns (see lib/clock.ts). Exported for the clock-isolation test.
+ */
+export function IdleCell({ panel }: { panel: PanelState | null }) {
+  const now = useClock();
+  const idleSec = panel ? Math.max(0, now - panel.last_event_at) : null;
+  // 0 = fresh, 6 = ancient. Bumps at 5m, 30m, 2h, 6h, 24h, 7d. CSS picks
+  // the per-bucket color (full --fg → progressively darker via color-mix).
+  const bucket =
+    idleSec === null ? null :
+    idleSec < 300 ? 0 :
+    idleSec < 1800 ? 1 :
+    idleSec < 7200 ? 2 :
+    idleSec < 21600 ? 3 :
+    idleSec < 86400 ? 4 :
+    idleSec < 604800 ? 5 :
+    6;
+  return (
+    <td
+      className={bucket !== null ? `process-idle idle-bucket-${bucket}` : 'process-idle'}
+      title={panel ? 'time since last event in this session' : 'no session activity tracked'}
+    >
+      {idleSec === null ? '—' : formatIdle(idleSec)}
+    </td>
   );
 }
