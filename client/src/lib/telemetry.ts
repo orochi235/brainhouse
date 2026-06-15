@@ -50,10 +50,14 @@ function mb(bytes: number): number {
 }
 
 function takeSample(): MemSample {
-  const mem = (performance as Performance & { memory?: {
-    usedJSHeapSize: number;
-    totalJSHeapSize: number;
-  } }).memory;
+  const mem = (
+    performance as Performance & {
+      memory?: {
+        usedJSHeapSize: number;
+        totalJSHeapSize: number;
+      };
+    }
+  ).memory;
   return {
     t: Math.round(Math.max(0, performance.now() / 1000)),
     jsUsedMB: mem ? mb(mem.usedJSHeapSize) : null,
@@ -102,7 +106,15 @@ function backfillUaMem(sample: MemSample): void {
 
 function dump(): string {
   const cols: (keyof MemSample)[] = [
-    't', 'jsUsedMB', 'jsTotalMB', 'domNodes', 'panels', 'eventRows', 'images', 'canvases', 'uaMemMB',
+    't',
+    'jsUsedMB',
+    'jsTotalMB',
+    'domNodes',
+    'panels',
+    'eventRows',
+    'images',
+    'canvases',
+    'uaMemMB',
   ];
   const head = cols.join(',');
   const rows = ring.map((s) => cols.map((c) => s[c] ?? '').join(','));
@@ -147,4 +159,42 @@ export function stopMemTelemetry(): void {
 /** Latest sample, or null before the first tick. For UI readouts. */
 export function latestMemSample(): MemSample | null {
   return ring[ring.length - 1] ?? null;
+}
+
+let reaperTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Bound the browser's user-timing buffer in DEV builds.
+ *
+ * React's development build emits a `performance.measure()` for every
+ * component render and scheduler commit (the "Components ⚛" / "Scheduler ⚛"
+ * DevTools Performance tracks). Nothing ever clears them and user-timing
+ * measures have no buffer cap, so a long-lived dev tab accumulates millions
+ * of `PerformanceMeasure` objects — hundreds of MB of *native* renderer
+ * memory that never shows up in the JS heap. Production React emits none of
+ * these, so this reaper is a dev-only no-op cost.
+ *
+ * The only consumer of these measures is an *active* DevTools Performance
+ * recording, so we just drop the whole buffer on an interval. Set
+ * `window.__keepReactMeasures = true` to pause reaping while you record one.
+ *
+ * Idempotent — a second call is a no-op and returns the same stop handle.
+ */
+export function startMeasureReaper(intervalMs = 10000): () => void {
+  if (reaperTimer) return stopMeasureReaper;
+  const reap = () => {
+    if ((globalThis as { __keepReactMeasures?: boolean }).__keepReactMeasures) return;
+    // No-arg clears the entire user-timing buffer (every measure / mark).
+    performance.clearMeasures?.();
+    performance.clearMarks?.();
+  };
+  reaperTimer = setInterval(reap, intervalMs);
+  return stopMeasureReaper;
+}
+
+export function stopMeasureReaper(): void {
+  if (reaperTimer) {
+    clearInterval(reaperTimer);
+    reaperTimer = null;
+  }
 }
