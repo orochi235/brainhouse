@@ -60,6 +60,17 @@ export class ProcessTracker extends EventEmitter {
 
   snapshot(): ProcessRow[] { return this.rec.getQualifyingRows(); }
 
+  /** Session ids that currently have at least one live (qualifying) process
+   * attributed to them — i.e. their `claude` process is still running. The
+   * SessionStore uses this to avoid flipping a still-working session to
+   * `done` during a long transcript-quiet stretch. A session drops out
+   * within ~2 sweeps of its process exiting (the reconciler's miss debounce). */
+  liveSessionIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const r of this.rec.getQualifyingRows()) if (r.session_id) ids.add(r.session_id);
+    return ids;
+  }
+
   handleHookRecord(rec: any) {
     if (rec.kind === 'session_pid') {
       this.rec.registerSession(rec.session_id, {

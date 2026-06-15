@@ -338,6 +338,47 @@ describe('SessionStore', () => {
     expect(store.panel('S')?.status).toBe('done');
   });
 
+  it('process-aware: a live session stays live past idleSeconds while its process is alive', () => {
+    const clock = new FakeClock();
+    const liveSids = new Set<string>(['S']);
+    const store = new SessionStore({
+      idleSeconds: 60,
+      miniSeconds: 600,
+      clock: clock.now,
+      isSessionLive: (sid) => liveSids.has(sid),
+    });
+    store.apply(ev('user_text', { payload: { text: 'hi' } }));
+    clock.advance(120); // well past the idle threshold
+    // Process still alive → no live→done transition despite the idle gap
+    // (long agentic turns flush the transcript in bursts).
+    expect(store.tick()).toEqual([]);
+    expect(store.panel('S')?.status).toBe('live');
+    // Process exits → the next tick flips it to done promptly.
+    liveSids.delete('S');
+    expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
+    expect(store.panel('S')?.status).toBe('done');
+  });
+
+  it('process-aware: a subagent keys liveness off its parent session', () => {
+    const clock = new FakeClock();
+    const liveSids = new Set<string>(['S']); // parent session S process alive
+    const store = new SessionStore({
+      idleSeconds: 60,
+      miniSeconds: 600,
+      clock: clock.now,
+      isSessionLive: (sid) => liveSids.has(sid),
+    });
+    store.apply(ev('user_text', { session_id: 'S', payload: { text: 'hi' } }));
+    store.apply(
+      ev('assistant_text', { session_id: 'S', agent_id: 'A', uuid: 'a1', payload: { text: 'sub' } }),
+    );
+    clock.advance(120);
+    // Both stay live because the owning session's process (S) is alive.
+    expect(store.tick()).toEqual([]);
+    expect(store.panel('S')?.status).toBe('live');
+    expect(store.panel('A')?.status).toBe('live');
+  });
+
   it('done panel transitions to mini', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ idleSeconds: 10, miniSeconds: 100, clock: clock.now });

@@ -109,6 +109,10 @@ export class TranscriptMonitor {
       miniSeconds: opts.miniSeconds,
       removeAfterSeconds: opts.removeAfterSeconds,
       store: opts.store ?? null,
+      // Process-aware liveness: don't let a session flip to `done` while its
+      // owning `claude` process is still alive. Lazy `this.tracker` read —
+      // the tracker is wired after this constructor but always before tick().
+      isSessionLive: (sessionId) => this.tracker?.liveSessionIds().has(sessionId) ?? false,
     });
     this.accountLabels = new Map();
     for (const a of opts.accounts ?? []) {

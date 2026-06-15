@@ -227,6 +227,14 @@ export interface SessionStoreOptions {
    * `panels` table on every transition, events go into `events_index`,
    * and `session_summary` rows are materialized on end-of-session. */
   store?: Store | null;
+  /** Liveness oracle: given a session id, returns whether its owning
+   * `claude` process is still alive (per the ProcessTracker). Used to
+   * suppress the idle→done transition for sessions that are still working
+   * but haven't flushed a transcript record recently — long agentic turns
+   * write in bursts, so transcript-idle ≠ session-done. Defaults to
+   * "always dead", preserving the pure transcript-idle behavior when no
+   * tracker is wired (tests, persistence-only hosts). */
+  isSessionLive?: (sessionId: string) => boolean;
 }
 
 export class SessionStore {
@@ -236,6 +244,7 @@ export class SessionStore {
   private readonly clock: () => number;
   private readonly panels = new Map<string, Panel>();
   private readonly store: Store | null;
+  private readonly isSessionLive: (sessionId: string) => boolean;
   /** Session ids that started via `/clear` whose panel hasn't been
    * created yet. Drained at `ensurePanel` time to arm
    * `panel.clear_title_suppression`. SessionStart hook events typically
@@ -249,6 +258,7 @@ export class SessionStore {
     this.removeAfterSeconds = opts.removeAfterSeconds ?? 24 * 60 * 60;
     this.clock = opts.clock ?? (() => Date.now() / 1000);
     this.store = opts.store ?? null;
+    this.isSessionLive = opts.isSessionLive ?? (() => false);
   }
 
   /** Hydrate the in-memory panel map from the persistence store. Call
@@ -378,7 +388,17 @@ export class SessionStore {
     for (const panel of this.panels.values()) {
       // Binned panels are frozen — no auto live→done→mini→removed progression.
       if (panel.binned_at !== null) continue;
-      if (panel.status === 'live' && t - panel.last_event_at >= this.idleSeconds) {
+      // Process-aware liveness: a session whose `claude` process is still
+      // alive is still working even when the transcript has been quiet past
+      // idleSeconds (long agentic turns flush records in bursts). Subagents
+      // inherit the owning session's process. Hold `live` until the process
+      // actually exits, after which this same guard lets it flip.
+      const ownerSid = panel.kind === 'subagent' ? (panel.parent_panel_id ?? panel.id) : panel.id;
+      if (
+        panel.status === 'live' &&
+        t - panel.last_event_at >= this.idleSeconds &&
+        !this.isSessionLive(ownerSid)
+      ) {
         panel.status = 'done';
         // Stamp when the panel *actually* went idle so a bootstrap-replayed
         // session shows "done 2h ago" instead of "done 0s ago".
