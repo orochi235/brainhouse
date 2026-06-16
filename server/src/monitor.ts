@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
+import { BackgroundIndexer } from './indexer.js';
 import type { Event } from './parser.js';
 import type { Discovery } from './prefs.js';
 import type { ProcessTracker } from './processes/index.js';
@@ -104,6 +105,7 @@ export class TranscriptMonitor {
    * the bootstrap_offsets table without going through SessionStore. */
   readonly persistStore: import('./store.js').Store | null;
   private readonly discovery: Discovery | null;
+  private indexer: BackgroundIndexer | null = null;
 
   constructor(opts: MonitorOptions) {
     this.persistStore = opts.store ?? null;
@@ -129,6 +131,7 @@ export class TranscriptMonitor {
       {
         store: opts.store ?? null,
         bootstrapAgeSeconds: opts.discovery?.uiWindowSeconds ?? 172800,
+        deferredMaxAgeSeconds: opts.discovery?.backgroundMaxAgeSeconds ?? 0,
       },
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
@@ -202,6 +205,28 @@ export class TranscriptMonitor {
     this.startTick();
     this.startPruneLoop();
     this.startThemePoll();
+    // Background fill: the watcher deferred any parent transcripts older than
+    // the UI window but within the background max-age. Drain that queue into
+    // session_summary, paced in batches, so project widgets/history are
+    // complete without flooding the grid with panels. Never creates panels or
+    // emits deltas — each file is summarized on a throwaway SessionStore.
+    if (this.persistStore && this.discovery && this.discovery.backgroundMaxAgeSeconds > 0) {
+      const persist = this.persistStore;
+      this.indexer = new BackgroundIndexer({
+        takeFiles: () => this.watcher.takeDeferredFiles(),
+        parseFile: (p) => this.watcher.parseFile(p),
+        summarize: (events) =>
+          new SessionStore({
+            clock: () => Date.now() / 1000,
+            isSessionLive: () => false,
+            store: null,
+          }).summarizeOffline(events),
+        write: (row) => persist.materializeSession(row),
+        batchSize: this.discovery.backgroundBatchSize,
+        intervalMs: this.discovery.backgroundIntervalMs,
+      });
+      void this.indexer.runToCompletion();
+    }
   }
 
   private themePollHandle: NodeJS.Timeout | null = null;
@@ -273,6 +298,7 @@ export class TranscriptMonitor {
     this.pruneHandle = null;
     if (this.themePollHandle) clearInterval(this.themePollHandle);
     this.themePollHandle = null;
+    this.indexer?.stop();
     await this.watcher.stop();
     if (this.hookWatcher) await this.hookWatcher.stop();
   }
@@ -449,7 +475,11 @@ export class TranscriptMonitor {
     this.watcher = new TranscriptWatcher(
       roots,
       (event, sourceRoot) => this.ingest(event, sourceRoot),
-      { store: this.persistStore },
+      {
+        store: this.persistStore,
+        bootstrapAgeSeconds: this.discovery?.uiWindowSeconds ?? 172800,
+        deferredMaxAgeSeconds: this.discovery?.backgroundMaxAgeSeconds ?? 0,
+      },
     );
     await this.watcher.start({ watch: true });
   }
