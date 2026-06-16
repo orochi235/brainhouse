@@ -506,6 +506,25 @@ export class TranscriptMonitor {
     }
   }
 
+  /** Re-create a reaped/never-surfaced session as a live panel on demand.
+   * Resolves the transcript from its persisted cwd, parses it fully, and
+   * feeds it through the normal ingest() path so deltas reach subscribers.
+   * Returns false if the session isn't known or its file is gone. */
+  async reopenSession(sessionId: string): Promise<boolean> {
+    if (this.store.snapshotHas(sessionId)) return true; // already live
+    const row = this.persistStore?.getSession(sessionId);
+    if (!row || !row.cwd) return false;
+    const rel = encodeCwdToProjectDir(row.cwd);
+    for (const root of this.watcher.roots) {
+      const file = path.join(root, rel, `${sessionId}.jsonl`);
+      if (!existsSync(file)) continue;
+      const events = await this.watcher.parseFile(file);
+      for (const event of events) this.ingest(event, root);
+      return true;
+    }
+    return false;
+  }
+
   /** Resolve the transcript JSONL that owns a panel's events, or null if
    * it can't be found on disk. Read-only — no store/broadcast side
    * effects. Used by the `panelHistory` query for lazy scroll-back.

@@ -651,12 +651,10 @@ function AppMain() {
   const openSessionFromWidget = (sessionId: string) => {
     const panel = panels.get(sessionId);
     if (!panel) {
-      // Historical row from the session_summary merge — the panel was
-      // reaped from the in-memory map after its mini lifecycle expired.
-      // We don't currently have a re-hydrate path that pulls a reaped
-      // panel back from disk; click is a no-op for these. (TODO: a
-      // server-side `reopenSession` that re-creates the panel row +
-      // replays events from JSONL.)
+      // Reaped/older session not in the live map — ask the server to parse its
+      // transcript and re-surface it. The panel arrives via the delta stream
+      // (panel_upsert), so fire-and-forget; the reducer mounts it.
+      trpc.reopenSession.mutate({ sessionId }).catch(() => undefined);
       return;
     }
     // Clear *all* local dismissal intentions for this id —

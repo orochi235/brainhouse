@@ -94,6 +94,16 @@ export const appRouter = t.router({
     return { ok: true, deltas: deltas.length };
   }),
 
+  /** On-demand fast-load: parse a reaped/older session's transcript and feed
+   * it through the monitor's ingest path so its panel surfaces live (ahead of
+   * the throttled background indexer). The panel arrives via the delta stream. */
+  reopenSession: t.procedure
+    .input(z.object({ sessionId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const ok = await ctx.monitor.reopenSession(input.sessionId);
+      return { ok };
+    }),
+
   processes: t.router({
     subscribe: t.procedure.subscription(async function* ({
       ctx,

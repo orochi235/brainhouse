@@ -687,6 +687,13 @@ export class SessionStore {
     return this.panels.get(panelId);
   }
 
+  /** True if a (non-binned) panel for this id is currently surfaced-eligible
+   * in memory. Used to short-circuit on-demand reopen for an already-live id. */
+  snapshotHas(id: string): boolean {
+    const p = this.panels.get(id);
+    return !!p && p.binned_at === null;
+  }
+
   /** Look up a single event by uuid within a panel's in-memory window
    * (capped well above the client's live window). Returns null if the panel
    * or event isn't resident. No JSONL re-scan — events evicted past the
