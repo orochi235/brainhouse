@@ -235,6 +235,11 @@ export interface SessionStoreOptions {
    * "always dead", preserving the pure transcript-idle behavior when no
    * tracker is wired (tests, persistence-only hosts). */
   isSessionLive?: (sessionId: string) => boolean;
+  /** Surfacing window for `snapshot()`. A panel whose owning process is not
+   * live surfaces to the UI only if it was active within this many seconds.
+   * Older panels stay in memory (queryable, lifecycle intact) but are not
+   * surfaced through the snapshot/hello chokepoint. Defaults to 48h. */
+  uiWindowSeconds?: number;
 }
 
 export class SessionStore {
@@ -245,6 +250,7 @@ export class SessionStore {
   private readonly panels = new Map<string, Panel>();
   private readonly store: Store | null;
   private readonly isSessionLive: (sessionId: string) => boolean;
+  private readonly uiWindowSeconds: number;
   /** Session ids that started via `/clear` whose panel hasn't been
    * created yet. Drained at `ensurePanel` time to arm
    * `panel.clear_title_suppression`. SessionStart hook events typically
@@ -259,6 +265,7 @@ export class SessionStore {
     this.clock = opts.clock ?? (() => Date.now() / 1000);
     this.store = opts.store ?? null;
     this.isSessionLive = opts.isSessionLive ?? (() => false);
+    this.uiWindowSeconds = opts.uiWindowSeconds ?? 172800;
   }
 
   /** Hydrate the in-memory panel map from the persistence store. Call
@@ -596,12 +603,23 @@ export class SessionStore {
   }
 
   snapshot(): Array<PanelDto & { events: Event[] }> {
+    const now = this.clock();
+    const cutoff = now - this.uiWindowSeconds;
     return Array.from(this.panels.values())
-      .filter((p) => p.binned_at === null)
+      .filter((p) => p.binned_at === null && this.isSurfaceable(p, cutoff))
       .map((p) => ({
         ...this.toDto(p),
         events: p.events.slice(),
       }));
+  }
+
+  /** A panel surfaces as a live UI panel iff its owning process is alive, or
+   * it has been active within the UI window. An out-of-window panel is never
+   * surfaced (a stale persisted row must not leak in). */
+  private isSurfaceable(p: Panel, cutoff: number): boolean {
+    const owner = p.kind === 'subagent' ? (p.parent_panel_id ?? p.id) : p.id;
+    if (this.isSessionLive(owner)) return true;
+    return p.last_event_at >= cutoff;
   }
 
   /** Unfiltered dump of every panel in the map (including binned) with

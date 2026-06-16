@@ -1215,3 +1215,44 @@ describe('SessionStore', () => {
     });
   });
 });
+
+function textEvent(sessionId: string, ts: string, text = 'hi'): Event {
+  return {
+    session_id: sessionId,
+    agent_id: null,
+    uuid: `${sessionId}:${ts}`,
+    parent_uuid: null,
+    ts,
+    cwd: '/tmp/proj',
+    kind: 'user_text' as const,
+    tags: [],
+    payload: { text },
+  };
+}
+
+describe('snapshot surfacing gate', () => {
+  it('omits an old, titleless panel but keeps a recent one', () => {
+    const now = 1_000_000;
+    const store = new SessionStore({
+      clock: () => now,
+      isSessionLive: () => false,
+      uiWindowSeconds: 100,
+    });
+    store.apply(textEvent('recent', new Date((now - 10) * 1000).toISOString()));
+    store.apply(textEvent('old', new Date((now - 10_000) * 1000).toISOString()));
+    const ids = store.snapshot().map((p) => p.id);
+    expect(ids).toContain('recent');
+    expect(ids).not.toContain('old');
+  });
+
+  it('always surfaces a live session even if old', () => {
+    const now = 1_000_000;
+    const store = new SessionStore({
+      clock: () => now,
+      isSessionLive: (id) => id === 'old',
+      uiWindowSeconds: 100,
+    });
+    store.apply(textEvent('old', new Date((now - 10_000) * 1000).toISOString()));
+    expect(store.snapshot().map((p) => p.id)).toContain('old');
+  });
+});
