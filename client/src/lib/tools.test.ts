@@ -81,6 +81,17 @@ describe('salientBashCommand', () => {
     expect(salientBashCommand('sudo systemctl restart nginx')).toBe('sudo systemctl restart nginx');
   });
 
+  it('drops leading variable-declaration segments', () => {
+    expect(salientBashCommand('export FOO=bar && npm run build')).toBe('npm run build');
+    expect(salientBashCommand('export PATH=$PATH:/opt/bin && deploy.sh')).toBe('deploy.sh');
+    expect(salientBashCommand('export A=1; export B=2; npm test')).toBe('npm test');
+    expect(salientBashCommand('declare -x X=1 && run')).toBe('run');
+  });
+
+  it('does not drop a command merely prefixed by an export-like word', () => {
+    expect(salientBashCommand('exportify --all')).toBe('exportify --all');
+  });
+
   it('joins multiple real segments with their operators', () => {
     expect(salientBashCommand('git add -A && git commit -m "x"')).toBe(
       'git add -A && git commit -m "x"',

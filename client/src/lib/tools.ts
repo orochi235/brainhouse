@@ -193,6 +193,12 @@ export function parseBashCommandHead(cmd: string): string {
  * view of a chained command. */
 const BASH_SETUP = new Set(['cd', 'pushd', 'popd']);
 
+/** Variable-declaration builtins. A segment headed by one of these is a
+ * declaration statement (`export FOO=bar`, `declare -x X=1`) — setup
+ * noise that's dropped from the salient view, the same as a bare inline
+ * assignment. */
+const BASH_DECLARE = new Set(['export', 'declare', 'local', 'readonly', 'typeset']);
+
 interface BashSegment {
   /** Operator preceding this segment: '' (first), '&&', '||', or ';'. */
   op: string;
@@ -262,8 +268,9 @@ function stripEnvPrefix(text: string): string {
 
 /**
  * The "salient" command(s) a reader cares about. Drops pure-setup
- * segments (`cd`/`pushd`/`popd`) and leading env-assignments, then
- * re-joins the survivors with their operators:
+ * segments (`cd`/`pushd`/`popd`), variable-declaration segments
+ * (`export FOO=bar`, `declare`/`local`/`readonly`/`typeset`), and leading
+ * inline env-assignments, then re-joins the survivors with their operators:
  *   `cd repo && FOO=1 npm test`        → `npm test`
  *   `git add -A && git commit -m "x"`  → `git add -A && git commit -m "x"`
  * Operates on the first line only. Falls back to the trimmed first line
@@ -277,7 +284,7 @@ export function salientBashCommand(cmd: string): string {
     const text = stripEnvPrefix(seg.text);
     if (!text) continue; // env-only segment
     const head = text.split(/\s+/)[0] ?? '';
-    if (BASH_SETUP.has(head)) continue; // cd/pushd/popd
+    if (BASH_SETUP.has(head) || BASH_DECLARE.has(head)) continue; // cd / export …
     kept.push({ op: seg.op, text });
   }
   if (kept.length === 0) return line.trim();

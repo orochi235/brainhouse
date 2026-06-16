@@ -430,8 +430,10 @@ UI/server is meant to uphold. New entries go at the bottom.
   for ports no longer listening after each (non-null) lsof sweep.
 - **Bash tool capsules show the *salient* command, not the raw line.**
   `salientBashCommand()` (`lib/tools.ts`) drops pure-setup segments
-  (`cd`/`pushd`/`popd`) and leading env-assignments from a chained
-  command, then re-joins the survivors with their operators
+  (`cd`/`pushd`/`popd`), variable-declaration segments (`export FOO=bar`,
+  `declare`/`local`/`readonly`/`typeset`), and leading inline
+  env-assignments from a chained command, then re-joins the survivors
+  with their operators
   (`cd repo && FOO=1 npm test` → `npm test`; `a && b` keeps both).
   Splitting is quote-aware and never breaks a pipeline (`|`). Wrappers
   like `sudo` stay visible — only the icon's `parseBashCommandHead` looks
