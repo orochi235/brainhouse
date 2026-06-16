@@ -3,6 +3,7 @@ import {
   iconForTool,
   parseBashCommandHead,
   parseMcpToolName,
+  salientBashCommand,
   shortenPath,
   stringifyToolValue,
   summarizeTool,
@@ -60,6 +61,60 @@ describe('parseBashCommandHead', () => {
   });
 });
 
+describe('salientBashCommand', () => {
+  it('passes a plain command through untouched (args kept)', () => {
+    expect(salientBashCommand('ls -la')).toBe('ls -la');
+    expect(salientBashCommand('git status')).toBe('git status');
+  });
+
+  it('drops a leading cd setup segment', () => {
+    expect(salientBashCommand('cd repo && npm test')).toBe('npm test');
+    expect(salientBashCommand('cd /some/path && git status')).toBe('git status');
+  });
+
+  it('strips leading env assignments within a segment', () => {
+    expect(salientBashCommand('FOO=bar npm run build')).toBe('npm run build');
+    expect(salientBashCommand('cd repo && FOO=1 BAR=2 npm test')).toBe('npm test');
+  });
+
+  it('keeps wrappers like sudo in the visible text', () => {
+    expect(salientBashCommand('sudo systemctl restart nginx')).toBe('sudo systemctl restart nginx');
+  });
+
+  it('joins multiple real segments with their operators', () => {
+    expect(salientBashCommand('git add -A && git commit -m "x"')).toBe(
+      'git add -A && git commit -m "x"',
+    );
+    expect(salientBashCommand('npm run a; npm run b')).toBe('npm run a; npm run b');
+    expect(salientBashCommand('test -f x || echo missing')).toBe('test -f x || echo missing');
+  });
+
+  it('keeps a pipeline intact (does not split on |)', () => {
+    expect(salientBashCommand('cat x | grep y')).toBe('cat x | grep y');
+    expect(salientBashCommand('cd d && cat x | grep y')).toBe('cat x | grep y');
+  });
+
+  it('does not split on operators inside quotes', () => {
+    expect(salientBashCommand('git commit -m "fix && cleanup"')).toBe(
+      'git commit -m "fix && cleanup"',
+    );
+    expect(salientBashCommand("echo 'a; b; c'")).toBe("echo 'a; b; c'");
+  });
+
+  it('falls back to the first line when every segment is setup', () => {
+    expect(salientBashCommand('cd a && cd b')).toBe('cd a && cd b');
+  });
+
+  it('uses only the first line', () => {
+    expect(salientBashCommand('cd x && npm test\nsecond line')).toBe('npm test');
+  });
+
+  it('returns empty for empty/whitespace', () => {
+    expect(salientBashCommand('')).toBe('');
+    expect(salientBashCommand('   ')).toBe('');
+  });
+});
+
 describe('iconForTool', () => {
   it('maps known tools', () => {
     expect(iconForTool('Read', null)).toEqual({ kind: 'glyph', text: '📄' });
@@ -71,6 +126,13 @@ describe('iconForTool', () => {
     expect(git.kind).toBe('svg');
     const docker = iconForTool('Bash', { command: 'docker ps' });
     expect(docker.kind).toBe('svg');
+  });
+
+  it('Bash dispatches on the salient command, not a leading cd', () => {
+    const npm = iconForTool('Bash', { command: 'cd repo && npm test' });
+    expect(npm.kind).toBe('svg');
+    const git = iconForTool('Bash', { command: 'cd /x && FOO=1 git diff' });
+    expect(git.kind).toBe('svg');
   });
 
   it('Bash falls back to generic when CLI unknown', () => {
@@ -111,6 +173,22 @@ describe('summarizeTool', () => {
     const long = 'a'.repeat(200);
     const out = summarizeTool({ name: 'Bash', input: { command: long } }, null);
     expect(out).toBe(long);
+  });
+
+  it('Bash shows the salient command for a chained command', () => {
+    const out = summarizeTool(
+      { name: 'Bash', input: { command: 'cd repo && FOO=1 npm test' } },
+      null,
+    );
+    expect(out).toBe('npm test');
+  });
+
+  it('Bash salient filter composes with the result suffix', () => {
+    const out = summarizeTool(
+      { name: 'Bash', input: { command: 'cd repo && npm test' } },
+      { tool_use_id: 't', content: 'boom', is_error: true },
+    );
+    expect(out).toBe('npm test  · error');
   });
 
   it('Read includes shortened path', () => {

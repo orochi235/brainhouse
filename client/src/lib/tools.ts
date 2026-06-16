@@ -189,11 +189,114 @@ export function parseBashCommandHead(cmd: string): string {
   return '';
 }
 
+/** Setup commands that are navigational noise — dropped from the salient
+ * view of a chained command. */
+const BASH_SETUP = new Set(['cd', 'pushd', 'popd']);
+
+interface BashSegment {
+  /** Operator preceding this segment: '' (first), '&&', '||', or ';'. */
+  op: string;
+  text: string;
+}
+
+/** Quote-aware split of one command line into sequence segments on
+ * top-level `&&`, `||`, `;` — but NOT on `|` (a pipeline reads as one
+ * command). Operators inside single/double quotes are ignored. This is a
+ * display heuristic, not a shell parser: `$(...)`/backtick nesting isn't
+ * tracked. */
+function splitBashSegments(line: string): BashSegment[] {
+  const segs: BashSegment[] = [];
+  let buf = '';
+  let op = '';
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const c = line[i];
+    if (quote) {
+      buf += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      buf += c;
+      continue;
+    }
+    if ((c === '&' && line[i + 1] === '&') || (c === '|' && line[i + 1] === '|')) {
+      segs.push({ op, text: buf });
+      op = `${c}${c}`;
+      buf = '';
+      i += 1;
+      continue;
+    }
+    if (c === ';') {
+      segs.push({ op, text: buf });
+      op = ';';
+      buf = '';
+      continue;
+    }
+    buf += c;
+  }
+  segs.push({ op, text: buf });
+  return segs;
+}
+
+/** Strip leading env-assignments (`FOO=bar`) from a segment. Wrappers
+ * (`sudo`, `time`, …) are intentionally kept so the displayed command
+ * isn't misrepresented — only the icon's `parseBashCommandHead` looks
+ * past them. */
+function stripEnvPrefix(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  const tokens = trimmed.split(/\s+/);
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i] ?? '';
+    if (t.includes('=') && !t.startsWith('-')) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  return tokens.slice(i).join(' ');
+}
+
+/**
+ * The "salient" command(s) a reader cares about. Drops pure-setup
+ * segments (`cd`/`pushd`/`popd`) and leading env-assignments, then
+ * re-joins the survivors with their operators:
+ *   `cd repo && FOO=1 npm test`        → `npm test`
+ *   `git add -A && git commit -m "x"`  → `git add -A && git commit -m "x"`
+ * Operates on the first line only. Falls back to the trimmed first line
+ * when every segment is setup, so the result is never blank.
+ */
+export function salientBashCommand(cmd: string): string {
+  if (!cmd) return '';
+  const line = cmd.split('\n')[0] ?? '';
+  const kept: BashSegment[] = [];
+  for (const seg of splitBashSegments(line)) {
+    const text = stripEnvPrefix(seg.text);
+    if (!text) continue; // env-only segment
+    const head = text.split(/\s+/)[0] ?? '';
+    if (BASH_SETUP.has(head)) continue; // cd/pushd/popd
+    kept.push({ op: seg.op, text });
+  }
+  if (kept.length === 0) return line.trim();
+  let out = kept[0]?.text ?? '';
+  for (let i = 1; i < kept.length; i += 1) {
+    const s = kept[i];
+    if (!s) continue;
+    out += s.op === ';' ? `; ${s.text}` : ` ${s.op} ${s.text}`;
+  }
+  return out;
+}
+
 export function iconForTool(name: string, input: unknown): ToolIcon {
   if (name === 'Bash' && input && typeof input === 'object') {
     const cmd = (input as ToolUseInput).command;
     if (typeof cmd === 'string') {
-      const head = parseBashCommandHead(cmd);
+      // Resolve the icon off the salient command so a leading `cd …` or
+      // env-prefix doesn't mask the real CLI (`cd foo && npm test` → npm).
+      const head = parseBashCommandHead(salientBashCommand(cmd));
       if (head && CLI_ICONS[head]) return { kind: 'svg', svg: CLI_ICONS[head] };
     }
   }
@@ -221,8 +324,7 @@ export function summarizeTool(
   // every capsule getting cut at a fixed char count regardless of
   // available space.
   if (name === 'Bash') {
-    const cmd = (input.command ?? '').split('\n')[0] ?? '';
-    label = cmd || 'bash';
+    label = salientBashCommand(input.command ?? '') || 'bash';
   } else if (name === 'Read' || name === 'Edit' || name === 'Write') {
     label = `${name} ${shortenPath(input.file_path)}`;
   } else if (name === 'Grep') {

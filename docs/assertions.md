@@ -428,3 +428,14 @@ UI/server is meant to uphold. New entries go at the bottom.
   rather than relying on a TTL or a never-called `clear()`. Server-side,
   the `is_http` probe cache is the analogue: `retainOnly()` drops entries
   for ports no longer listening after each (non-null) lsof sweep.
+- **Bash tool capsules show the *salient* command, not the raw line.**
+  `salientBashCommand()` (`lib/tools.ts`) drops pure-setup segments
+  (`cd`/`pushd`/`popd`) and leading env-assignments from a chained
+  command, then re-joins the survivors with their operators
+  (`cd repo && FOO=1 npm test` → `npm test`; `a && b` keeps both).
+  Splitting is quote-aware and never breaks a pipeline (`|`). Wrappers
+  like `sudo` stay visible — only the icon's `parseBashCommandHead` looks
+  past them, and the icon now resolves off the salient command so a
+  leading `cd` no longer masks the real CLI. `summarizeTool` is the
+  single chokepoint, so every capsule host (transcript, expanded,
+  broken-out) inherits this.
