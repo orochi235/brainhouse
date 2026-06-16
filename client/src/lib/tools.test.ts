@@ -116,8 +116,28 @@ describe('salientBashCommand', () => {
     expect(salientBashCommand('cd a && cd b')).toBe('cd a && cd b');
   });
 
-  it('uses only the first line', () => {
-    expect(salientBashCommand('cd x && npm test\nsecond line')).toBe('npm test');
+  it('treats newlines as statement separators (skips leading setup lines)', () => {
+    expect(salientBashCommand('cd /x\nnpm test')).toBe('npm test');
+    expect(salientBashCommand('M=~/cache/foo\ncd "$M"\nFOO=1 bash run.sh')).toBe('bash run.sh');
+  });
+
+  it('joins line continuations into one logical command', () => {
+    expect(salientBashCommand('FOO=1 \\\n  npm test')).toBe('npm test');
+  });
+
+  it('strips a quoted env value containing spaces', () => {
+    expect(salientBashCommand('TITLE="feat: redesign login" npm run build')).toBe('npm run build');
+  });
+
+  it('handles a real multi-line env-prefixed launch command', () => {
+    const cmd = [
+      'M=~/.cache/pr-review/foo',
+      'cd "$M"',
+      'PORT=7264 PREVIEW_ENV=dev SCREENER_PR_TITLE="feat: [PW-1620] redesign login" \\',
+      'SCREENER_PR_URL="https://example.com/pull/197" \\',
+      'bash .claude/preview.sh 2>&1',
+    ].join('\n');
+    expect(salientBashCommand(cmd)).toBe('bash .claude/preview.sh 2>&1');
   });
 
   it('returns empty for empty/whitespace', () => {
@@ -175,9 +195,17 @@ describe('shortenPath', () => {
 });
 
 describe('summarizeTool', () => {
-  it('Bash shows first line of command', () => {
+  it('Bash joins multi-line statements via the salient filter', () => {
     const out = summarizeTool({ name: 'Bash', input: { command: 'ls\nfoo' } }, null);
-    expect(out).toBe('ls');
+    expect(out).toBe('ls; foo');
+  });
+
+  it('Bash skips leading setup lines to the real command', () => {
+    const out = summarizeTool(
+      { name: 'Bash', input: { command: 'cd /tmp\nFOO=1 ./run.sh' } },
+      null,
+    );
+    expect(out).toBe('./run.sh');
   });
 
   it('Bash returns the full command — CSS handles visual overflow', () => {

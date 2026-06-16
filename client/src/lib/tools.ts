@@ -200,16 +200,49 @@ const BASH_SETUP = new Set(['cd', 'pushd', 'popd']);
 const BASH_DECLARE = new Set(['export', 'declare', 'local', 'readonly', 'typeset']);
 
 interface BashSegment {
-  /** Operator preceding this segment: '' (first), '&&', '||', or ';'. */
+  /** Operator preceding this segment: '' (first), '&&', '||', or ';'.
+   * Statement separators — `;` and newline — both normalize to ';'. */
   op: string;
   text: string;
 }
 
-/** Quote-aware split of one command line into sequence segments on
- * top-level `&&`, `||`, `;` — but NOT on `|` (a pipeline reads as one
+/** Quote-aware split into shell words on unquoted whitespace, keeping a
+ * quoted span (with its spaces) as a single word — so `A="x y" b` yields
+ * [`A="x y"`, `b`], not three tokens. */
+function splitWords(text: string): string[] {
+  const words: string[] = [];
+  let buf = '';
+  let quote: "'" | '"' | null = null;
+  for (const c of text) {
+    if (quote) {
+      buf += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      buf += c;
+      continue;
+    }
+    if (/\s/.test(c)) {
+      if (buf) {
+        words.push(buf);
+        buf = '';
+      }
+      continue;
+    }
+    buf += c;
+  }
+  if (buf) words.push(buf);
+  return words;
+}
+
+/** Quote-aware split of a command into sequence segments on top-level
+ * `&&`, `||`, `;`, and newlines — but NOT on `|` (a pipeline reads as one
  * command). Operators inside single/double quotes are ignored. This is a
  * display heuristic, not a shell parser: `$(...)`/backtick nesting isn't
- * tracked. */
+ * tracked. Callers join `\`-continuations first so a continuation newline
+ * doesn't read as a separator. */
 function splitBashSegments(line: string): BashSegment[] {
   const segs: BashSegment[] = [];
   let buf = '';
@@ -234,7 +267,7 @@ function splitBashSegments(line: string): BashSegment[] {
       i += 1;
       continue;
     }
-    if (c === ';') {
+    if (c === ';' || c === '\n') {
       segs.push({ op, text: buf });
       op = ';';
       buf = '';
@@ -246,24 +279,15 @@ function splitBashSegments(line: string): BashSegment[] {
   return segs;
 }
 
-/** Strip leading env-assignments (`FOO=bar`) from a segment. Wrappers
- * (`sudo`, `time`, …) are intentionally kept so the displayed command
- * isn't misrepresented — only the icon's `parseBashCommandHead` looks
- * past them. */
+/** Strip leading env-assignments (`FOO=bar`, including quoted values with
+ * spaces like `T="a b"`) from a segment. Wrappers (`sudo`, `time`, …) are
+ * intentionally kept so the displayed command isn't misrepresented — only
+ * the icon's `parseBashCommandHead` looks past them. */
 function stripEnvPrefix(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return '';
-  const tokens = trimmed.split(/\s+/);
+  const words = splitWords(text.trim());
   let i = 0;
-  while (i < tokens.length) {
-    const t = tokens[i] ?? '';
-    if (t.includes('=') && !t.startsWith('-')) {
-      i += 1;
-      continue;
-    }
-    break;
-  }
-  return tokens.slice(i).join(' ');
+  while (i < words.length && /^[A-Za-z_]\w*=/.test(words[i] ?? '')) i += 1;
+  return words.slice(i).join(' ');
 }
 
 /**
@@ -273,21 +297,29 @@ function stripEnvPrefix(text: string): string {
  * inline env-assignments, then re-joins the survivors with their operators:
  *   `cd repo && FOO=1 npm test`        → `npm test`
  *   `git add -A && git commit -m "x"`  → `git add -A && git commit -m "x"`
- * Operates on the first line only. Falls back to the trimmed first line
- * when every segment is setup, so the result is never blank.
+ * Newlines are statement separators (after `\`-continuations are folded
+ * into one logical line), so a multi-line script whose leading lines are
+ * setup resolves to its real command:
+ *   `M=~/x\ncd "$M"\nFOO=1 bash run.sh`  → `bash run.sh`
+ * Falls back to the first non-empty line when every segment is setup, so
+ * the result is never blank.
  */
 export function salientBashCommand(cmd: string): string {
   if (!cmd) return '';
-  const line = cmd.split('\n')[0] ?? '';
+  // Fold line-continuations into one logical line; real newlines remain as
+  // statement separators (handled by splitBashSegments).
+  const logical = cmd.replace(/\r\n/g, '\n').replace(/\\\n/g, ' ');
   const kept: BashSegment[] = [];
-  for (const seg of splitBashSegments(line)) {
+  for (const seg of splitBashSegments(logical)) {
     const text = stripEnvPrefix(seg.text);
-    if (!text) continue; // env-only segment
-    const head = text.split(/\s+/)[0] ?? '';
+    if (!text) continue; // env-only / blank segment
+    const head = splitWords(text)[0] ?? '';
     if (BASH_SETUP.has(head) || BASH_DECLARE.has(head)) continue; // cd / export …
     kept.push({ op: seg.op, text });
   }
-  if (kept.length === 0) return line.trim();
+  if (kept.length === 0) {
+    return logical.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+  }
   let out = kept[0]?.text ?? '';
   for (let i = 1; i < kept.length; i += 1) {
     const s = kept[i];

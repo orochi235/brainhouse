@@ -435,7 +435,12 @@ UI/server is meant to uphold. New entries go at the bottom.
   env-assignments from a chained command, then re-joins the survivors
   with their operators
   (`cd repo && FOO=1 npm test` → `npm test`; `a && b` keeps both).
-  Splitting is quote-aware and never breaks a pipeline (`|`). Wrappers
+  Newlines are statement separators too (after `\`-continuations are
+  folded into one logical line), so a multi-line launch script whose
+  leading lines are assignments + `cd` resolves to its real command
+  (`M=…\ncd "$M"\nPORT=1 bash run.sh` → `bash run.sh`). Splitting and
+  env-prefix stripping are quote-aware (`T="a b" cmd` → `cmd`; a quoted
+  `&&`/`;` never splits) and a pipeline (`|`) is never broken. Wrappers
   like `sudo` stay visible — only the icon's `parseBashCommandHead` looks
   past them, and the icon now resolves off the salient command so a
   leading `cd` no longer masks the real CLI. `summarizeTool` is the
