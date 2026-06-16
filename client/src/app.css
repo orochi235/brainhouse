@@ -3469,6 +3469,15 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   font-family: inherit;
   font-size: 0.72rem;
 }
+/* The status glyph + timestamp live in the absolutely-positioned
+ * `.event-trailer` over the row's bottom-right, out of flow — so without
+ * this a long label runs underneath them. Reserve room on the capsule's
+ * right edge so `.tool-label` ellipsizes BEFORE the trailer. Budget:
+ * clock `HH:MM:SS` (~2.4rem) + status glyph (0.85) + inter-gap (0.3) +
+ * trailer right offset (0.4) + a little breathing room. */
+.tool-capsule {
+  padding-right: 4.75rem;
+}
 .tool-capsule[data-tool-name="Bash"] .tool-label {
   font-family: ui-monospace, monospace;
 }
