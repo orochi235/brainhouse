@@ -1,5 +1,50 @@
 # brainhouse — project todos
 
+## Cold-start + lifecycle work (surfaced 2026-06-16 first prod run)
+
+First prod run (`node server/dist/index.js`, not dev) surfaced three issues:
+
+- **[TEST CASE] Misbehaving subagent status tracking.** This session's
+  transcript (2026-06-16) is a good repro — subagent statuses tracked
+  incorrectly during/around the cold-start flood. Capture the exact
+  session-id + offending record timestamp as a fixture for the
+  liveness/status logic (relates to the [FIXED f8dc933] process-aware
+  liveness work in the memory-leak section below). TODO: pin the
+  transcript path + the specific `ts`.
+
+- **Cold start floods the UI with ~600 placeholder-titled panels.** Root
+  cause: `monitor.hydrate()` restores every persisted panel into the
+  snapshot, and `watcher.bootstrap()` ingests everything within the 30-min
+  mtime window across the now-multi-account roots (`.claude`, `.claude-pw`,
+  `.claude-msb`), all surfacing immediately with UUID-placeholder titles
+  (auto-title is async/debounced 30s). Agreed policy: only sessions active
+  within ~48h surface as panels; older sessions are indexed in the
+  BACKGROUND at a throttled pace after spin-up (into `session_summary`, no
+  live panels/deltas); on-demand fast-load when the user opens one not yet
+  indexed; never surface an old + title-less panel. Design spec:
+  `docs/superpowers/specs/2026-06-16-cold-start-bounded-discovery-design.md`.
+
+- **[ROOT-CAUSED, corrected] Project widget can't be dismissed — reappears
+  ~1s later.** (An earlier sub-agent diagnosis was WRONG: it claimed
+  `trpc.restore` bumps `last_event_at` and the fix was to make dismiss
+  sticky. But `forceStatus(id,'done')` (`session.ts:490`) only bumps
+  `last_event_at` for status `'live'`, and `hiddenPanels.test.tsx:52`
+  proves the `hiddenAt` resurrection-on-activity is INTENTIONAL + tested.)
+  Real mechanism: clicking a project chip in the sidebar pins+promotes the
+  `project:<repo>` widget into the grid (`App.tsx` dock chip
+  `onPromote → togglePin`). The grid widget card's `onClose` calls
+  `dismiss({status:'mini', last_event_at: widget.last_event_at})` →
+  `hiddenAt[widgetId]=now`, but (a) it does NOT unpin, and (b) the widget
+  aggregates an ACTIVE project, so `buildProjectRollups` recomputes
+  `widget.last_event_at` ≈ now each render → `isHidden` (`last_event_at <=
+  hiddenAt`) resurrects it (~1s later via the idle-deferred `stablePanels`
+  recompute). For an IDLE project, dismiss sticks fine — only active
+  projects bite. Fix direction (do NOT change the shared `isHidden`
+  resurrection — it's tested): give WIDGET dismissal sticky semantics
+  distinct from panel resurrection (e.g. a dedicated sticky hidden-widget
+  set, or freeze the compare threshold), AND unpin on close. App-level
+  widget wiring has no test — verify the repro live. See handoff doc.
+
 ## Memory-leak hunt — remaining items
 
 The two dominant renderer leaks are fixed: unbounded per-panel `Event[]`
