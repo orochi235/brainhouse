@@ -11,6 +11,7 @@ function op(name: string, input: Record<string, unknown>, result?: string): Tool
     use: { tool_use_id: `t${uid}`, name, input },
     result:
       result !== undefined ? { tool_use_id: `t${uid}`, content: result, is_error: false } : null,
+    resultTs: null,
     ack: null,
     ts: '2026-05-24T00:00:00Z',
   };

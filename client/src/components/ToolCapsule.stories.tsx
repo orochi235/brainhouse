@@ -27,6 +27,7 @@ function tool(
       result === undefined
         ? null
         : { tool_use_id: `t${uid}`, content: result.content, is_error: result.is_error ?? false },
+    resultTs: null,
     ack: null,
     ts: '2026-05-20T00:00:00Z',
     ...overrides,

@@ -917,7 +917,13 @@ function itemId(item: ViewItem): string {
   ) {
     return item.anchorUuid;
   }
-  if (item.type === 'interrupt-divider' || item.type === 'day-divider') return item.anchorUuid;
+  if (
+    item.type === 'interrupt-divider' ||
+    item.type === 'day-divider' ||
+    item.type === 'notification-anchor'
+  ) {
+    return item.anchorUuid;
+  }
   if (item.type === 'bubble') return item.event.uuid;
   return item.event.uuid;
 }
@@ -942,7 +948,13 @@ function itemTime(item: ViewItem): number | null {
   ) {
     return parseTs(item.ts);
   }
-  if (item.type === 'interrupt-divider' || item.type === 'day-divider') return parseTs(item.ts);
+  if (
+    item.type === 'interrupt-divider' ||
+    item.type === 'day-divider' ||
+    item.type === 'notification-anchor'
+  ) {
+    return parseTs(item.ts);
+  }
   if (item.type === 'bubble') return parseTs(item.event.ts);
   return parseTs(item.event.ts);
 }

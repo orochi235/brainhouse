@@ -12,6 +12,7 @@ function toolItem(overrides: Partial<ToolItem> = {}): ToolItem {
     anchorUuid: 'u1',
     use: { tool_use_id: 't1', name: 'Bash', input: { command: 'echo hi' } },
     result: { tool_use_id: 't1', content: 'hi\n', is_error: false },
+    resultTs: null,
     ack: null,
     ts: '2026-05-19T00:00:00Z',
     ...overrides,

@@ -6,7 +6,7 @@
  */
 
 import type { Event } from '@server/parser.ts';
-import type { Selector, SelectorDef } from './types.ts';
+import type { Selector, SelectorDef, SelectorNode } from './types.ts';
 
 export const MOCK_SELECTORS: SelectorDef[] = [
   {
@@ -87,10 +87,10 @@ export const mockMatcher = (_e: Event) => false;
  * stays unchanged.
  */
 export function resolveSelector(_key: string): Selector {
-  return { source: '', ast: {} as unknown, match: mockMatcher };
+  return { source: '', ast: {} as unknown as SelectorNode, match: mockMatcher };
 }
 
 /** Compile a raw selector source — stub: never matches, never throws. */
 export function compileSelector(source: string): Selector {
-  return { source, ast: {} as unknown, match: mockMatcher };
+  return { source, ast: {} as unknown as SelectorNode, match: mockMatcher };
 }
