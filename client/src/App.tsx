@@ -4,7 +4,6 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnTooltip } from './components/ConnTooltip.tsx';
 import { DebugDock, loadPanelOpen, savePanelOpen } from './components/DebugDock.tsx';
 import { DebugTile } from './components/DebugTile.tsx';
-import { UptimeClock } from './components/UptimeClock.tsx';
 import { FlowsModal } from './components/FlowsModal.tsx';
 import { HoverPopover } from './components/HoverPopover.tsx';
 import { PanelCard } from './components/PanelCard.tsx';
@@ -14,15 +13,13 @@ import { ProjectWidgetCard, ProjectWidgetChip } from './components/ProjectWidget
 import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
-import { SelectorStoreProvider } from './transforms/selectors/store.tsx';
-import { TraceProvider, useTraceStore } from './transforms/traceContext.tsx';
-import { pruneToggles } from './transforms/useTransformToggles.ts';
+import { UptimeClock } from './components/UptimeClock.tsx';
+import { Layout } from './layout/Layout.tsx';
 import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { debugEnabled } from './lib/debugMode.ts';
-import { startMemTelemetry } from './lib/telemetry.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
-import { Layout } from './layout/Layout.tsx';
+import { useHiddenWidgets } from './lib/hiddenWidgets.ts';
 import { LightboxProvider } from './lib/lightbox.tsx';
 import { useLightbox } from './lib/lightboxContext.ts';
 import {
@@ -33,17 +30,21 @@ import {
   useWidePanels,
 } from './lib/panelOrder.ts';
 import { useTheme } from './lib/preferences.ts';
-import { clearScrollPosition, pruneScrollPositions } from './lib/scrollMemory.ts';
-import { withViewTransition } from './lib/viewTransition.ts';
 import { buildProjectRollups } from './lib/projectWidgets.ts';
-import { useIdleDeferred, useUserActive } from './lib/useIdleDeferred.ts';
+import { clearScrollPosition, pruneScrollPositions } from './lib/scrollMemory.ts';
 import { allocateSlots } from './lib/slotAllocator.ts';
+import { startMemTelemetry } from './lib/telemetry.ts';
 import { useAwaitingNotifications } from './lib/useAwaitingNotifications.ts';
+import { useIdleDeferred, useUserActive } from './lib/useIdleDeferred.ts';
 import { useIntentions } from './lib/useIntentions.ts';
 import { PrefsProvider, usePrefs } from './lib/usePrefs.tsx';
+import { withViewTransition } from './lib/viewTransition.ts';
 import { worktreeColor } from './lib/worktree.ts';
 import { groupByWorktreeKey, interleaveWorktreeSeparators } from './lib/worktreeGrouping.ts';
-import { ReplayView, type ReplayInlineSource, type ReplaySource } from './ReplayView.tsx';
+import { type ReplayInlineSource, type ReplaySource, ReplayView } from './ReplayView.tsx';
+import { SelectorStoreProvider } from './transforms/selectors/store.tsx';
+import { TraceProvider, useTraceStore } from './transforms/traceContext.tsx';
+import { pruneToggles } from './transforms/useTransformToggles.ts';
 import { trpc } from './trpc.ts';
 import { type PanelState, useDeltaStream } from './useDeltaStream.ts';
 import './app.css';
@@ -86,8 +87,7 @@ const BRAND_OPTIONS: Array<{
   { label: 'ʙʀᴀɪɴʜᴏᴜsᴇ', tier: 'rare', ariaLabel: 'brainhouse (small caps)' },
   { label: '8®41nh0u$€', tier: 'epic', ariaLabel: 'brainhouse (hardcore leet)' },
   {
-    label:
-      'B̸̢̧̧̛̛̗̬̘̪̳̮͙͍͚̲̾́̃̌̆͒̓̕͝͠͝r̷̢̛̛͙̠̥͙̗͔̘͕̦̆̔̃̅̑̇̌͐͒̉͝͝͠a̵̢̢̧̧̛̛̛̮̭̩̱̳̘͖̖̥̾̇̈́̆̏̌̏̕͝͠͝ĭ̶̧̢̛̛̪̭̪̳̩͔̭̄͑̃̾̏̕͝͝͝n̴̢̢̧̛̛̮̩͔͖̦̭̪̳͒̂̆̃̅̏̕͝͠h̷̢̛̛͉̫̬̗̳͖̬̳̆̌̾̅̃̆̕͝͝͠ơ̴̢̢̛̩̗̱̥̳̮̳̆̇̌̑̃̅̕͝͠ư̵̢̛̦͖̘̗̱̬̥̇̆̄̌̅̏̕͝͠s̶̢̛̛̪̩͔̬̳̆̇̌͒̕͝͠͝e̷̢̛̛̥̭̬͔̩͒̂̆̃̕͝͠͠',
+    label: 'B̸̢̧̧̛̛̗̬̘̪̳̮͙͍͚̲̾́̃̌̆͒̓̕͝͠͝r̷̢̛̛͙̠̥͙̗͔̘͕̦̆̔̃̅̑̇̌͐͒̉͝͝͠a̵̢̢̧̧̛̛̛̮̭̩̱̳̘͖̖̥̾̇̈́̆̏̌̏̕͝͠͝ĭ̶̧̢̛̛̪̭̪̳̩͔̭̄͑̃̾̏̕͝͝͝n̴̢̢̧̛̛̮̩͔͖̦̭̪̳͒̂̆̃̅̏̕͝͠h̷̢̛̛͉̫̬̗̳͖̬̳̆̌̾̅̃̆̕͝͝͠ơ̴̢̢̛̩̗̱̥̳̮̳̆̇̌̑̃̅̕͝͠ư̵̢̛̦͖̘̗̱̬̥̇̆̄̌̅̏̕͝͠s̶̢̛̛̪̩͔̬̳̆̇̌͒̕͝͠͝e̷̢̛̛̥̭̬͔̩͒̂̆̃̕͝͠͠',
     tier: 'epic',
     ariaLabel: 'brainhouse (corrupted)',
   },
@@ -113,9 +113,7 @@ function pickBrand(): (typeof BRAND_OPTIONS)[number] {
   // flatten the distribution so every option is equally likely. Twelve
   // minutes a day where the gacha is suspended.
   const flat = isAllSameDigitMinute();
-  const weights = flat
-    ? BRAND_OPTIONS.map(() => 1)
-    : BRAND_OPTIONS.map((o) => weightFor(o.tier));
+  const weights = flat ? BRAND_OPTIONS.map(() => 1) : BRAND_OPTIONS.map((o) => weightFor(o.tier));
   const total = weights.reduce((s, w) => s + w, 0);
   let r = Math.random() * total;
   for (let i = 0; i < BRAND_OPTIONS.length; i++) {
@@ -214,10 +212,16 @@ function AppMain() {
   const { status, panels: allPanels } = useDeltaStream();
   const [theme, setTheme] = useTheme();
   const [processesPanelOpen, setProcessesPanelOpen] = useState<boolean>(() => {
-    try { return localStorage.getItem('brainhouse:processesPanelOpen') !== '0'; } catch { return true; }
+    try {
+      return localStorage.getItem('brainhouse:processesPanelOpen') !== '0';
+    } catch {
+      return true;
+    }
   });
   useEffect(() => {
-    try { localStorage.setItem('brainhouse:processesPanelOpen', processesPanelOpen ? '1' : '0'); } catch {}
+    try {
+      localStorage.setItem('brainhouse:processesPanelOpen', processesPanelOpen ? '1' : '0');
+    } catch {}
   }, [processesPanelOpen]);
   const { prefs, refetch: refetchPrefs } = usePrefs();
   // Debug *mode* — the master dev-affordances switch. The ?debug query
@@ -352,6 +356,23 @@ function AppMain() {
   } = usePanelDismissal(panels, {
     initial: seeded.dismissal,
     persist: (id, patch) => persistIntention(id, patch),
+  });
+  // Project-widget hide is sticky and lives OUTSIDE usePanelDismissal:
+  // widget pseudo-ids (`project:<repo>`) are never real panel keys, so that
+  // hook would prune them; and a widget's `last_event_at` advances with any
+  // session activity, so its resurrection rule would undo the dismiss within
+  // ~1s for an active project. We persist through the same `hidden_at`
+  // column on the shared id namespace, but treat *presence* as hidden.
+  const seededHiddenWidgets = useMemo(
+    () =>
+      new Set(
+        Object.keys(seeded.dismissal.hiddenAt ?? {}).filter((id) => id.startsWith('project:')),
+      ),
+    [seeded.dismissal.hiddenAt],
+  );
+  const { hide: hideWidget, isHiddenWidget } = useHiddenWidgets({
+    initial: seededHiddenWidgets,
+    persist: (id, hidden) => persistIntention(id, { hidden_at: hidden ? Date.now() / 1000 : null }),
   });
 
   // Click on a subagent row dispatches this event; we mirror the
@@ -492,12 +513,7 @@ function AppMain() {
   // remaining slots from closed/idle panels via per-repo round-robin.
   const topLevel = [...allGridPanels, ...allTrayPanels];
   const allocatorInput = topLevel
-    .filter(
-      (p) =>
-        isPinned(p) ||
-        isUserKept(p) ||
-        (!isHidden(p) && !isClientMini(p)),
-    )
+    .filter((p) => isPinned(p) || isUserKept(p) || (!isHidden(p) && !isClientMini(p)))
     .map((p) => ({
       id: p.id,
       status: p.status,
@@ -579,8 +595,7 @@ function AppMain() {
       for (const p of liveTray) {
         clearScrollPosition(p.id);
         const isClient =
-          clientMiniPanels.some((m) => m.id === p.id) ||
-          clientMiniSubs.some((m) => m.id === p.id);
+          clientMiniPanels.some((m) => m.id === p.id) || clientMiniSubs.some((m) => m.id === p.id);
         if (isClient) restoreLocal(p.id);
         else trpc.restore.mutate({ panelId: p.id });
       }
@@ -591,12 +606,11 @@ function AppMain() {
   // stats + recent sessions. Render after session cards in the grid.
   // Auto-derived from `panels` — not allocator-managed (widgets have
   // self-contained visibility rules, TBD).
-  const allProjectRollups = buildProjectRollups(stablePanels).filter((r) =>
-    // Widgets reuse the panel hidden_at intentions namespace (their ids are
-    // `project:<repo>`). The widget's `last_event_at` advances on new project
-    // activity, so a hidden widget re-appears automatically when a session
-    // moves — same semantics as session dismiss.
-    !isHidden({ id: r.widget.id, last_event_at: r.widget.last_event_at } as PanelState),
+  const allProjectRollups = buildProjectRollups(stablePanels).filter(
+    // Sticky widget hide (see useHiddenWidgets) — presence means hidden,
+    // independent of project activity, so dismissing an active project's
+    // widget actually keeps it gone.
+    (r) => !isHiddenWidget(r.widget.id),
   );
   // Widgets are *fill-only*: a true last resort. We render them only in
   // grid cells that no real session needs. Three subtractions go into
@@ -616,20 +630,14 @@ function AppMain() {
   // A pinned widget (pseudo-id `project:<repo>`) always shows
   // regardless of the fill budget, mirroring how pinned session
   // panels work.
-  const wideCountForBudget = orderedGridPanels.reduce(
-    (n, p) => n + (wide.has(p.id) ? 1 : 0),
-    0,
-  );
+  const wideCountForBudget = orderedGridPanels.reduce((n, p) => n + (wide.has(p.id) ? 1 : 0), 0);
   // Count only TOP-LEVEL parked sessions: minimized subagents
   // (clientMiniSubs, appended onto trayPanels) live under a parent and
   // never claim a top-level cell, so they don't suppress widgets.
   const parkedSessionCount = trayPanels.length - clientMiniSubs.length;
   const widgetSlotBudget = Math.max(
     0,
-    prefs.workspace.slotCount -
-      orderedGridPanels.length -
-      wideCountForBudget -
-      parkedSessionCount,
+    prefs.workspace.slotCount - orderedGridPanels.length - wideCountForBudget - parkedSessionCount,
   );
   const pinnedRollups: typeof allProjectRollups = [];
   const unpinnedRollups: typeof allProjectRollups = [];
@@ -675,8 +683,7 @@ function AppMain() {
   // becomes a 5-slot tile (still picks a nice integer cols/rows). Mirrors
   // `wideCountForBudget` above — kept separate so each consumer is local.
   const wideCount = wideCountForBudget;
-  const slots =
-    orderedGridPanels.length + projectRollups.length + wideCount;
+  const slots = orderedGridPanels.length + projectRollups.length + wideCount;
   const { ref: gridRef, cols, rows } = useGridLayout(slots);
   const gridStyle = {
     gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
@@ -687,365 +694,378 @@ function AppMain() {
 
   return (
     <SelectorStoreProvider>
-    <LightboxProvider>
-      <LayoutGroup>
-        <Layout slots={{
-          top: (
-            <>
-      <header
-        className="topbar"
-        style={{ '--brand-tier-color': TIER_COLOR[CURRENT_BRAND.tier] } as CSSProperties}
-      >
-        <h1>
-          <BrandLabel />
-        </h1>
-        <span className="topbar-controls">
-          {/* Debug-only buttons clustered at the left so the cluster
-            * reads as one mode-switchable area; muted lime tint
-            * (--debug-color) reinforces the grouping. Neutral
-            * always-visible controls (clear all, stats) follow. */}
-          {debugMode && (
-            <>
-              <button
-                type="button"
-                className="debug-spawn is-debug-button"
-                onClick={() => trpc.debug.spawnMock.mutate()}
-              >
-                + mock session
-              </button>
-              <button
-                type="button"
-                className="debug-spawn is-debug-button"
-                onClick={() => trpc.debug.spawnCounter.mutate({ stopAt: 10 })}
-              >
-                + counter subagent
-              </button>
-              <ScenariosButton />
-              <TransformsButton />
-              <FlowsButton />
-              <UptimeClock />
-            </>
-          )}
-          <button type="button" className="debug-spawn" onClick={dismissAll}>
-            clear all
-          </button>
-          <StatsButton />
-          <HoverPopover
-            className={`conn conn-${status}`}
-            content={<ConnTooltip status={status} />}
-          >
-            <span>{status}</span>
-          </HoverPopover>
-          <span className="topbar-icon-buttons">
-            <button
-              type="button"
-              className="theme-toggle processes-toggle"
-              title={processesPanelOpen ? 'Hide processes panel' : 'Show processes panel'}
-              aria-pressed={processesPanelOpen}
-              onClick={() => setProcessesPanelOpen(v => !v)}
-            >
-              ≡
-            </button>
-            {/* Panel toggle — only present in debug mode (set via prefs or
-              * ?debug). Shows/hides the debug panel without leaving debug
-              * mode; debug mode itself is owned by the prefs switch. */}
-            {debugMode && (
-              <button
-                type="button"
-                className="theme-toggle debug-toggle"
-                title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
-                aria-label={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
-                aria-pressed={debugPanelOpen}
-                onClick={toggleDebugPanel}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="m8 2 1.88 1.88" />
-                  <path d="M14.12 3.88 16 2" />
-                  <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
-                  <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
-                  <path d="M12 20v-9" />
-                  <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
-                  <path d="M6 13H2" />
-                  <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
-                  <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
-                  <path d="M22 13h-4" />
-                  <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
-                </svg>
-              </button>
-            )}
-            <button
-              type="button"
-              className="theme-toggle"
-              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            >
-              {theme === 'dark' ? '☾' : '☀'}
-            </button>
-            <PrefsButton prefs={prefs} onSaved={refetchPrefs} />
-          </span>
-        </span>
-      </header>
-      {processesPanelOpen && <ProcessesPanel allPanels={allPanels} accountColorByLabel={accountColorByLabel} />}
-            </>
-          ),
-          main: (
-            <div className="main-stack">
-        <main
-          className="session-grid"
-          ref={gridRef}
-          style={gridStyle}
-          onDragOver={(e) => {
-            onGridDragOver(e);
-            if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
-            // Find the grid slot whose center is nearest the cursor, then
-            // decide before-or-after based on which half the cursor falls in.
-            const grid = e.currentTarget;
-            let nearest: HTMLElement | null = null;
-            let bestDist = Infinity;
-            for (const slot of grid.querySelectorAll<HTMLElement>('.grid-slot')) {
-              const r = slot.getBoundingClientRect();
-              const cx = r.left + r.width / 2;
-              const cy = r.top + r.height / 2;
-              const dx = e.clientX - cx;
-              const dy = e.clientY - cy;
-              const d2 = dx * dx + dy * dy;
-              if (d2 < bestDist) {
-                bestDist = d2;
-                nearest = slot;
-              }
-            }
-            if (!nearest) {
-              setInsertGhost(null);
-              return;
-            }
-            const r = nearest.getBoundingClientRect();
-            // First half → insert before; second half → insert after (i.e.
-            // before the next sibling, or append if none).
-            const beforeThis = e.clientX < r.left + r.width / 2;
-            if (beforeThis) {
-              setInsertGhost(nearest.dataset.panelId ?? null);
-            } else {
-              const next = nearest.nextElementSibling as HTMLElement | null;
-              setInsertGhost(next?.dataset?.panelId ?? null);
-            }
-          }}
-          onDragLeave={(e) => {
-            // Only clear when leaving the grid itself, not crossing into a
-            // child slot.
-            if (e.currentTarget === e.target) setInsertGhost(undefined);
-          }}
-          onDrop={(e) => {
-            setInsertGhost(undefined);
-            const id = e.dataTransfer.getData('text/brainhouse-panel');
-            if (!id) return;
-            const from = e.dataTransfer.getData('text/brainhouse-panel-source');
-            e.preventDefault();
-            // Drag-out from a parent's nested tray: break the subagent out
-            // onto the grid. If it was previously hidden/client-mini on the
-            // grid, also restore it so the drop is visible.
-            if (from === 'nested') {
-              const srcPanel = panels.get(id);
-              if (!srcPanel) return;
-              withViewTransition(() => {
-                if (!brokenOut.has(id)) toggleBrokenOut(id);
-                if (isClientMini(srcPanel)) restoreLocal(id);
-              });
-              return;
-            }
-            // Drag-out from dock to grid = "give this panel a slot."
-            // restoreLocal clears any dismiss intent + marks manually
-            // primary; for server-mini panels we also flip lifecycle.
-            withViewTransition(() => {
-              restoreLocal(id);
-              const srcPanel = panels.get(id);
-              if (srcPanel?.status === 'mini') {
-                trpc.restore.mutate({ panelId: id });
-              }
-            });
-          }}
-        >
-          <AnimatePresence initial={false}>
-            {interleaveWorktreeSeparators(
-              orderedGridPanels,
-              prefs.workspace.groupByWorktree,
-            ).map((item) =>
-              item.kind === 'separator' ? (
-                <div
-                  key={`sep:${item.key}`}
-                  className="worktree-group-separator"
-                  style={{ ['--panel-worktree-color' as string]: worktreeColor(item.key) }}
-                >
-                  <span className="worktree-group-separator-swatch" aria-hidden="true" />
-                  <span className="worktree-group-separator-label">{item.label}</span>
-                </div>
-              ) : (
-                <GridSlot
-                  key={item.panel.id}
-                  panel={item.panel}
-                  insertBefore={insertGhost === item.panel.id}
-                  subagents={subsByParent.get(item.panel.id) ?? []}
-                  placeholders={placeholdersByParent.get(item.panel.id) ?? []}
-                  panels={panels}
-                  wide={wide.has(item.panel.id)}
-                  pinned={pinned.has(item.panel.id)}
-                  account={accountFor(item.panel)}
-                  accountColor={accountColorFor(item.panel)}
-                  accountFor={accountFor}
-                  accountColorFor={accountColorFor}
-                  onToggleWide={() => toggleWide(item.panel.id)}
-                  onTogglePin={() => togglePin(item.panel.id)}
-                  onTogglePinSub={(s) => togglePin(s.id)}
-                  isPinnedSub={(s) => pinned.has(s.id)}
-                  onHide={() => dismiss(item.panel)}
-                  onHideSub={(s) => dismiss(s)}
-                  brokenOutSubs={brokenOut}
-                  onToggleBrokenOutSub={(s) => toggleBrokenOut(s.id)}
-                  onReorder={(srcId) =>
-                    moveBefore(
-                      srcId,
-                      item.panel.id,
-                      orderedGridPanels.map((g) => g.id),
-                    )
-                  }
-                />
+      <LightboxProvider>
+        <LayoutGroup>
+          <Layout
+            slots={{
+              top: (
+                <>
+                  <header
+                    className="topbar"
+                    style={
+                      { '--brand-tier-color': TIER_COLOR[CURRENT_BRAND.tier] } as CSSProperties
+                    }
+                  >
+                    <h1>
+                      <BrandLabel />
+                    </h1>
+                    <span className="topbar-controls">
+                      {/* Debug-only buttons clustered at the left so the cluster
+                       * reads as one mode-switchable area; muted lime tint
+                       * (--debug-color) reinforces the grouping. Neutral
+                       * always-visible controls (clear all, stats) follow. */}
+                      {debugMode && (
+                        <>
+                          <button
+                            type="button"
+                            className="debug-spawn is-debug-button"
+                            onClick={() => trpc.debug.spawnMock.mutate()}
+                          >
+                            + mock session
+                          </button>
+                          <button
+                            type="button"
+                            className="debug-spawn is-debug-button"
+                            onClick={() => trpc.debug.spawnCounter.mutate({ stopAt: 10 })}
+                          >
+                            + counter subagent
+                          </button>
+                          <ScenariosButton />
+                          <TransformsButton />
+                          <FlowsButton />
+                          <UptimeClock />
+                        </>
+                      )}
+                      <button type="button" className="debug-spawn" onClick={dismissAll}>
+                        clear all
+                      </button>
+                      <StatsButton />
+                      <HoverPopover
+                        className={`conn conn-${status}`}
+                        content={<ConnTooltip status={status} />}
+                      >
+                        <span>{status}</span>
+                      </HoverPopover>
+                      <span className="topbar-icon-buttons">
+                        <button
+                          type="button"
+                          className="theme-toggle processes-toggle"
+                          title={
+                            processesPanelOpen ? 'Hide processes panel' : 'Show processes panel'
+                          }
+                          aria-pressed={processesPanelOpen}
+                          onClick={() => setProcessesPanelOpen((v) => !v)}
+                        >
+                          ≡
+                        </button>
+                        {/* Panel toggle — only present in debug mode (set via prefs or
+                         * ?debug). Shows/hides the debug panel without leaving debug
+                         * mode; debug mode itself is owned by the prefs switch. */}
+                        {debugMode && (
+                          <button
+                            type="button"
+                            className="theme-toggle debug-toggle"
+                            title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+                            aria-label={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+                            aria-pressed={debugPanelOpen}
+                            onClick={toggleDebugPanel}
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="m8 2 1.88 1.88" />
+                              <path d="M14.12 3.88 16 2" />
+                              <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
+                              <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
+                              <path d="M12 20v-9" />
+                              <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
+                              <path d="M6 13H2" />
+                              <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
+                              <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
+                              <path d="M22 13h-4" />
+                              <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
+                            </svg>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="theme-toggle"
+                          title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+                          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                        >
+                          {theme === 'dark' ? '☾' : '☀'}
+                        </button>
+                        <PrefsButton prefs={prefs} onSaved={refetchPrefs} />
+                      </span>
+                    </span>
+                  </header>
+                  {processesPanelOpen && (
+                    <ProcessesPanel
+                      allPanels={allPanels}
+                      accountColorByLabel={accountColorByLabel}
+                    />
+                  )}
+                </>
               ),
-            )}
-          </AnimatePresence>
-          {insertGhost === null && orderedGridPanels.length > 0 && (
-            <div className="grid-slot insert-ghost-append" aria-hidden="true" />
-          )}
-          {projectRollups.map((r) => (
-            <div key={r.widget.id} className="grid-slot project-widget-slot">
-              <ProjectWidgetCard
-                rollup={r}
-                onOpenSession={openSessionFromWidget}
-                pinned={pinned.has(r.widget.id)}
-                onTogglePin={() => togglePin(r.widget.id)}
-                accountColor={
-                  r.account_label
-                    ? accountColorByLabel.get(r.account_label)
-                    : undefined
-                }
-                onClose={() =>
-                  dismiss({
-                    id: r.widget.id,
-                    status: 'mini',
-                    last_event_at: r.widget.last_event_at,
-                  } as PanelState)
-                }
-              />
-            </div>
-          ))}
-          {orderedGridPanels.length === 0 && trayPanels.length === 0 && status === 'live' && (
-            <p className="empty">no sessions yet — try `+ mock session`</p>
-          )}
-        </main>
-        {debugMode && debugPanelOpen && (
-          <DebugDock>
-            <DebugTile
-              client={{
-                allPanels: panels,
-                gridIds: orderedGridPanels.map((p) => p.id),
-                dockIds: trayPanels.map((p) => p.id),
-                isHidden,
-                isClientMini,
-                isPinned: (id) => pinned.has(id),
-                isBrokenOut: (id) => brokenOut.has(id),
-              }}
-            />
-          </DebugDock>
-        )}
-            </div>
-          ),
-          sidebar: dockVisible ? (
-          <aside
-            className="session-dock"
-            onDragOver={(e) => {
-              if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'move';
-              (e.currentTarget as HTMLElement).classList.add('drop-target');
-            }}
-            onDragLeave={(e) =>
-              (e.currentTarget as HTMLElement).classList.remove('drop-target')
-            }
-            onDrop={(e) => {
-              (e.currentTarget as HTMLElement).classList.remove('drop-target');
-              const from = e.dataTransfer.getData('text/brainhouse-panel-source');
-              if (from !== 'nested') return; // grid→dock and dock→dock fall through to .session-grid restore
-              const id = e.dataTransfer.getData('text/brainhouse-panel');
-              const srcPanel = panels.get(id);
-              if (!srcPanel) return;
-              e.preventDefault();
-              e.stopPropagation();
-              // Break out of the parent's tray AND client-mini onto the dock.
-              withViewTransition(() => {
-                if (!brokenOut.has(id)) toggleBrokenOut(id);
-                if (!isClientMini(srcPanel)) dismiss(srcPanel);
-              });
-            }}
-          >
-            <AnimatePresence initial={false}>
-              {trayPanels.map((p) => (
-                <MiniPanel
-                  key={p.id}
-                  panel={p}
-                  onHide={() => dismiss(p)}
-                  onRestore={() => {
-                    // Restoring from the dock should always reveal a panel
-                    // scrolled to the bottom — the user is bringing it back
-                    // to catch up on what's happened. Wipe any stale
-                    // sessionStorage scroll offset before the panel
-                    // remounts so its useLayoutEffect snaps cleanly.
-                    clearScrollPosition(p.id);
-                    // Always mark manually-primary so the allocator gives
-                    // this panel a grid slot. For server-mini panels we
-                    // also flip the lifecycle state so the status dot
-                    // reflects the user's intent.
-                    withViewTransition(() => {
-                      restoreLocal(p.id);
-                      if (p.status === 'mini') {
-                        trpc.restore.mutate({ panelId: p.id });
+              main: (
+                <div className="main-stack">
+                  <main
+                    className="session-grid"
+                    ref={gridRef}
+                    style={gridStyle}
+                    onDragOver={(e) => {
+                      onGridDragOver(e);
+                      if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
+                      // Find the grid slot whose center is nearest the cursor, then
+                      // decide before-or-after based on which half the cursor falls in.
+                      const grid = e.currentTarget;
+                      let nearest: HTMLElement | null = null;
+                      let bestDist = Infinity;
+                      for (const slot of grid.querySelectorAll<HTMLElement>('.grid-slot')) {
+                        const r = slot.getBoundingClientRect();
+                        const cx = r.left + r.width / 2;
+                        const cy = r.top + r.height / 2;
+                        const dx = e.clientX - cx;
+                        const dy = e.clientY - cy;
+                        const d2 = dx * dx + dy * dy;
+                        if (d2 < bestDist) {
+                          bestDist = d2;
+                          nearest = slot;
+                        }
                       }
+                      if (!nearest) {
+                        setInsertGhost(null);
+                        return;
+                      }
+                      const r = nearest.getBoundingClientRect();
+                      // First half → insert before; second half → insert after (i.e.
+                      // before the next sibling, or append if none).
+                      const beforeThis = e.clientX < r.left + r.width / 2;
+                      if (beforeThis) {
+                        setInsertGhost(nearest.dataset.panelId ?? null);
+                      } else {
+                        const next = nearest.nextElementSibling as HTMLElement | null;
+                        setInsertGhost(next?.dataset?.panelId ?? null);
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      // Only clear when leaving the grid itself, not crossing into a
+                      // child slot.
+                      if (e.currentTarget === e.target) setInsertGhost(undefined);
+                    }}
+                    onDrop={(e) => {
+                      setInsertGhost(undefined);
+                      const id = e.dataTransfer.getData('text/brainhouse-panel');
+                      if (!id) return;
+                      const from = e.dataTransfer.getData('text/brainhouse-panel-source');
+                      e.preventDefault();
+                      // Drag-out from a parent's nested tray: break the subagent out
+                      // onto the grid. If it was previously hidden/client-mini on the
+                      // grid, also restore it so the drop is visible.
+                      if (from === 'nested') {
+                        const srcPanel = panels.get(id);
+                        if (!srcPanel) return;
+                        withViewTransition(() => {
+                          if (!brokenOut.has(id)) toggleBrokenOut(id);
+                          if (isClientMini(srcPanel)) restoreLocal(id);
+                        });
+                        return;
+                      }
+                      // Drag-out from dock to grid = "give this panel a slot."
+                      // restoreLocal clears any dismiss intent + marks manually
+                      // primary; for server-mini panels we also flip lifecycle.
+                      withViewTransition(() => {
+                        restoreLocal(id);
+                        const srcPanel = panels.get(id);
+                        if (srcPanel?.status === 'mini') {
+                          trpc.restore.mutate({ panelId: id });
+                        }
+                      });
+                    }}
+                  >
+                    <AnimatePresence initial={false}>
+                      {interleaveWorktreeSeparators(
+                        orderedGridPanels,
+                        prefs.workspace.groupByWorktree,
+                      ).map((item) =>
+                        item.kind === 'separator' ? (
+                          <div
+                            key={`sep:${item.key}`}
+                            className="worktree-group-separator"
+                            style={{
+                              ['--panel-worktree-color' as string]: worktreeColor(item.key),
+                            }}
+                          >
+                            <span className="worktree-group-separator-swatch" aria-hidden="true" />
+                            <span className="worktree-group-separator-label">{item.label}</span>
+                          </div>
+                        ) : (
+                          <GridSlot
+                            key={item.panel.id}
+                            panel={item.panel}
+                            insertBefore={insertGhost === item.panel.id}
+                            subagents={subsByParent.get(item.panel.id) ?? []}
+                            placeholders={placeholdersByParent.get(item.panel.id) ?? []}
+                            panels={panels}
+                            wide={wide.has(item.panel.id)}
+                            pinned={pinned.has(item.panel.id)}
+                            account={accountFor(item.panel)}
+                            accountColor={accountColorFor(item.panel)}
+                            accountFor={accountFor}
+                            accountColorFor={accountColorFor}
+                            onToggleWide={() => toggleWide(item.panel.id)}
+                            onTogglePin={() => togglePin(item.panel.id)}
+                            onTogglePinSub={(s) => togglePin(s.id)}
+                            isPinnedSub={(s) => pinned.has(s.id)}
+                            onHide={() => dismiss(item.panel)}
+                            onHideSub={(s) => dismiss(s)}
+                            brokenOutSubs={brokenOut}
+                            onToggleBrokenOutSub={(s) => toggleBrokenOut(s.id)}
+                            onReorder={(srcId) =>
+                              moveBefore(
+                                srcId,
+                                item.panel.id,
+                                orderedGridPanels.map((g) => g.id),
+                              )
+                            }
+                          />
+                        ),
+                      )}
+                    </AnimatePresence>
+                    {insertGhost === null && orderedGridPanels.length > 0 && (
+                      <div className="grid-slot insert-ghost-append" aria-hidden="true" />
+                    )}
+                    {projectRollups.map((r) => (
+                      <div key={r.widget.id} className="grid-slot project-widget-slot">
+                        <ProjectWidgetCard
+                          rollup={r}
+                          onOpenSession={openSessionFromWidget}
+                          pinned={pinned.has(r.widget.id)}
+                          onTogglePin={() => togglePin(r.widget.id)}
+                          accountColor={
+                            r.account_label ? accountColorByLabel.get(r.account_label) : undefined
+                          }
+                          onClose={() => {
+                            // Unpin first: a widget promoted from the dock chip is
+                            // pinned, and a pinned widget always claims a grid slot —
+                            // leaving it pinned would keep resurrecting it on restore.
+                            if (pinned.has(r.widget.id)) togglePin(r.widget.id);
+                            hideWidget(r.widget.id);
+                          }}
+                        />
+                      </div>
+                    ))}
+                    {orderedGridPanels.length === 0 &&
+                      trayPanels.length === 0 &&
+                      status === 'live' && (
+                        <p className="empty">no sessions yet — try `+ mock session`</p>
+                      )}
+                  </main>
+                  {debugMode && debugPanelOpen && (
+                    <DebugDock>
+                      <DebugTile
+                        client={{
+                          allPanels: panels,
+                          gridIds: orderedGridPanels.map((p) => p.id),
+                          dockIds: trayPanels.map((p) => p.id),
+                          isHidden,
+                          isClientMini,
+                          isPinned: (id) => pinned.has(id),
+                          isBrokenOut: (id) => brokenOut.has(id),
+                        }}
+                      />
+                    </DebugDock>
+                  )}
+                </div>
+              ),
+              sidebar: dockVisible ? (
+                <aside
+                  className="session-dock"
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes('text/brainhouse-panel')) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    (e.currentTarget as HTMLElement).classList.add('drop-target');
+                  }}
+                  onDragLeave={(e) =>
+                    (e.currentTarget as HTMLElement).classList.remove('drop-target')
+                  }
+                  onDrop={(e) => {
+                    (e.currentTarget as HTMLElement).classList.remove('drop-target');
+                    const from = e.dataTransfer.getData('text/brainhouse-panel-source');
+                    if (from !== 'nested') return; // grid→dock and dock→dock fall through to .session-grid restore
+                    const id = e.dataTransfer.getData('text/brainhouse-panel');
+                    const srcPanel = panels.get(id);
+                    if (!srcPanel) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Break out of the parent's tray AND client-mini onto the dock.
+                    withViewTransition(() => {
+                      if (!brokenOut.has(id)) toggleBrokenOut(id);
+                      if (!isClientMini(srcPanel)) dismiss(srcPanel);
                     });
                   }}
-                  pinned={pinned.has(p.id)}
-                  onTogglePin={() => togglePin(p.id)}
-                  onPinToMinibar={() => {
-                    // TODO: real minibar pin semantics — see
-                    // docs/superpowers/specs/2026-06-09-mini-hover-toolbar-design.md
-                    console.info('[minibar pin] requested for', p.id);
-                  }}
-                  account={accountFor(p)}
-                  accountColor={accountColorFor(p)}
-                />
-              ))}
-            </AnimatePresence>
-            {dockRollups.length > 0 && (
-              <div className="session-dock-projects">
-                <div className="session-dock-projects-label">projects</div>
-                {dockRollups.map((r) => (
-                  <ProjectWidgetChip
-                    key={r.widget.id}
-                    rollup={r}
-                    onPromote={() => togglePin(r.widget.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </aside>
-          ) : null,
-        }} />
-      </LayoutGroup>
-    </LightboxProvider>
+                >
+                  <AnimatePresence initial={false}>
+                    {trayPanels.map((p) => (
+                      <MiniPanel
+                        key={p.id}
+                        panel={p}
+                        onHide={() => dismiss(p)}
+                        onRestore={() => {
+                          // Restoring from the dock should always reveal a panel
+                          // scrolled to the bottom — the user is bringing it back
+                          // to catch up on what's happened. Wipe any stale
+                          // sessionStorage scroll offset before the panel
+                          // remounts so its useLayoutEffect snaps cleanly.
+                          clearScrollPosition(p.id);
+                          // Always mark manually-primary so the allocator gives
+                          // this panel a grid slot. For server-mini panels we
+                          // also flip the lifecycle state so the status dot
+                          // reflects the user's intent.
+                          withViewTransition(() => {
+                            restoreLocal(p.id);
+                            if (p.status === 'mini') {
+                              trpc.restore.mutate({ panelId: p.id });
+                            }
+                          });
+                        }}
+                        pinned={pinned.has(p.id)}
+                        onTogglePin={() => togglePin(p.id)}
+                        onPinToMinibar={() => {
+                          // TODO: real minibar pin semantics — see
+                          // docs/superpowers/specs/2026-06-09-mini-hover-toolbar-design.md
+                          console.info('[minibar pin] requested for', p.id);
+                        }}
+                        account={accountFor(p)}
+                        accountColor={accountColorFor(p)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                  {dockRollups.length > 0 && (
+                    <div className="session-dock-projects">
+                      <div className="session-dock-projects-label">projects</div>
+                      {dockRollups.map((r) => (
+                        <ProjectWidgetChip
+                          key={r.widget.id}
+                          rollup={r}
+                          onPromote={() => togglePin(r.widget.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </aside>
+              ) : null,
+            }}
+          />
+        </LayoutGroup>
+      </LightboxProvider>
     </SelectorStoreProvider>
   );
 }
@@ -1313,11 +1333,7 @@ function PanelWithSubagents({
             </NestedSubagentSlot>
           ))}
           {placeholders.map((s) => (
-            <SubagentPlaceholder
-              key={s.id}
-              panel={s}
-              onRedock={() => onToggleBrokenOutSub(s)}
-            />
+            <SubagentPlaceholder key={s.id} panel={s} onRedock={() => onToggleBrokenOutSub(s)} />
           ))}
         </div>
       )}
@@ -1329,13 +1345,7 @@ function PanelWithSubagents({
  * HTML5 drag from the panel header. Drop targets (.session-grid, .session-dock,
  * and other grid panels) consume the `text/brainhouse-panel` + source='nested'
  * payload to break the subagent out of its parent's tray. */
-function NestedSubagentSlot({
-  panel,
-  children,
-}: {
-  panel: PanelState;
-  children: React.ReactNode;
-}) {
+function NestedSubagentSlot({ panel, children }: { panel: PanelState; children: React.ReactNode }) {
   const [armed, setArmed] = useState(false);
   return (
     <div
@@ -1375,13 +1385,7 @@ function NestedSubagentSlot({
  * grid/dock. Mirrors the live panel's status so the user sees its state
  * without leaving the parent. Click to re-dock (alternative to dragging
  * the detached panel back onto the parent). */
-function SubagentPlaceholder({
-  panel,
-  onRedock,
-}: {
-  panel: PanelState;
-  onRedock: () => void;
-}) {
+function SubagentPlaceholder({ panel, onRedock }: { panel: PanelState; onRedock: () => void }) {
   return (
     <button
       type="button"
@@ -1395,7 +1399,9 @@ function SubagentPlaceholder({
     >
       <span className="subagent-placeholder-status" aria-hidden="true" />
       <span className="subagent-placeholder-title">{panel.title || panel.id}</span>
-      <span className="subagent-placeholder-redock" aria-hidden="true">↩</span>
+      <span className="subagent-placeholder-redock" aria-hidden="true">
+        ↩
+      </span>
     </button>
   );
 }
@@ -1463,7 +1469,6 @@ function onGridDragOver(e: React.DragEvent) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
 }
-
 
 function ScenariosButton() {
   const lightbox = useLightbox();

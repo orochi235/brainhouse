@@ -79,6 +79,19 @@ UI/server is meant to uphold. New entries go at the bottom.
   the × on a mini panel header or a project widget × opens a confirm
   modal that adds the relevant session id(s) to the list (a project
   widget's × blacklists every session in its rollup).
+- **Dismissing a project widget (its plain ×) is sticky**, unlike
+  dismissing a session panel. Widget hide lives in `useHiddenWidgets`
+  (`lib/hiddenWidgets.ts`), keyed by the `project:<repo_root>` pseudo-id:
+  presence in the set = hidden, with no `last_event_at` comparison. This
+  is deliberately *not* `usePanelDismissal`, whose `isHidden` resurrects
+  on the next activity bump and whose prune drops any id absent from the
+  live `panels` map — both fatal for a widget, whose `last_event_at`
+  aggregates a whole (possibly-active) project and whose id is never a
+  real panel key. Closing also unpins the widget (a dock-chip click pins
+  it on promote; a pinned widget always claims a grid slot, so leaving it
+  pinned would resurrect it). State persists through the shared
+  `hidden_at` intentions column and re-seeds as hidden on reload; only an
+  explicit `show` clears it.
 - The `/clear` artifact trio that Claude Code emits at the top of a
   post-clear session — `<local-command-caveat>`, `<command-name>/clear`,
   `<local-command-stdout>` — is replaced by a single "prior session

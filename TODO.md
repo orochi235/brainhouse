@@ -24,26 +24,19 @@ First prod run (`node server/dist/index.js`, not dev) surfaced three issues:
   indexed; never surface an old + title-less panel. Design spec:
   `docs/superpowers/specs/2026-06-16-cold-start-bounded-discovery-design.md`.
 
-- **[ROOT-CAUSED, corrected] Project widget can't be dismissed — reappears
-  ~1s later.** (An earlier sub-agent diagnosis was WRONG: it claimed
-  `trpc.restore` bumps `last_event_at` and the fix was to make dismiss
-  sticky. But `forceStatus(id,'done')` (`session.ts:490`) only bumps
-  `last_event_at` for status `'live'`, and `hiddenPanels.test.tsx:52`
-  proves the `hiddenAt` resurrection-on-activity is INTENTIONAL + tested.)
-  Real mechanism: clicking a project chip in the sidebar pins+promotes the
-  `project:<repo>` widget into the grid (`App.tsx` dock chip
-  `onPromote → togglePin`). The grid widget card's `onClose` calls
-  `dismiss({status:'mini', last_event_at: widget.last_event_at})` →
-  `hiddenAt[widgetId]=now`, but (a) it does NOT unpin, and (b) the widget
-  aggregates an ACTIVE project, so `buildProjectRollups` recomputes
-  `widget.last_event_at` ≈ now each render → `isHidden` (`last_event_at <=
-  hiddenAt`) resurrects it (~1s later via the idle-deferred `stablePanels`
-  recompute). For an IDLE project, dismiss sticks fine — only active
-  projects bite. Fix direction (do NOT change the shared `isHidden`
-  resurrection — it's tested): give WIDGET dismissal sticky semantics
-  distinct from panel resurrection (e.g. a dedicated sticky hidden-widget
-  set, or freeze the compare threshold), AND unpin on close. App-level
-  widget wiring has no test — verify the repro live. See handoff doc.
+- **[FIXED] Project widget can't be dismissed — reappears ~1s later.**
+  Root cause was twofold: the widget hide reused `usePanelDismissal`,
+  whose `isHidden` resurrects on the next `last_event_at` bump (fatal for
+  a widget aggregating an *active* project) and whose prune drops any id
+  absent from the live `panels` map (a `project:<repo>` id never is one).
+  Fix: dedicated sticky `useHiddenWidgets` hook (`lib/hiddenWidgets.ts`,
+  unit-tested) — presence = hidden, no timestamp compare, no prune — plus
+  unpin-on-close in `App.tsx`. Persists through the shared `hidden_at`
+  intentions column; re-seeds as hidden on reload. Verified live against
+  an active `brainhouse` widget (stayed gone through 4s of activity + a
+  reload). Behavior recorded in `docs/assertions.md`. NOTE: there is no
+  restore UI yet — a dismissed widget stays hidden until its `hidden_at`
+  row is cleared. Add a `show` affordance if that proves annoying.
 
 ## Memory-leak hunt — remaining items
 
