@@ -129,6 +129,18 @@ describe('salientBashCommand', () => {
     expect(salientBashCommand('TITLE="feat: redesign login" npm run build')).toBe('npm run build');
   });
 
+  it('trims trailing output redirections', () => {
+    expect(salientBashCommand('npm test 2>&1')).toBe('npm test');
+    expect(salientBashCommand('npm run build > out.log')).toBe('npm run build');
+    expect(salientBashCommand('serve 2>/dev/null')).toBe('serve');
+    expect(salientBashCommand('serve >/dev/null 2>&1')).toBe('serve');
+    expect(salientBashCommand('serve 2> err.log >> out.log')).toBe('serve');
+  });
+
+  it('does not strip a quoted redirection-looking argument', () => {
+    expect(salientBashCommand('grep ">" file.txt')).toBe('grep ">" file.txt');
+  });
+
   it('handles a real multi-line env-prefixed launch command', () => {
     const cmd = [
       'M=~/.cache/pr-review/foo',
@@ -137,7 +149,7 @@ describe('salientBashCommand', () => {
       'SCREENER_PR_URL="https://example.com/pull/197" \\',
       'bash .claude/preview.sh 2>&1',
     ].join('\n');
-    expect(salientBashCommand(cmd)).toBe('bash .claude/preview.sh 2>&1');
+    expect(salientBashCommand(cmd)).toBe('bash .claude/preview.sh');
   });
 
   it('returns empty for empty/whitespace', () => {

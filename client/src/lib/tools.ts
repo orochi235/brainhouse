@@ -290,11 +290,42 @@ function stripEnvPrefix(text: string): string {
   return words.slice(i).join(' ');
 }
 
+/** A fused redirection word: `2>&1`, `>&2`, `>/dev/null`, `2>>log`, `&>out`,
+ * `<in`. Must start with an optional fd / `&`, then `>`/`>>`/`<`. A quoted
+ * word (`">"`) starts with a quote and is left alone. */
+const FUSED_REDIRECT = /^(?:[0-9]*|&)(?:>>?|<)/;
+/** A bare redirection operator whose target is the next word: `>`, `2>`, `<`. */
+const BARE_REDIRECT = /^(?:[0-9]*|&)(?:>>?|<)$/;
+
+/** Drop trailing output/input redirections (`… 2>&1`, `… > out.log`,
+ * `… 2>/dev/null`) — plumbing noise for a one-line summary. Quoted
+ * redirection-looking arguments are preserved (splitWords keeps the quotes,
+ * so they don't match the operator patterns). */
+function stripTrailingRedirections(text: string): string {
+  const words = splitWords(text);
+  while (words.length) {
+    const last = words[words.length - 1] ?? '';
+    if (FUSED_REDIRECT.test(last)) {
+      words.pop();
+      continue;
+    }
+    // `> file` form: a target word preceded by a bare operator word.
+    if (words.length >= 2 && BARE_REDIRECT.test(words[words.length - 2] ?? '')) {
+      words.pop();
+      words.pop();
+      continue;
+    }
+    break;
+  }
+  return words.join(' ');
+}
+
 /**
  * The "salient" command(s) a reader cares about. Drops pure-setup
  * segments (`cd`/`pushd`/`popd`), variable-declaration segments
- * (`export FOO=bar`, `declare`/`local`/`readonly`/`typeset`), and leading
- * inline env-assignments, then re-joins the survivors with their operators:
+ * (`export FOO=bar`, `declare`/`local`/`readonly`/`typeset`), leading
+ * inline env-assignments, and trailing redirections (`2>&1`, `> log`),
+ * then re-joins the survivors with their operators:
  *   `cd repo && FOO=1 npm test`        → `npm test`
  *   `git add -A && git commit -m "x"`  → `git add -A && git commit -m "x"`
  * Newlines are statement separators (after `\`-continuations are folded
@@ -311,7 +342,7 @@ export function salientBashCommand(cmd: string): string {
   const logical = cmd.replace(/\r\n/g, '\n').replace(/\\\n/g, ' ');
   const kept: BashSegment[] = [];
   for (const seg of splitBashSegments(logical)) {
-    const text = stripEnvPrefix(seg.text);
+    const text = stripTrailingRedirections(stripEnvPrefix(seg.text));
     if (!text) continue; // env-only / blank segment
     const head = splitWords(text)[0] ?? '';
     if (BASH_SETUP.has(head) || BASH_DECLARE.has(head)) continue; // cd / export …

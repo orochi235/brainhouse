@@ -440,7 +440,10 @@ UI/server is meant to uphold. New entries go at the bottom.
   leading lines are assignments + `cd` resolves to its real command
   (`M=…\ncd "$M"\nPORT=1 bash run.sh` → `bash run.sh`). Splitting and
   env-prefix stripping are quote-aware (`T="a b" cmd` → `cmd`; a quoted
-  `&&`/`;` never splits) and a pipeline (`|`) is never broken. Wrappers
+  `&&`/`;` never splits) and a pipeline (`|`) is never broken. Trailing
+  redirections are dropped as plumbing noise (`bash run.sh 2>&1` →
+  `bash run.sh`; `cmd > out.log`, `cmd 2>/dev/null` likewise), but a quoted
+  redirection-looking arg (`grep ">" f`) is preserved. Wrappers
   like `sudo` stay visible — only the icon's `parseBashCommandHead` looks
   past them, and the icon now resolves off the salient command so a
   leading `cd` no longer masks the real CLI. `summarizeTool` is the
