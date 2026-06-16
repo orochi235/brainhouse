@@ -33,6 +33,13 @@ export type ProcessRow = {
    * (synthetic "brainhouse" label for its own pid + descendants).
    * Used as the fallback when the row has no live panel to read from. */
   account_label: string | null;
+  /** Ancestor PIDs (immediate parent → root, exclusive of self),
+   * snapshotted the first time the row was seen in ps. The client tree
+   * builder uses it to reattach a process whose live parent has been
+   * reparented away. Mirrors the server `ProcessRow` field
+   * (`processes/reconciler.ts`); both type definitions are hand-kept in
+   * sync. */
+  original_ancestors: number[];
 };
 
 export type ProcessDelta =
