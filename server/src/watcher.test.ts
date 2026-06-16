@@ -366,6 +366,33 @@ describe('TranscriptWatcher', () => {
     });
   });
 
+  describe('bootstrap deferred-file collection', () => {
+    it('defers files older than the UI window but within the max-age bound', async () => {
+      const proj = path.join(dir, 'proj');
+      mkdirSync(proj, { recursive: true });
+      const recent = path.join(proj, 'recent.jsonl');
+      const oldish = path.join(proj, 'oldish.jsonl');
+      const ancient = path.join(proj, 'ancient.jsonl');
+      writeFileSync(recent, `${JSON.stringify(record('u1', 'recent', 'recent'))}\n`);
+      writeFileSync(oldish, `${JSON.stringify(record('u2', 'oldish', 'oldish'))}\n`);
+      writeFileSync(ancient, `${JSON.stringify(record('u3', 'ancient', 'ancient'))}\n`);
+      const now = Date.now() / 1000;
+      utimesSync(recent, now - 60, now - 60);
+      utimesSync(oldish, now - 3 * 24 * 3600, now - 3 * 24 * 3600);
+      utimesSync(ancient, now - 200 * 24 * 3600, now - 200 * 24 * 3600);
+
+      const ingested: string[] = [];
+      const w = new TranscriptWatcher([dir], (e) => ingested.push(e.session_id), {
+        bootstrapAgeSeconds: 172800,
+        deferredMaxAgeSeconds: 7776000,
+      });
+      await w.bootstrap();
+      expect(ingested).toContain('recent');
+      expect(ingested).not.toContain('oldish');
+      expect(w.takeDeferredFiles().map((p) => p.split('/').pop())).toEqual(['oldish.jsonl']);
+    });
+  });
+
   describe('rereadFromStart', () => {
     it('replays the file from byte 0 after wiping the persisted offset', async () => {
       const store = Store.open(':memory:');

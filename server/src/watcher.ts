@@ -63,6 +63,10 @@ export type EventListener = (event: Event, sourceRoot: string) => void;
 
 export interface WatcherOptions {
   bootstrapAgeSeconds?: number;
+  /** Parent files older than `bootstrapAgeSeconds` but with mtime within
+   * this bound are collected for background summarization instead of
+   * ingested. 0/undefined disables. */
+  deferredMaxAgeSeconds?: number;
   /** Extra chokidar options merged into the defaults. Mainly a test seam so
    * tests can force polling on platforms where fsevents coalesces rapid
    * appends. Production should leave this unset. */
@@ -77,6 +81,8 @@ export class TranscriptWatcher {
   readonly roots: string[];
   private readonly onEvent: EventListener;
   private readonly bootstrapAgeSeconds: number;
+  private readonly deferredMaxAgeSeconds: number;
+  private readonly deferred: string[] = [];
   private readonly chokidarOptions: ChokidarOptions;
   private readonly offsets = new Map<string, number>();
   private readonly store: Store | null;
@@ -87,6 +93,7 @@ export class TranscriptWatcher {
     this.roots = roots.map((r) => path.resolve(r));
     this.onEvent = onEvent;
     this.bootstrapAgeSeconds = opts.bootstrapAgeSeconds ?? 30 * 60;
+    this.deferredMaxAgeSeconds = opts.deferredMaxAgeSeconds ?? 0;
     this.chokidarOptions = opts.chokidarOptions ?? {};
     this.store = opts.store ?? null;
   }
@@ -170,7 +177,13 @@ export class TranscriptWatcher {
           continue;
         }
         const hasOffset = this.offsets.has(file);
-        if (!hasOffset && mtime < cutoff) continue;
+        if (!hasOffset && mtime < cutoff) {
+          const deferCutoff = Date.now() / 1000 - this.deferredMaxAgeSeconds;
+          if (this.deferredMaxAgeSeconds > 0 && mtime >= deferCutoff) {
+            this.deferred.push(file);
+          }
+          continue;
+        }
         liveSessions.add(info.session_id);
         await this.processPath(file);
       }
@@ -192,6 +205,13 @@ export class TranscriptWatcher {
         await this.processPath(file);
       }
     }
+  }
+
+  /** Hand off the files collected for background summarization, clearing the
+   * internal queue. Parent transcript paths only (subagents are summarized
+   * with their parent on the live path). */
+  takeDeferredFiles(): string[] {
+    return this.deferred.splice(0, this.deferred.length);
   }
 
   /** Restore per-file offsets from the Store so a restart resumes
