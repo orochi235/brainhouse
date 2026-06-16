@@ -345,6 +345,38 @@ export class TranscriptWatcher {
     }
   }
 
+  /** Read an entire transcript file and return its parsed events. Unlike
+   * `tailJsonl`, this ignores byte offsets and never calls `onEvent` — a pure
+   * read used by the background indexer and on-demand reopen. */
+  async parseFile(absPath: string): Promise<Event[]> {
+    const info = classifyPath(absPath);
+    if (!info || info.is_meta) return [];
+    let text: string;
+    try {
+      text = await readFile(absPath, 'utf8');
+    } catch {
+      return [];
+    }
+    const out: Event[] = [];
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed !== 'object') continue;
+      for (const event of parseLine(parsed as Record<string, unknown>, {
+        session_id: info.session_id,
+        agent_id: info.agent_id,
+      })) {
+        out.push(event);
+      }
+    }
+    return out;
+  }
+
   private async walk(root: string): Promise<string[]> {
     const out: string[] = [];
     const visit = async (dir: string) => {

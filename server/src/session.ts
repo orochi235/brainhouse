@@ -379,6 +379,25 @@ export class SessionStore {
     return deltas;
   }
 
+  /** Build a session_summary row for a fully-parsed transcript without
+   * surfacing it as a live panel. Intended to run on a *throwaway*
+   * SessionStore (store=null) so the apply() mutations and discarded deltas
+   * never reach a live subscriber. Returns null if the events produced no
+   * parent panel. */
+  summarizeOffline(events: Event[]): SessionSummaryRow | null {
+    let sessionId: string | null = null;
+    for (const event of events) {
+      this.apply(event); // deltas discarded; this.store is null on throwaway
+      if (!event.agent_id) sessionId = event.session_id;
+    }
+    if (!sessionId) return null;
+    const panel = this.panels.get(sessionId);
+    if (!panel) return null;
+    // 'never' = we did not observe this session ending; indexed retroactively
+    // from a complete-on-disk transcript.
+    return buildSessionSummary(panel, 'never', this.clock());
+  }
+
   /** Stamp the panel's theme. Called by the monitor once .hued has been read. */
   setTheme(panelId: string, theme: PanelTheme | null): Delta[] {
     const panel = this.panels.get(panelId);
@@ -1338,7 +1357,7 @@ function eventToIndexRow(panelId: string, event: Event, fallbackTs: number): Eve
 }
 
 /** Aggregate a panel's in-memory events into a session_summary row. */
-function buildSessionSummary(
+export function buildSessionSummary(
   p: Panel,
   provenance: SessionSummaryRow['ended_provenance'],
   now: number,

@@ -1256,3 +1256,17 @@ describe('snapshot surfacing gate', () => {
     expect(store.snapshot().map((p) => p.id)).toContain('old');
   });
 });
+
+describe('summarizeOffline', () => {
+  it('produces a summary row from events without creating a surfaced panel', () => {
+    const store = new SessionStore({ clock: () => 2_000_000, isSessionLive: () => false });
+    const ev = (ts: string): Event => ({
+      session_id: 'sx', agent_id: null, uuid: `sx:${ts}`, parent_uuid: null,
+      ts, cwd: '/tmp/p', kind: 'user_text', tags: [], payload: { text: 'hi' },
+    });
+    const row = store.summarizeOffline([ev('2020-01-01T00:00:00.000Z')]);
+    expect(row).not.toBeNull();
+    expect(row?.session_id).toBe('sx');
+    expect(row?.cwd).toBe('/tmp/p');
+  });
+});
