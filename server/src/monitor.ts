@@ -13,6 +13,7 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
 import type { Event } from './parser.js';
+import type { Discovery } from './prefs.js';
 import type { ProcessTracker } from './processes/index.js';
 import { deriveAccountLabel } from './roots.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
@@ -54,6 +55,10 @@ export interface MonitorOptions {
    * evaluation so a runtime prefs flip takes effect without a restart.
    * Defaults to `() => true` when omitted. */
   isAutoTitleEnabled?: () => boolean;
+  /** Cold-start discovery bounds. The store's `uiWindowSeconds` snapshot
+   * gate and the watcher's bootstrap live-ingest window are both derived
+   * from this group so they agree on the recency window. */
+  discovery?: Discovery;
 }
 
 const DEFAULT_EVENTS_RETENTION_DAYS = 30;
@@ -98,13 +103,16 @@ export class TranscriptMonitor {
    * same persistence handle. Public so debug instrumentation can dump
    * the bootstrap_offsets table without going through SessionStore. */
   readonly persistStore: import('./store.js').Store | null;
+  private readonly discovery: Discovery | null;
 
   constructor(opts: MonitorOptions) {
     this.persistStore = opts.store ?? null;
+    this.discovery = opts.discovery ?? null;
     this.store = new SessionStore({
       idleSeconds: opts.idleSeconds,
       miniSeconds: opts.miniSeconds,
       removeAfterSeconds: opts.removeAfterSeconds,
+      uiWindowSeconds: opts.discovery?.uiWindowSeconds,
       store: opts.store ?? null,
       // Process-aware liveness: don't let a session flip to `done` while its
       // owning `claude` process is still alive. Lazy `this.tracker` read —
@@ -118,7 +126,10 @@ export class TranscriptMonitor {
     this.watcher = new TranscriptWatcher(
       opts.roots,
       (event, sourceRoot) => this.ingest(event, sourceRoot),
-      { store: opts.store ?? null },
+      {
+        store: opts.store ?? null,
+        bootstrapAgeSeconds: opts.discovery?.uiWindowSeconds ?? 172800,
+      },
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
     this.eventsIndexRetentionDays = opts.eventsIndexRetentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS;

@@ -27,7 +27,7 @@ async function main() {
   await prefs.load();
   const roots = resolveRoots(prefs.get());
 
-  const { timings, roots: configuredRoots, storage, workspace } = prefs.get();
+  const { timings, roots: configuredRoots, storage, workspace, discovery } = prefs.get();
   const store = storage.persistEnabled ? Store.open() : null;
   const tracker = new ProcessTracker();
   const monitor = new TranscriptMonitor({
@@ -42,6 +42,7 @@ async function main() {
     autoMinimizeOnClear: workspace.autoMinimizeOnClear,
     tracker,
     isAutoTitleEnabled: () => prefs.get().display.autoTitle,
+    discovery,
   });
   // Hydrate persisted panels synchronously, but DON'T start the slow
   // transcript walk / process discovery yet — those run after the HTTP
