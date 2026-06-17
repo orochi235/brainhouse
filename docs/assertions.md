@@ -107,6 +107,28 @@ UI/server is meant to uphold. New entries go at the bottom.
   Dividers are emitted only between real items — never leading,
   trailing, or two adjacent — so a day with no activity produces no
   divider. Owned by the `insertDayDividers` stage-2 transform.
+- **Cold-start surfacing gate.** `SessionStore.snapshot()` — the single
+  chokepoint feeding both the `snapshot` query and the delta-subscription
+  hello frame — only surfaces a panel when its owning process is live OR it
+  was active within `discovery.uiWindowSeconds` (default 48h). Older non-live
+  panels stay in the in-memory map (lifecycle intact, queryable) but never
+  reach the client on load, so a cold start can't dump hundreds of stale
+  UUID-titled panels. Sessions older than the window but within
+  `discovery.backgroundMaxAgeSeconds` (default 90d) are summarized into
+  `session_summary` by a throttled `BackgroundIndexer` (`indexer.ts`) — no
+  panels, no deltas — so project widgets/history stay complete. `last_event_at`
+  and the cutoff are both in **seconds**. Bootstrap's live-ingest window and
+  this gate share `uiWindowSeconds` so they agree.
+- **`reopenSession` is ephemeral / delta-only.** The on-demand fast-load
+  (`monitor.reopenSession` → trpc → `openSessionFromWidget`) parses a reaped
+  session's transcript and feeds it through `ingest()`, so the panel reaches
+  *already-connected* clients via `panel_upsert` deltas (which bypass the
+  surfacing gate). A *fresh* `snapshot()` re-applies the gate, so an old
+  reopened session is gone again after a reload — reopen surfaces it for the
+  current session, not permanently. Transcript path resolution tries both
+  `<root>/<encoded-cwd>/` and `<root>/projects/<encoded-cwd>/` because a
+  configured root may sit at the account level (`~/.claude-pw`) or the
+  transcripts level (`~/.claude-pw/projects`, the `defaultRoots()` shape).
 - Each panel carries a `repo_root` field: the closest ancestor of its
   `cwd` containing a `.git` directory (or file, for worktrees).
   Resolved server-side via `findRepoRoot()` at panel creation and

@@ -12,17 +12,28 @@ First prod run (`node server/dist/index.js`, not dev) surfaced three issues:
   liveness work in the memory-leak section below). TODO: pin the
   transcript path + the specific `ts`.
 
-- **Cold start floods the UI with ~600 placeholder-titled panels.** Root
-  cause: `monitor.hydrate()` restores every persisted panel into the
-  snapshot, and `watcher.bootstrap()` ingests everything within the 30-min
-  mtime window across the now-multi-account roots (`.claude`, `.claude-pw`,
-  `.claude-msb`), all surfacing immediately with UUID-placeholder titles
-  (auto-title is async/debounced 30s). Agreed policy: only sessions active
-  within ~48h surface as panels; older sessions are indexed in the
-  BACKGROUND at a throttled pace after spin-up (into `session_summary`, no
-  live panels/deltas); on-demand fast-load when the user opens one not yet
-  indexed; never surface an old + title-less panel. Design spec:
-  `docs/superpowers/specs/2026-06-16-cold-start-bounded-discovery-design.md`.
+- **[IMPLEMENTED] Cold start floods the UI with ~600 placeholder-titled
+  panels.** Built per `docs/superpowers/plans/2026-06-16-cold-start-bounded-discovery.md`
+  on branch `feat/cold-start-bounded-discovery`: surfacing gate in
+  `snapshot()` (live-or-within-`discovery.uiWindowSeconds`/48h); bootstrap
+  bounded to the same window + a deferred queue; throttled `BackgroundIndexer`
+  fills `session_summary` for older (≤`backgroundMaxAgeSeconds`/90d) sessions
+  with no panels/deltas; `reopenSession` on-demand fast-load. Live-verified:
+  surfaced set bounded below total-known, indexer wrote ~330 summaries,
+  reopen surfaces a real reaped session. Behavior in `docs/assertions.md`.
+  **Follow-ups discovered during build:**
+  - `reopenSession` is ephemeral — a reopened OLD session vanishes on reload
+    (re-gated). If "pin a reopened session" is wanted, the gate needs a
+    user-reopened allowlist. Also: reopen restores only the parent panel, not
+    its subagents.
+  - `sourceFileForPanel` (panelHistory scroll-back) has the SAME latent path
+    bug `reopenSession` just fixed — `<root>/<encoded>/` only, no `projects/`
+    fallback. Broken for account-level roots (Mike's real config). Fix it the
+    same way (try both layouts) — out of scope for this branch.
+  - `setRoots` (runtime root hot-swap) re-bootstraps but does NOT restart the
+    `BackgroundIndexer`, so newly-deferred files wait until next restart.
+  - Tuning: 48h surfaced ~437 panels on the real account (genuine recent
+    volume). If still too many, lower `discovery.uiWindowSeconds`.
 
 - **[FIXED] Project widget can't be dismissed — reappears ~1s later.**
   Root cause was twofold: the widget hide reused `usePanelDismissal`,
