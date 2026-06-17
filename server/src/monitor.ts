@@ -516,8 +516,16 @@ export class TranscriptMonitor {
     if (!row || !row.cwd) return false;
     const rel = encodeCwdToProjectDir(row.cwd);
     for (const root of this.watcher.roots) {
-      const file = path.join(root, rel, `${sessionId}.jsonl`);
-      if (!existsSync(file)) continue;
+      // A configured root may sit at the account level (`~/.claude-pw`) or
+      // already at the transcripts level (`~/.claude-pw/projects`, the
+      // `defaultRoots()` shape). The watcher finds files either way via its
+      // recursive walk; here we reconstruct the path, so try both layouts.
+      const candidates = [
+        path.join(root, rel, `${sessionId}.jsonl`),
+        path.join(root, 'projects', rel, `${sessionId}.jsonl`),
+      ];
+      const file = candidates.find((c) => existsSync(c));
+      if (!file) continue;
       const events = await this.watcher.parseFile(file);
       for (const event of events) this.ingest(event, root);
       return true;
