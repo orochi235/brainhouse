@@ -537,11 +537,14 @@ export class TranscriptMonitor {
    * it can't be found on disk. Read-only — no store/broadcast side
    * effects. Used by the `panelHistory` query for lazy scroll-back.
    *
-   * Parent panels are `<root>/<encoded cwd>/<panelId>.jsonl`. Subagent
+   * Parent panels are `<base>/<encoded cwd>/<panelId>.jsonl`. Subagent
    * panel ids are the `agent-` prefix-stripped basename (see
    * `panelIdentity`), so their file is `agent-<panelId>.jsonl` under the
    * owning parent's `subagents/` dir — we try that first, then the bare
-   * form for robustness. */
+   * form for robustness. `<base>` is each watched root AND that root with a
+   * `projects/` segment appended, since a configured root may sit at the
+   * account level (`~/.claude-pw`) or already at the transcripts level
+   * (`~/.claude-pw/projects`, the `defaultRoots()` shape). */
   sourceFileForPanel(panelId: string): string | null {
     const panel = this.store.panel(panelId);
     if (!panel) return null;
@@ -554,14 +557,16 @@ export class TranscriptMonitor {
     if (!owner?.cwd) return null;
     const encoded = encodeCwdToProjectDir(owner.cwd);
     for (const root of this.watcher.roots) {
-      if (panel.kind === 'parent') {
-        const candidate = path.join(root, encoded, `${panelId}.jsonl`);
-        if (existsSync(candidate)) return candidate;
-      } else {
-        const dir = path.join(root, encoded, owner.id, 'subagents');
-        for (const name of [`agent-${panelId}.jsonl`, `${panelId}.jsonl`]) {
-          const candidate = path.join(dir, name);
+      for (const base of [root, path.join(root, 'projects')]) {
+        if (panel.kind === 'parent') {
+          const candidate = path.join(base, encoded, `${panelId}.jsonl`);
           if (existsSync(candidate)) return candidate;
+        } else {
+          const dir = path.join(base, encoded, owner.id, 'subagents');
+          for (const name of [`agent-${panelId}.jsonl`, `${panelId}.jsonl`]) {
+            const candidate = path.join(dir, name);
+            if (existsSync(candidate)) return candidate;
+          }
         }
       }
     }

@@ -715,6 +715,59 @@ describe('TranscriptMonitor', () => {
     });
   });
 
+  describe('sourceFileForPanel', () => {
+    it('resolves a parent transcript under an account-level root (projects/ layout)', async () => {
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-srcfile-'));
+      try {
+        const cwd = '/Users/test/src/proj';
+        const monitor = new TranscriptMonitor({ roots: [root], hookEventsDir: null });
+        monitor.ingest(userTextEvent({ session_id: 'S', cwd }));
+        // Account-level root: the file lives under <root>/projects/<encoded>/.
+        const projDir = path.join(root, 'projects', encodeCwdToProjectDir(cwd));
+        mkdirSync(projDir, { recursive: true });
+        const file = path.join(projDir, 'S.jsonl');
+        writeFileSync(file, '{}\n');
+        expect(monitor.sourceFileForPanel('S')).toBe(file);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it('still resolves a parent transcript at the transcripts-level root', async () => {
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-srcfile-tl-'));
+      try {
+        const cwd = '/Users/test/src/proj';
+        const monitor = new TranscriptMonitor({ roots: [root], hookEventsDir: null });
+        monitor.ingest(userTextEvent({ session_id: 'S', cwd }));
+        // Transcripts-level root (defaultRoots shape): <root>/<encoded>/.
+        const projDir = path.join(root, encodeCwdToProjectDir(cwd));
+        mkdirSync(projDir, { recursive: true });
+        const file = path.join(projDir, 'S.jsonl');
+        writeFileSync(file, '{}\n');
+        expect(monitor.sourceFileForPanel('S')).toBe(file);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it('resolves a subagent transcript under an account-level root (projects/ layout)', async () => {
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-srcfile-sub-'));
+      try {
+        const cwd = '/Users/test/src/proj';
+        const monitor = new TranscriptMonitor({ roots: [root], hookEventsDir: null });
+        monitor.ingest(userTextEvent({ session_id: 'P', cwd }));
+        monitor.ingest(userTextEvent({ session_id: 'P', agent_id: 'sub1', uuid: 'u2', cwd }));
+        const subDir = path.join(root, 'projects', encodeCwdToProjectDir(cwd), 'P', 'subagents');
+        mkdirSync(subDir, { recursive: true });
+        const file = path.join(subDir, 'agent-sub1.jsonl');
+        writeFileSync(file, '{}\n');
+        expect(monitor.sourceFileForPanel('sub1')).toBe(file);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+
   // setRoots is an integration with chokidar; not unit-testable without a
   // real watch path. Covered indirectly by the watcher tests.
 });
