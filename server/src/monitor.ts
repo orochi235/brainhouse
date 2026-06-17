@@ -12,7 +12,9 @@ import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
+import { BackgroundIndexer } from './indexer.js';
 import type { Event } from './parser.js';
+import type { Discovery } from './prefs.js';
 import type { ProcessTracker } from './processes/index.js';
 import { deriveAccountLabel } from './roots.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
@@ -54,6 +56,10 @@ export interface MonitorOptions {
    * evaluation so a runtime prefs flip takes effect without a restart.
    * Defaults to `() => true` when omitted. */
   isAutoTitleEnabled?: () => boolean;
+  /** Cold-start discovery bounds. The store's `uiWindowSeconds` snapshot
+   * gate and the watcher's bootstrap live-ingest window are both derived
+   * from this group so they agree on the recency window. */
+  discovery?: Discovery;
 }
 
 const DEFAULT_EVENTS_RETENTION_DAYS = 30;
@@ -98,13 +104,17 @@ export class TranscriptMonitor {
    * same persistence handle. Public so debug instrumentation can dump
    * the bootstrap_offsets table without going through SessionStore. */
   readonly persistStore: import('./store.js').Store | null;
+  private readonly discovery: Discovery | null;
+  private indexer: BackgroundIndexer | null = null;
 
   constructor(opts: MonitorOptions) {
     this.persistStore = opts.store ?? null;
+    this.discovery = opts.discovery ?? null;
     this.store = new SessionStore({
       idleSeconds: opts.idleSeconds,
       miniSeconds: opts.miniSeconds,
       removeAfterSeconds: opts.removeAfterSeconds,
+      uiWindowSeconds: opts.discovery?.uiWindowSeconds,
       store: opts.store ?? null,
       // Process-aware liveness: don't let a session flip to `done` while its
       // owning `claude` process is still alive. Lazy `this.tracker` read —
@@ -118,7 +128,11 @@ export class TranscriptMonitor {
     this.watcher = new TranscriptWatcher(
       opts.roots,
       (event, sourceRoot) => this.ingest(event, sourceRoot),
-      { store: opts.store ?? null },
+      {
+        store: opts.store ?? null,
+        bootstrapAgeSeconds: opts.discovery?.uiWindowSeconds ?? 172800,
+        deferredMaxAgeSeconds: opts.discovery?.backgroundMaxAgeSeconds ?? 0,
+      },
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
     this.eventsIndexRetentionDays = opts.eventsIndexRetentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS;
@@ -191,6 +205,28 @@ export class TranscriptMonitor {
     this.startTick();
     this.startPruneLoop();
     this.startThemePoll();
+    // Background fill: the watcher deferred any parent transcripts older than
+    // the UI window but within the background max-age. Drain that queue into
+    // session_summary, paced in batches, so project widgets/history are
+    // complete without flooding the grid with panels. Never creates panels or
+    // emits deltas — each file is summarized on a throwaway SessionStore.
+    if (this.persistStore && this.discovery && this.discovery.backgroundMaxAgeSeconds > 0) {
+      const persist = this.persistStore;
+      this.indexer = new BackgroundIndexer({
+        takeFiles: () => this.watcher.takeDeferredFiles(),
+        parseFile: (p) => this.watcher.parseFile(p),
+        summarize: (events) =>
+          new SessionStore({
+            clock: () => Date.now() / 1000,
+            isSessionLive: () => false,
+            store: null,
+          }).summarizeOffline(events),
+        write: (row) => persist.materializeSession(row),
+        batchSize: this.discovery.backgroundBatchSize,
+        intervalMs: this.discovery.backgroundIntervalMs,
+      });
+      void this.indexer.runToCompletion();
+    }
   }
 
   private themePollHandle: NodeJS.Timeout | null = null;
@@ -262,6 +298,7 @@ export class TranscriptMonitor {
     this.pruneHandle = null;
     if (this.themePollHandle) clearInterval(this.themePollHandle);
     this.themePollHandle = null;
+    this.indexer?.stop();
     await this.watcher.stop();
     if (this.hookWatcher) await this.hookWatcher.stop();
   }
@@ -438,7 +475,11 @@ export class TranscriptMonitor {
     this.watcher = new TranscriptWatcher(
       roots,
       (event, sourceRoot) => this.ingest(event, sourceRoot),
-      { store: this.persistStore },
+      {
+        store: this.persistStore,
+        bootstrapAgeSeconds: this.discovery?.uiWindowSeconds ?? 172800,
+        deferredMaxAgeSeconds: this.discovery?.backgroundMaxAgeSeconds ?? 0,
+      },
     );
     await this.watcher.start({ watch: true });
   }
@@ -463,6 +504,33 @@ export class TranscriptMonitor {
       if (isSubstantiveAssistantText(text))
         this.titler.scheduleEvaluation(event.session_id, 'assistant_text');
     }
+  }
+
+  /** Re-create a reaped/never-surfaced session as a live panel on demand.
+   * Resolves the transcript from its persisted cwd, parses it fully, and
+   * feeds it through the normal ingest() path so deltas reach subscribers.
+   * Returns false if the session isn't known or its file is gone. */
+  async reopenSession(sessionId: string): Promise<boolean> {
+    if (this.store.snapshotHas(sessionId)) return true; // already live
+    const row = this.persistStore?.getSession(sessionId);
+    if (!row || !row.cwd) return false;
+    const rel = encodeCwdToProjectDir(row.cwd);
+    for (const root of this.watcher.roots) {
+      // A configured root may sit at the account level (`~/.claude-pw`) or
+      // already at the transcripts level (`~/.claude-pw/projects`, the
+      // `defaultRoots()` shape). The watcher finds files either way via its
+      // recursive walk; here we reconstruct the path, so try both layouts.
+      const candidates = [
+        path.join(root, rel, `${sessionId}.jsonl`),
+        path.join(root, 'projects', rel, `${sessionId}.jsonl`),
+      ];
+      const file = candidates.find((c) => existsSync(c));
+      if (!file) continue;
+      const events = await this.watcher.parseFile(file);
+      for (const event of events) this.ingest(event, root);
+      return true;
+    }
+    return false;
   }
 
   /** Resolve the transcript JSONL that owns a panel's events, or null if

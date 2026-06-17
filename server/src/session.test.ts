@@ -1215,3 +1215,58 @@ describe('SessionStore', () => {
     });
   });
 });
+
+function textEvent(sessionId: string, ts: string, text = 'hi'): Event {
+  return {
+    session_id: sessionId,
+    agent_id: null,
+    uuid: `${sessionId}:${ts}`,
+    parent_uuid: null,
+    ts,
+    cwd: '/tmp/proj',
+    kind: 'user_text' as const,
+    tags: [],
+    payload: { text },
+  };
+}
+
+describe('snapshot surfacing gate', () => {
+  it('omits an old, titleless panel but keeps a recent one', () => {
+    const now = 1_000_000;
+    const store = new SessionStore({
+      clock: () => now,
+      isSessionLive: () => false,
+      uiWindowSeconds: 100,
+    });
+    store.apply(textEvent('recent', new Date((now - 10) * 1000).toISOString()));
+    store.apply(textEvent('old', new Date((now - 10_000) * 1000).toISOString()));
+    const ids = store.snapshot().map((p) => p.id);
+    expect(ids).toContain('recent');
+    expect(ids).not.toContain('old');
+  });
+
+  it('always surfaces a live session even if old', () => {
+    const now = 1_000_000;
+    const store = new SessionStore({
+      clock: () => now,
+      isSessionLive: (id) => id === 'old',
+      uiWindowSeconds: 100,
+    });
+    store.apply(textEvent('old', new Date((now - 10_000) * 1000).toISOString()));
+    expect(store.snapshot().map((p) => p.id)).toContain('old');
+  });
+});
+
+describe('summarizeOffline', () => {
+  it('produces a summary row from events without creating a surfaced panel', () => {
+    const store = new SessionStore({ clock: () => 2_000_000, isSessionLive: () => false });
+    const ev = (ts: string): Event => ({
+      session_id: 'sx', agent_id: null, uuid: `sx:${ts}`, parent_uuid: null,
+      ts, cwd: '/tmp/p', kind: 'user_text', tags: [], payload: { text: 'hi' },
+    });
+    const row = store.summarizeOffline([ev('2020-01-01T00:00:00.000Z')]);
+    expect(row).not.toBeNull();
+    expect(row?.session_id).toBe('sx');
+    expect(row?.cwd).toBe('/tmp/p');
+  });
+});

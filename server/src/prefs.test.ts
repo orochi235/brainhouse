@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_PREFS, PrefsStore } from './prefs.js';
+import { DEFAULT_PREFS, PrefsSchema, PrefsStore } from './prefs.js';
 
 let dir: string;
 let file: string;
@@ -69,5 +69,21 @@ describe('PrefsStore', () => {
     await expect(
       store.update({ workspace: { minCols: 0, minRows: 1, maxTileSpan: 0 } }),
     ).rejects.toThrow();
+  });
+});
+
+describe('discovery prefs', () => {
+  it('has conservative defaults', () => {
+    expect(DEFAULT_PREFS.discovery).toEqual({
+      uiWindowSeconds: 172800, // 48h
+      backgroundMaxAgeSeconds: 7776000, // 90d
+      backgroundBatchSize: 25,
+      backgroundIntervalMs: 4000,
+    });
+  });
+
+  it('fills discovery defaults when the group is omitted', () => {
+    const parsed = PrefsSchema.parse({});
+    expect(parsed.discovery.uiWindowSeconds).toBe(172800);
   });
 });

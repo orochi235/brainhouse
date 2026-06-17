@@ -235,6 +235,11 @@ export interface SessionStoreOptions {
    * "always dead", preserving the pure transcript-idle behavior when no
    * tracker is wired (tests, persistence-only hosts). */
   isSessionLive?: (sessionId: string) => boolean;
+  /** Surfacing window for `snapshot()`. A panel whose owning process is not
+   * live surfaces to the UI only if it was active within this many seconds.
+   * Older panels stay in memory (queryable, lifecycle intact) but are not
+   * surfaced through the snapshot/hello chokepoint. Defaults to 48h. */
+  uiWindowSeconds?: number;
 }
 
 export class SessionStore {
@@ -245,6 +250,7 @@ export class SessionStore {
   private readonly panels = new Map<string, Panel>();
   private readonly store: Store | null;
   private readonly isSessionLive: (sessionId: string) => boolean;
+  private readonly uiWindowSeconds: number;
   /** Session ids that started via `/clear` whose panel hasn't been
    * created yet. Drained at `ensurePanel` time to arm
    * `panel.clear_title_suppression`. SessionStart hook events typically
@@ -259,6 +265,7 @@ export class SessionStore {
     this.clock = opts.clock ?? (() => Date.now() / 1000);
     this.store = opts.store ?? null;
     this.isSessionLive = opts.isSessionLive ?? (() => false);
+    this.uiWindowSeconds = opts.uiWindowSeconds ?? 172800;
   }
 
   /** Hydrate the in-memory panel map from the persistence store. Call
@@ -370,6 +377,25 @@ export class SessionStore {
       for (const d of this.markEnded(panel.id, 'progress_complete')) deltas.push(d);
     }
     return deltas;
+  }
+
+  /** Build a session_summary row for a fully-parsed transcript without
+   * surfacing it as a live panel. Intended to run on a *throwaway*
+   * SessionStore (store=null) so the apply() mutations and discarded deltas
+   * never reach a live subscriber. Returns null if the events produced no
+   * parent panel. */
+  summarizeOffline(events: Event[]): SessionSummaryRow | null {
+    let sessionId: string | null = null;
+    for (const event of events) {
+      this.apply(event); // deltas discarded; this.store is null on throwaway
+      if (!event.agent_id) sessionId = event.session_id;
+    }
+    if (!sessionId) return null;
+    const panel = this.panels.get(sessionId);
+    if (!panel) return null;
+    // 'never' = we did not observe this session ending; indexed retroactively
+    // from a complete-on-disk transcript.
+    return buildSessionSummary(panel, 'never', this.clock());
   }
 
   /** Stamp the panel's theme. Called by the monitor once .hued has been read. */
@@ -596,12 +622,23 @@ export class SessionStore {
   }
 
   snapshot(): Array<PanelDto & { events: Event[] }> {
+    const now = this.clock();
+    const cutoff = now - this.uiWindowSeconds;
     return Array.from(this.panels.values())
-      .filter((p) => p.binned_at === null)
+      .filter((p) => p.binned_at === null && this.isSurfaceable(p, cutoff))
       .map((p) => ({
         ...this.toDto(p),
         events: p.events.slice(),
       }));
+  }
+
+  /** A panel surfaces as a live UI panel iff its owning process is alive, or
+   * it has been active within the UI window. An out-of-window panel is never
+   * surfaced (a stale persisted row must not leak in). */
+  private isSurfaceable(p: Panel, cutoff: number): boolean {
+    const owner = p.kind === 'subagent' ? (p.parent_panel_id ?? p.id) : p.id;
+    if (this.isSessionLive(owner)) return true;
+    return p.last_event_at >= cutoff;
   }
 
   /** Unfiltered dump of every panel in the map (including binned) with
@@ -648,6 +685,13 @@ export class SessionStore {
 
   panel(panelId: string): Panel | undefined {
     return this.panels.get(panelId);
+  }
+
+  /** True if a (non-binned) panel for this id is currently surfaced-eligible
+   * in memory. Used to short-circuit on-demand reopen for an already-live id. */
+  snapshotHas(id: string): boolean {
+    const p = this.panels.get(id);
+    return !!p && p.binned_at === null;
   }
 
   /** Look up a single event by uuid within a panel's in-memory window
@@ -1320,7 +1364,7 @@ function eventToIndexRow(panelId: string, event: Event, fallbackTs: number): Eve
 }
 
 /** Aggregate a panel's in-memory events into a session_summary row. */
-function buildSessionSummary(
+export function buildSessionSummary(
   p: Panel,
   provenance: SessionSummaryRow['ended_provenance'],
   now: number,

@@ -1,6 +1,11 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TranscriptMonitor } from './monitor.js';
 import type { Event } from './parser.js';
+import { encodeCwdToProjectDir } from './session.js';
 
 function userTextEvent(opts: {
   session_id?: string;
@@ -456,7 +461,6 @@ describe('TranscriptMonitor', () => {
         expect(monitor.store.panel('OLD')?.status).toBe('done');
         store.close();
       });
-
     });
 
     it('picks the most recently active panel when multiple match', () => {
@@ -561,6 +565,154 @@ describe('TranscriptMonitor', () => {
     expect(store.eventsForPanel('S').map((e) => e.event_uuid)).toEqual(['one']);
     await monitor.stop();
     store.close();
+  });
+
+  describe('reopenSession', () => {
+    it('parses a never-surfaced session from disk and surfaces it via ingest', async () => {
+      const { Store } = await import('./store.js');
+      const store = Store.open(':memory:');
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-reopen-'));
+      try {
+        const sessionId = 'reaped-1';
+        const cwd = '/Users/test/src/proj';
+        // Lay down the transcript under <root>/<encoded cwd>/<id>.jsonl with a
+        // valid parent record, but DON'T bootstrap it into a panel.
+        const projDir = path.join(root, encodeCwdToProjectDir(cwd));
+        mkdirSync(projDir, { recursive: true });
+        const line = JSON.stringify({
+          type: 'assistant',
+          uuid: 'a1',
+          sessionId,
+          timestamp: 't',
+          cwd,
+          message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] },
+        });
+        writeFileSync(path.join(projDir, `${sessionId}.jsonl`), `${line}\n`);
+        // Materialize a summary row so getSession resolves the cwd — without
+        // ever creating a live panel for it.
+        store.materializeSession({
+          session_id: sessionId,
+          kind: 'parent',
+          parent_session_id: null,
+          account_label: null,
+          title: null,
+          agent_type: null,
+          cwd,
+          started_at: 0,
+          ended_at: 100,
+          duration_active_s: 0,
+          ended_provenance: 'idle_timeout',
+          event_count: 1,
+          tool_call_count: 0,
+          error_count: 0,
+          unique_files_touched: 0,
+          tool_mix_json: '{}',
+          key_files_json: '[]',
+          key_decisions: null,
+          open_threads_json: null,
+          pinned_checklist_json: null,
+          rolled_up_at: 100,
+        });
+
+        const monitor = new TranscriptMonitor({ roots: [root], hookEventsDir: null, store });
+        // Not live yet.
+        expect(monitor.store.snapshotHas(sessionId)).toBe(false);
+
+        const ok = await monitor.reopenSession(sessionId);
+        expect(ok).toBe(true);
+
+        // Now surfaced: the parsed events were fed through ingest().
+        expect(monitor.store.snapshotHas(sessionId)).toBe(true);
+        expect(monitor.store.snapshot().some((p) => p.id === sessionId)).toBe(true);
+      } finally {
+        store.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it('resolves an account-level root (<root>/projects/<encoded>/) and surfaces an OLD session via deltas only', async () => {
+      // Mirrors the real prod config: roots are the account dirs
+      // (`~/.claude-pw`), with transcripts nested under `projects/`. The
+      // reconstructed path must include that segment.
+      const { Store } = await import('./store.js');
+      const store = Store.open(':memory:');
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-reopen-pl-'));
+      try {
+        const sessionId = 'reaped-old';
+        const cwd = '/Users/test/src/proj';
+        const projDir = path.join(root, 'projects', encodeCwdToProjectDir(cwd));
+        mkdirSync(projDir, { recursive: true });
+        const oldTs = new Date('2020-01-01T00:00:00.000Z').toISOString();
+        const line = JSON.stringify({
+          type: 'assistant',
+          uuid: 'a1',
+          sessionId,
+          timestamp: oldTs,
+          cwd,
+          message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] },
+        });
+        writeFileSync(path.join(projDir, `${sessionId}.jsonl`), `${line}\n`);
+        store.materializeSession({
+          session_id: sessionId,
+          kind: 'parent',
+          parent_session_id: null,
+          account_label: null,
+          title: null,
+          agent_type: null,
+          cwd,
+          started_at: 1_577_836_800,
+          ended_at: 1_577_836_810,
+          duration_active_s: 0,
+          ended_provenance: 'idle_timeout',
+          event_count: 1,
+          tool_call_count: 0,
+          error_count: 0,
+          unique_files_touched: 0,
+          tool_mix_json: '{}',
+          key_files_json: '[]',
+          key_decisions: null,
+          open_threads_json: null,
+          pinned_checklist_json: null,
+          rolled_up_at: 1_577_836_810,
+        });
+
+        // Tiny UI window so the 2020 session is firmly out-of-window.
+        const monitor = new TranscriptMonitor({
+          roots: [root],
+          hookEventsDir: null,
+          store,
+          discovery: {
+            uiWindowSeconds: 1,
+            backgroundMaxAgeSeconds: 0,
+            backgroundBatchSize: 1,
+            backgroundIntervalMs: 0,
+          },
+        });
+        expect(monitor.store.snapshotHas(sessionId)).toBe(false);
+        expect(await monitor.reopenSession(sessionId)).toBe(true);
+        // In memory (age-independent) — delivered live via deltas to a
+        // connected client.
+        expect(monitor.store.snapshotHas(sessionId)).toBe(true);
+        // But a fresh snapshot() re-applies the surfacing gate, so an old
+        // reopened session is NOT in the hello frame (reopen is ephemeral).
+        expect(monitor.store.snapshot().some((p) => p.id === sessionId)).toBe(false);
+      } finally {
+        store.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it('short-circuits to true when the session is already live', async () => {
+      const monitor = newMonitor();
+      monitor.ingest(userTextEvent({ session_id: 'live-1', cwd: '/x' }));
+      expect(monitor.store.snapshotHas('live-1')).toBe(true);
+      expect(await monitor.reopenSession('live-1')).toBe(true);
+    });
+
+    it('returns false for an unknown session with no persistence', async () => {
+      const monitor = newMonitor();
+      expect(await monitor.reopenSession('nope')).toBe(false);
+    });
   });
 
   // setRoots is an integration with chokidar; not unit-testable without a

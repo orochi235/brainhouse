@@ -220,6 +220,27 @@ export const DebugSchema = z.object({
 export type Debug = z.infer<typeof DebugSchema>;
 
 /**
+ * Cold-start discovery bounds. Govern how many sessions surface as live
+ * panels on startup and how aggressively the background indexer back-fills
+ * session summaries. Conservative defaults keep a cold start fast.
+ */
+export const DiscoverySchema = z.object({
+  /** Recency cutoff (seconds) for surfacing a session as a live panel on
+   * cold start. Sessions whose owning process is alive always surface
+   * regardless of age; otherwise last_event_at must be within this window. */
+  uiWindowSeconds: z.number().int().positive().default(172800), // 48h
+  /** How far back (seconds) the throttled background indexer reaches when
+   * filling session_summary. Files older than this are ignored entirely
+   * until opened on demand. */
+  backgroundMaxAgeSeconds: z.number().int().positive().default(7776000), // 90d
+  /** Files summarized per background tick. */
+  backgroundBatchSize: z.number().int().positive().default(25),
+  /** Delay between background ticks (ms). */
+  backgroundIntervalMs: z.number().int().positive().default(4000),
+});
+export type Discovery = z.infer<typeof DiscoverySchema>;
+
+/**
  * Hard blacklist by session id. Blacklisted sessions are filtered out of
  * the panels list on the client before any render runs — they never
  * appear in the grid, dock, project widgets, or session lists. The
@@ -240,6 +261,7 @@ export const PrefsSchema = z.object({
   messages: MessagesSchema.default(MessagesSchema.parse({})),
   timings: TimingsSchema.default(TimingsSchema.parse({})),
   workspace: WorkspaceSchema.default(WorkspaceSchema.parse({})),
+  discovery: DiscoverySchema.default(DiscoverySchema.parse({})),
   storage: StorageSchema.default(StorageSchema.parse({})),
   editor: EditorSchema.default(EditorSchema.parse({})),
   notifications: NotificationsSchema.default(NotificationsSchema.parse({})),
