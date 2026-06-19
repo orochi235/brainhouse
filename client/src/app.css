@@ -2070,9 +2070,11 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
 .panel-subagent.status-live .panel-title {
   color: var(--subagent-active);
 }
-/* Retired panel fade-out — server told us this panel is gone; useDeltaStream
- * keeps it mounted for ~600ms while this animation runs. Keep duration in
- * sync with REMOVAL_FADE_MS in useDeltaStream.ts. */
+/* Retired panel fade-out — server told us this panel is gone. useDeltaStream
+ * keeps the panel mounted (and holding its grid cell) for REMOVAL_HOLD_MS:
+ * this 0.55s fade plus a settle beat, so the death animation fully finishes
+ * before the panel drops from layout and the survivors reshuffle. Keep this
+ * 0.55s in sync with REMOVAL_FADE_MS in useDeltaStream.ts. */
 .panel.removing {
   animation: panel-fadeout 0.55s cubic-bezier(0.4, 0, 0.6, 1) forwards;
   pointer-events: none;
@@ -2371,6 +2373,21 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
    (a /btw interjection or a background-task notification) carries a dimmed
    quote of what it's replying to, plus a single-side accent whose color
    encodes the kind. Replaces the old standalone "↩ btw" chip. */
+/* Column wrapper for a threaded reply: quoted prompt on top, reply bubble
+   below. Carries the row's 90% width budget so the bubble inside can fill it;
+   align-items: flex-start keeps the quote pinned to the left edge while the
+   bubble is indented right, giving the quote its "above and to the left"
+   offset relative to the reply. */
+.bubble-thread {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 90%;
+}
+.bubble-thread .bubble {
+  max-width: 100%;
+  margin-left: 0.9rem;
+}
 .bubble.has-reply {
   border-left: 2px solid color-mix(in srgb, var(--bubble-assistant-fg) 35%, transparent);
   padding-left: 0.55rem;
@@ -2382,17 +2399,19 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
 .reply-quote {
   display: block;
   max-width: 100%;
-  margin: 0 0 0.2rem;
+  margin: 0 0 0.25rem;
   padding: 0;
   border: none;
   background: none;
   font: inherit;
   font-size: 0.72rem;
+  line-height: 1.35;
   text-align: left;
   color: color-mix(in srgb, currentColor 55%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Wrap across lines (up to the ~50-word JS clamp) instead of a single-line
+     ellipsis that cut prompts off after a few words. */
+  white-space: normal;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .reply-quote:hover {

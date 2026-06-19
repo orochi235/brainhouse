@@ -42,9 +42,18 @@ export interface PanelState extends PanelDto {
   autoTitledPrev?: string;
 }
 
-/** How long the fade-out animation runs before we drop the panel for real.
- * Keep in sync with the `.panel.removing` keyframe duration in app.css. */
-const REMOVAL_FADE_MS = 600;
+/** Duration of the `.panel.removing` fade-out (the death animation itself).
+ * Keep in sync with the `panel-fadeout` keyframe duration in app.css. */
+const REMOVAL_FADE_MS = 550;
+/** A deliberate beat AFTER the fade completes before the panel is actually
+ * dropped from the grid. Dropping it shrinks `slots`, which is what triggers
+ * the survivor reshuffle (grid-template transition + Framer layout spring).
+ * Holding the now-invisible panel's cell open for this extra beat lets the
+ * death animation fully read as finished before anything reshuffles, instead
+ * of the old hair's-width 50ms margin where the two visually overlapped. */
+const REMOVAL_SETTLE_MS = 220;
+/** Total time from `panel_remove` to the panel leaving layout (fade + beat). */
+const REMOVAL_HOLD_MS = REMOVAL_FADE_MS + REMOVAL_SETTLE_MS;
 
 export interface DeltaState {
   /** Connection liveness — drives the header status badge. */
@@ -117,7 +126,7 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
         }
       } else if (d.op === 'panel_remove') {
         // Soft remove: mark for animation. The actual delete arrives as a
-        // separate `commit_remove` action after REMOVAL_FADE_MS.
+        // separate `commit_remove` action after REMOVAL_HOLD_MS.
         const existing = panels.get(d.panel_id);
         if (existing) panels.set(d.panel_id, { ...existing, removing: true });
       }
@@ -156,7 +165,7 @@ export function useDeltaStream(): DeltaState {
           if (delta.op === 'panel_remove') {
             setTimeout(
               () => dispatch({ type: 'commit_remove', panel_id: delta.panel_id }),
-              REMOVAL_FADE_MS,
+              REMOVAL_HOLD_MS,
             );
           }
         }

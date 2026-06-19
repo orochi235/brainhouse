@@ -558,6 +558,94 @@ const checklistProgressive: Scenario = {
   },
 };
 
+const threadedReply: Scenario = {
+  key: 'threaded-reply',
+  name: 'threaded reply (/btw + task-notification)',
+  description:
+    'A normal turn, then two side-channel interjections: a long /btw queued mid-turn, and a background task-notification. Each is followed by an assistant turn that should render a threaded-reply quote. The /btw prompt runs well past 50 words to exercise the quote word-clamp.',
+  expect:
+    'Each follow-up assistant bubble carries a dimmed quote stacked ABOVE and offset to the LEFT of the reply (not beside it). The /btw quote wraps across lines and trims with an ellipsis at ~50 words (neutral left accent); the task quote shows the notification summary (cool/info left accent). Clicking a quote jumps to the original.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
+  async run(monitor, { sessionId = fresh('thread'), cwd = SYNTHETIC_CWD } = {}) {
+    /** Emit a queued side-channel prompt as a `queued_command` attachment —
+     * the inline-delivery shape tagBtwUserText keys off (/btw + task). */
+    const queued = (uuid: string, prompt: string) =>
+      emit(
+        monitor,
+        sessionId,
+        null,
+        uuid,
+        'meta',
+        {
+          record_type: 'attachment',
+          raw: { type: 'attachment', attachment: { type: 'queued_command', prompt } },
+        },
+        cwd,
+      );
+
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:u1`,
+      'user_text',
+      { text: 'refactor the auth module to use the new opaque token format' },
+      cwd,
+    );
+    await sleep(300);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:a1`,
+      'assistant_text',
+      {
+        text: "On it — I'll start by swapping the JWT verifier for the opaque-token introspection client.",
+      },
+      cwd,
+    );
+
+    await sleep(300);
+    // A long /btw queued mid-turn — over 50 words so the quote clamps.
+    queued(
+      `${sessionId}:btw1`,
+      'also make sure we keep backward compatibility with the v1 token format for at least one full release cycle, add a deprecation warning when a v1 token is presented, log the issuer and audience claims so we can audit which integrations are still on the old format, and update the migration guide in the docs to spell out the cutover timeline for downstream teams',
+    );
+    await sleep(200);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:a2`,
+      'assistant_text',
+      {
+        text: "Good call — I'll gate v1 behind a feature flag, emit a deprecation warning on use, and add the cutover timeline to the migration guide.",
+      },
+      cwd,
+    );
+
+    await sleep(300);
+    // A background task-notification completes and threads onto the next turn.
+    queued(
+      `${sessionId}:task1`,
+      '<task-notification><summary>Background command "npm test" completed (exit code 0)</summary></task-notification>',
+    );
+    await sleep(200);
+    emit(
+      monitor,
+      sessionId,
+      null,
+      `${sessionId}:a3`,
+      'assistant_text',
+      {
+        text: 'Tests are green — all 142 specs pass. Moving on to wiring the introspection cache.',
+      },
+      cwd,
+    );
+    return { sessionId };
+  },
+};
+
 export const SCENARIOS: Scenario[] = [
   interrupt,
   awaitingInput,
@@ -569,6 +657,7 @@ export const SCENARIOS: Scenario[] = [
   askUserQuestion,
   themedPanel,
   checklistProgressive,
+  threadedReply,
 ];
 
 export function getScenario(key: string): Scenario | undefined {

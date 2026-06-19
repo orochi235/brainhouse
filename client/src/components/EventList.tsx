@@ -174,6 +174,20 @@ function Bubble({
   onReplyJump?: (refUuid: string) => void;
 }) {
   const reply = item.replyTo;
+  const body = (
+    <div
+      className={classNames(
+        'bubble',
+        reply && 'has-reply',
+        // btw uses the neutral .has-reply accent; only task needs an override.
+        reply?.kind === 'task' && 'is-task',
+      )}
+    >
+      {item.parts.map((part, i) => (
+        <BubblePartView key={`${item.event.uuid}-${i}`} part={part} escape={item.role === 'user'} />
+      ))}
+    </div>
+  );
   return (
     <CapsuleRow
       kind={`${item.role}_text`}
@@ -183,38 +197,50 @@ function Bubble({
       className={classNames(item.canceled && 'canceled')}
       onClick={() => onBubbleClick?.(item.event)}
     >
-      {reply &&
-        (onReplyJump ? (
-          <button
-            type="button"
-            className="reply-quote"
-            title="Jump to the original"
-            onClick={(e) => {
-              e.stopPropagation();
-              onReplyJump(reply.refUuid);
-            }}
-          >
-            ↩ {reply.quote}
-          </button>
-        ) : (
-          // No jump handler wired (e.g. inside the lightbox itself) — show the
-          // quote as static context rather than a dead-looking button.
-          <span className="reply-quote reply-quote-static">↩ {reply.quote}</span>
-        ))}
-      <div
-        className={classNames(
-          'bubble',
-          reply && 'has-reply',
-          // btw uses the neutral .has-reply accent; only task needs an override.
-          reply?.kind === 'task' && 'is-task',
-        )}
-      >
-        {item.parts.map((part, i) => (
-          <BubblePartView key={`${item.event.uuid}-${i}`} part={part} escape={item.role === 'user'} />
-        ))}
-      </div>
+      {reply ? (
+        // Stack the quote above the reply bubble in a column so the quoted
+        // prompt sits offset above-and-to-the-left of the reply, rather than
+        // landing beside it as a sibling in the row's flex layout.
+        <div className="bubble-thread">
+          {onReplyJump ? (
+            <button
+              type="button"
+              className="reply-quote"
+              title="Jump to the original"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReplyJump(reply.refUuid);
+              }}
+            >
+              ↩ {clampWords(reply.quote, QUOTE_WORD_LIMIT)}
+            </button>
+          ) : (
+            // No jump handler wired (e.g. inside the lightbox itself) — show the
+            // quote as static context rather than a dead-looking button.
+            <span className="reply-quote reply-quote-static">
+              ↩ {clampWords(reply.quote, QUOTE_WORD_LIMIT)}
+            </span>
+          )}
+          {body}
+        </div>
+      ) : (
+        body
+      )}
     </CapsuleRow>
   );
+}
+
+/** Max words shown in a threaded-reply quote before we trim with an ellipsis.
+ * The quote wraps across lines up to this budget (see `.reply-quote` CSS); the
+ * old single-line CSS ellipsis cut most prompts off after a few words. */
+const QUOTE_WORD_LIMIT = 50;
+
+/** Trim `s` to at most `limit` whitespace-delimited words, appending an
+ * ellipsis when truncated. Collapses internal runs of whitespace. */
+function clampWords(s: string, limit: number): string {
+  const words = s.trim().split(/\s+/);
+  if (words.length <= limit) return s;
+  return `${words.slice(0, limit).join(' ')}…`;
 }
 
 function NotificationAnchor({
@@ -225,7 +251,12 @@ function NotificationAnchor({
   startedAt?: number;
 }) {
   return (
-    <CapsuleRow kind="notification-anchor" ts={item.ts} startedAt={startedAt} anchorUuid={item.anchorUuid}>
+    <CapsuleRow
+      kind="notification-anchor"
+      ts={item.ts}
+      startedAt={startedAt}
+      anchorUuid={item.anchorUuid}
+    >
       <div className="notification-anchor">⇣ {item.summary}</div>
     </CapsuleRow>
   );
