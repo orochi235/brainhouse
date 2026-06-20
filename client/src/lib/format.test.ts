@@ -2,10 +2,36 @@ import { describe, expect, it } from 'vitest';
 import {
   formatClockTime,
   formatDurationShort,
+  formatDurationTwoUnits,
   formatElapsed,
   formatIdle,
   formatIdleCoarse,
 } from './format.ts';
+
+describe('formatDurationTwoUnits', () => {
+  it('shows seconds-only under a minute', () => {
+    expect(formatDurationTwoUnits(0)).toBe('0s');
+    expect(formatDurationTwoUnits(45)).toBe('45s');
+  });
+  it('shows the two most significant nonzero units', () => {
+    expect(formatDurationTwoUnits(90)).toBe('1m 30s');
+    expect(formatDurationTwoUnits(3599)).toBe('59m 59s');
+    expect(formatDurationTwoUnits(3660)).toBe('1h 1m');
+    expect(formatDurationTwoUnits(86400 + 3 * 3600 + 180)).toBe('1d 3h');
+  });
+  it('drops a single trailing unit when the rest are zero', () => {
+    expect(formatDurationTwoUnits(60)).toBe('1m');
+    expect(formatDurationTwoUnits(3600)).toBe('1h');
+    expect(formatDurationTwoUnits(86400)).toBe('1d');
+    expect(formatDurationTwoUnits(604800)).toBe('1w');
+  });
+  it('skips zero intermediate units to reach the next nonzero one', () => {
+    // 1w 0d 3h 3m → 1w 3h ; 1w 1d 3h 3m → 1w 1d
+    expect(formatDurationTwoUnits(604800 + 3 * 3600 + 180)).toBe('1w 3h');
+    expect(formatDurationTwoUnits(604800 + 86400 + 3 * 3600 + 180)).toBe('1w 1d');
+    expect(formatDurationTwoUnits(604800 + 5)).toBe('1w 5s');
+  });
+});
 
 describe('formatIdle', () => {
   it('sub-minute → seconds', () => {
