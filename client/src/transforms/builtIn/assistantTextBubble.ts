@@ -45,14 +45,24 @@ export const assistantTextBubble: Stage1Transform = {
       return true;
     }
     const replyTo = ctx.scratch.pendingReply;
-    ctx.scratch.pendingReply = null;
-    items.push({
-      type: 'bubble',
+    const bubble = {
+      type: 'bubble' as const,
       event,
-      role: 'assistant',
-      parts: [{ kind: 'text', text: event.payload.text ?? '' }],
+      role: 'assistant' as const,
+      parts: [{ kind: 'text' as const, text: event.payload.text ?? '' }],
       ...(replyTo ? { replyTo } : {}),
-    });
+    };
+    items.push(bubble);
+    if (replyTo) {
+      // Trail the reply quote to the *last* assistant bubble of the turn: a
+      // mid-turn /btw gets an "I'll get to it" lead-in first, then the real
+      // answer later. Move the quote off the previous holder onto this bubble
+      // and keep `pendingReply` live so it keeps trailing; tagBtwUserText
+      // clears it (and the holder) at the next top-line prompt, leaving the
+      // quote on the final answering bubble.
+      if (ctx.scratch.pendingReplyHolder) delete ctx.scratch.pendingReplyHolder.replyTo;
+      ctx.scratch.pendingReplyHolder = bubble;
+    }
     return true;
   },
 };

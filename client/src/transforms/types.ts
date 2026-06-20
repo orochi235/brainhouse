@@ -38,6 +38,13 @@ export interface ViewPipelineScratch {
    * assistant_text bubble copies it into `replyTo` and clears it. Cleared on
    * a non-/btw user_text (a fresh top-line prompt ends the chain). */
   pendingReply: ReplyTo | null;
+  /** The assistant bubble that currently carries the trailing reply quote for
+   * this turn. While `pendingReply` is live, each new assistant bubble takes
+   * the quote and clears it off this previous holder — so the quote lands on
+   * the *last* assistant bubble of the turn (the one that actually answers a
+   * mid-turn `/btw`), not the first "I'll get to it" lead-in. Reset whenever a
+   * new `pendingReply` is set or the chain is cleared. */
+  pendingReplyHolder: { replyTo?: ReplyTo } | null;
 }
 
 export interface ViewContext {
