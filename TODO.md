@@ -850,3 +850,26 @@ lands). Trade-off: risk of cross-attributing a server that another
 session in the same project actually owns — probably fine since the
 reminder text already says "from this session" loosely, and the model
 can confirm via `bash_id` / port before acting.
+
+## scan-transforms: wire test:scan into the aggregate suite
+
+The selector-schema watcher (`scripts/scan-transforms/`, skill
+`scan-transforms`) has its own vitest run under `npm run test:scan`
+(config `vitest.scan.config.mts`), but it is NOT part of the root
+`npm test` (which only chains `test:server` + `test:client`). So the
+scan tool's 18 tests don't run in the standard suite and can silently
+bit-rot. Fold `test:scan` into the root `test` script (or add a
+`test:all` that includes it). The `observed.json` drift-guard already
+rides along in `test:client`, so only the tool's own logic tests are
+currently orphaned.
+
+## scan-transforms: stream large log files instead of slurping
+
+`scripts/scan-transforms.mts` reads each matched `.jsonl` fully into
+memory (`readFileSync(f,'utf8').split('\n')`) and accumulates *every*
+line across *all* files into one `lines: string[]` before scanning. On
+a heavy `--all` run that's the whole log corpus resident at once (real
+runs already process ~270k events). Functionally fine today, but it's
+the one scalability cliff. Sketch: stream line-by-line (`readline`) and
+feed `scanLines` incrementally, or expose a per-file scan the CLI folds,
+so memory stays flat regardless of corpus size.
