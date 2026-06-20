@@ -22,3 +22,6 @@ coverage/
 .claude/worktrees/
 # Local UI aria-snapshot scratch from smoke tests
 snap-*.yml
+
+# scan-transforms discovery output (transient triage fodder)
+scripts/.scan-out/

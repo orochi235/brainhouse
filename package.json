@@ -36,10 +36,14 @@
     "test:server": "npm run test -w server",
     "test:client": "npm run test -w client",
     "test": "npm run test:server && npm run test:client",
+    "scan:transforms": "tsx scripts/scan-transforms.mts",
+    "test:scan": "vitest run --config vitest.scan.config.mts",
     "postinstall": "node scripts/ensure-platform-binaries.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
-    "npm-run-all": "^4.1.5"
+    "npm-run-all": "^4.1.5",
+    "tsx": "^4.22.4",
+    "vitest": "^4.1.9"
   }
 }
