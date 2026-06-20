@@ -258,6 +258,7 @@ export const appRouter = t.router({
         if (!ctx.store) return { ok: false, persisted: false };
         // Merge with existing so partial patches don't clobber other fields.
         const existing = ctx.store.getIntentions(input.panel_id);
+        const userKept = input.user_kept ?? existing?.user_kept ?? false;
         ctx.store.upsertIntentions({
           panel_id: input.panel_id,
           pinned: input.pinned ?? existing?.pinned ?? false,
@@ -274,10 +275,13 @@ export const appRouter = t.router({
               ? input.auto_mini_at
               : (existing?.auto_mini_at ?? null),
           broken_out: input.broken_out ?? existing?.broken_out ?? false,
-          user_kept:
-            input.user_kept ?? existing?.user_kept ?? false,
+          user_kept: userKept,
           updated_at: Date.now() / 1000,
         });
+        // Keep the server surfacing gate in sync: a kept panel bypasses the
+        // window gate (so a restored-from-dock session survives reload), and
+        // clearing user_kept (dismiss) drops that bypass.
+        ctx.monitor.store.setForceSurfaced(input.panel_id, userKept);
         return { ok: true, persisted: true };
       }),
     clear: t.procedure.input(z.object({ panel_id: z.string() })).mutation(({ ctx, input }) => {

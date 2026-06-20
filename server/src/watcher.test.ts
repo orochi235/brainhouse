@@ -20,6 +20,32 @@ function record(uuid: string, text: string, session: string): Record<string, unk
   };
 }
 
+function summaryRow(sessionId: string, rolledUpAt: number) {
+  return {
+    session_id: sessionId,
+    kind: 'parent',
+    parent_session_id: null,
+    account_label: null,
+    title: null,
+    agent_type: null,
+    cwd: '/x',
+    started_at: 0,
+    ended_at: rolledUpAt,
+    duration_active_s: 0,
+    ended_provenance: 'idle_timeout',
+    event_count: 1,
+    tool_call_count: 0,
+    error_count: 0,
+    unique_files_touched: 0,
+    tool_mix_json: '{}',
+    key_files_json: '[]',
+    key_decisions: null,
+    open_threads_json: null,
+    pinned_checklist_json: null,
+    rolled_up_at: rolledUpAt,
+  };
+}
+
 describe('classifyPath', () => {
   it('classifies a parent jsonl', () => {
     const info = classifyPath('/tmp/-Users-mike-src-foo/abc-123.jsonl');
@@ -390,6 +416,36 @@ describe('TranscriptWatcher', () => {
       expect(ingested).toContain('recent');
       expect(ingested).not.toContain('oldish');
       expect(w.takeDeferredFiles().map((p) => p.split('/').pop())).toEqual(['oldish.jsonl']);
+    });
+
+    it('does not re-defer files the store has already summarized (durable back-fill)', async () => {
+      // Sessions already in session_summary are finished work; re-deferring
+      // them just to re-summarize means a restart-interrupted indexer pass
+      // keeps reprocessing the same prefix and never reaches the unfinished
+      // tail. Skipping them shrinks the queue to outstanding files so the
+      // back-fill makes monotonic progress across restarts.
+      const store = Store.open(':memory:');
+      const proj = path.join(dir, 'proj');
+      mkdirSync(proj, { recursive: true });
+      const done = path.join(proj, 'done.jsonl');
+      const todo = path.join(proj, 'todo.jsonl');
+      writeFileSync(done, `${JSON.stringify(record('u1', 'done', 'done'))}\n`);
+      writeFileSync(todo, `${JSON.stringify(record('u2', 'todo', 'todo'))}\n`);
+      const now = Date.now() / 1000;
+      const threeDaysAgo = now - 3 * 24 * 3600;
+      utimesSync(done, threeDaysAgo, threeDaysAgo);
+      utimesSync(todo, threeDaysAgo, threeDaysAgo);
+      // 'done' has a fresh summary; 'todo' has none.
+      store.materializeSession(summaryRow('done', now));
+
+      const w = new TranscriptWatcher([dir], sink, {
+        bootstrapAgeSeconds: 172800,
+        deferredMaxAgeSeconds: 7776000,
+        store,
+      });
+      await w.bootstrap();
+      expect(w.takeDeferredFiles().map((p) => p.split('/').pop())).toEqual(['todo.jsonl']);
+      store.close();
     });
   });
 

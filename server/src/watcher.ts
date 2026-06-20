@@ -179,7 +179,11 @@ export class TranscriptWatcher {
         const hasOffset = this.offsets.has(file);
         if (!hasOffset && mtime < cutoff) {
           const deferCutoff = Date.now() / 1000 - this.deferredMaxAgeSeconds;
-          if (this.deferredMaxAgeSeconds > 0 && mtime >= deferCutoff) {
+          if (
+            this.deferredMaxAgeSeconds > 0 &&
+            mtime >= deferCutoff &&
+            !this.alreadySummarized(info.session_id, mtime)
+          ) {
             this.deferred.push(file);
           }
           continue;
@@ -205,6 +209,22 @@ export class TranscriptWatcher {
         await this.processPath(file);
       }
     }
+  }
+
+  /** True when the store already holds a session_summary for this session
+   * that's at least as fresh as the transcript on disk. Lets bootstrap skip
+   * re-deferring work the background indexer has already completed, so the
+   * deferred queue shrinks to outstanding files only.
+   *
+   * This is what makes the back-fill durable: `runToCompletion` drains the
+   * queue once per start, so an indexer pass cut short by a restart used to
+   * drop its tail and re-process the same prefix next time — a band of older
+   * sessions could stay unsummarized forever. Excluding finished sessions
+   * makes each restart re-queue just what's still missing, so progress is
+   * monotonic. No store (persistence off) → nothing is known summarized. */
+  private alreadySummarized(sessionId: string, mtime: number): boolean {
+    const row = this.store?.getSession(sessionId);
+    return !!row && row.rolled_up_at >= mtime;
   }
 
   /** Hand off the files collected for background summarization, clearing the
@@ -261,11 +281,18 @@ export class TranscriptWatcher {
   }
 
   private async emitMeta(p: string, info: PathInfo): Promise<void> {
+    for (const event of await this.metaEvents(p, info)) this.onEvent(event, this.findRoot(p));
+  }
+
+  /** Build the synthetic `subagent-meta` event(s) for a `.meta.json` sidecar.
+   * Shared by the live {@link emitMeta} path and the on-demand reopen path
+   * ({@link parseMetaFile}). Empty when the file is unreadable. */
+  private async metaEvents(p: string, info: PathInfo): Promise<Event[]> {
     let raw: unknown;
     try {
       raw = JSON.parse(await readFile(p, 'utf8'));
     } catch {
-      return;
+      return [];
     }
     // Use the meta.json's mtime as the synthetic event's ts so a brand-new
     // subagent panel seeded by this event starts with a realistic
@@ -279,7 +306,7 @@ export class TranscriptWatcher {
     } catch {
       // file gone — leave empty so apply() falls back to clock-now
     }
-    this.onEvent(
+    return [
       {
         session_id: info.session_id,
         agent_id: info.agent_id,
@@ -291,8 +318,37 @@ export class TranscriptWatcher {
         tags: ['meta'],
         payload: { record_type: 'subagent-meta', raw },
       },
-      this.findRoot(p),
-    );
+    ];
+  }
+
+  /** Parse a subagent `.meta.json` sidecar into its synthetic event(s)
+   * without emitting them — the on-demand reopen path ingests the result
+   * directly (it doesn't go through the watcher's onEvent callback). Returns
+   * empty for non-meta paths. */
+  async parseMetaFile(absPath: string): Promise<Event[]> {
+    const info = classifyPath(absPath);
+    if (!info?.is_meta) return [];
+    return this.metaEvents(absPath, info);
+  }
+
+  /** Enumerate a parent session's subagent transcript files for on-demand
+   * reopen. `parentFile` is the parent `<...>/<sessionId>.jsonl`; subagents
+   * live in the sibling `<sessionId>/subagents/` dir. Returns absolute paths,
+   * meta sidecars separate from jsonl so the caller can ingest meta first
+   * (titles resolve before content). Empty when the dir is absent. */
+  async subagentFilesFor(parentFile: string): Promise<{ jsonl: string[]; meta: string[] }> {
+    const sessionId = path.basename(parentFile, '.jsonl');
+    const dir = path.join(path.dirname(parentFile), sessionId, 'subagents');
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const jsonl: string[] = [];
+    const meta: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.name.endsWith('.meta.json')) meta.push(full);
+      else if (entry.name.endsWith('.jsonl')) jsonl.push(full);
+    }
+    return { jsonl, meta };
   }
 
   /** Find which configured root a given path lives under. Returns the

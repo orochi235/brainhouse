@@ -230,7 +230,6 @@ describe('TranscriptMonitor', () => {
     const PROJECTS = '/Users/x/.claude/projects';
     const CWD = '/Users/x/work/foo';
     const ENCODED_DIR = '-Users-x-work-foo';
-    const oldTranscript = `${PROJECTS}/${ENCODED_DIR}/OLD.jsonl`;
     const newTranscript = `${PROJECTS}/${ENCODED_DIR}/NEW.jsonl`;
     const recentTs = Date.now() / 1000;
     // Seed OLD's activity 10 seconds before the new SessionStart hook ts —
@@ -630,7 +629,43 @@ describe('TranscriptMonitor', () => {
       }
     });
 
-    it('resolves an account-level root (<root>/projects/<encoded>/) and surfaces an OLD session via deltas only', async () => {
+    it('reopens a session with NO summary row by scanning watched roots for its transcript', async () => {
+      // The background indexer hasn't reached this session yet, so getSession
+      // misses. Reopen must still find the transcript on disk (prod layout:
+      // <root>/projects/<encoded cwd>/<id>.jsonl) and surface it — "open
+      // regardless of status" can't depend on a summary row existing.
+      const { Store } = await import('./store.js');
+      const store = Store.open(':memory:');
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-reopen-scan-'));
+      try {
+        const sessionId = 'unsummarized-1';
+        const cwd = '/Users/test/src/proj';
+        const projDir = path.join(root, 'projects', encodeCwdToProjectDir(cwd));
+        mkdirSync(projDir, { recursive: true });
+        const line = JSON.stringify({
+          type: 'assistant',
+          uuid: 'a1',
+          sessionId,
+          timestamp: 't',
+          cwd,
+          message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] },
+        });
+        writeFileSync(path.join(projDir, `${sessionId}.jsonl`), `${line}\n`);
+        // Deliberately NO materializeSession — getSession must miss.
+
+        const monitor = new TranscriptMonitor({ roots: [root], hookEventsDir: null, store });
+        expect(store.getSession(sessionId)).toBeNull();
+        expect(monitor.store.snapshotHas(sessionId)).toBe(false);
+
+        expect(await monitor.reopenSession(sessionId)).toBe(true);
+        expect(monitor.store.snapshotHas(sessionId)).toBe(true);
+      } finally {
+        store.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it('resolves an account-level root (<root>/projects/<encoded>/) and durably surfaces an OLD reopened session', async () => {
       // Mirrors the real prod config: roots are the account dirs
       // (`~/.claude-pw`), with transcripts nested under `projects/`. The
       // reconstructed path must include that segment.
@@ -693,9 +728,100 @@ describe('TranscriptMonitor', () => {
         // In memory (age-independent) — delivered live via deltas to a
         // connected client.
         expect(monitor.store.snapshotHas(sessionId)).toBe(true);
-        // But a fresh snapshot() re-applies the surfacing gate, so an old
-        // reopened session is NOT in the hello frame (reopen is ephemeral).
-        expect(monitor.store.snapshot().some((p) => p.id === sessionId)).toBe(false);
+        // A fresh snapshot() re-applies the surfacing gate, but reopen now
+        // marks the owner force-surfaced, so the old session stays in the
+        // hello frame instead of being re-hidden.
+        expect(monitor.store.snapshot().some((p) => p.id === sessionId)).toBe(true);
+        // And it survives a reload: the kept state was persisted to
+        // intentions, so a fresh monitor re-seeds the allowlist on hydrate.
+        const reopened = new TranscriptMonitor({
+          roots: [root],
+          hookEventsDir: null,
+          store,
+          discovery: {
+            uiWindowSeconds: 1,
+            backgroundMaxAgeSeconds: 0,
+            backgroundBatchSize: 1,
+            backgroundIntervalMs: 0,
+          },
+        });
+        reopened.store.hydrate();
+        expect(reopened.store.snapshot().some((p) => p.id === sessionId)).toBe(true);
+      } finally {
+        store.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it('restores the session subagents, not just the parent panel', async () => {
+      const { Store } = await import('./store.js');
+      const store = Store.open(':memory:');
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-reopen-sub-'));
+      try {
+        const sessionId = 'reaped-with-subs';
+        const cwd = '/Users/test/src/proj';
+        const projDir = path.join(root, encodeCwdToProjectDir(cwd));
+        mkdirSync(projDir, { recursive: true });
+        const parentLine = JSON.stringify({
+          type: 'assistant',
+          uuid: 'p1',
+          sessionId,
+          timestamp: 't',
+          cwd,
+          message: { role: 'assistant', content: [{ type: 'text', text: 'parent' }] },
+        });
+        writeFileSync(path.join(projDir, `${sessionId}.jsonl`), `${parentLine}\n`);
+        // A subagent transcript + meta sidecar under <session>/subagents/.
+        const subDir = path.join(projDir, sessionId, 'subagents');
+        mkdirSync(subDir, { recursive: true });
+        const subLine = JSON.stringify({
+          type: 'assistant',
+          uuid: 's1',
+          sessionId,
+          timestamp: 't',
+          cwd,
+          message: { role: 'assistant', content: [{ type: 'text', text: 'sub work' }] },
+        });
+        writeFileSync(path.join(subDir, 'agent-zzz.jsonl'), `${subLine}\n`);
+        writeFileSync(
+          path.join(subDir, 'agent-zzz.meta.json'),
+          JSON.stringify({ name: 'helper', color: '#abc' }),
+        );
+        store.materializeSession({
+          session_id: sessionId,
+          kind: 'parent',
+          parent_session_id: null,
+          account_label: null,
+          title: null,
+          agent_type: null,
+          cwd,
+          started_at: 0,
+          ended_at: 100,
+          duration_active_s: 0,
+          ended_provenance: 'idle_timeout',
+          event_count: 1,
+          tool_call_count: 0,
+          error_count: 0,
+          unique_files_touched: 0,
+          tool_mix_json: '{}',
+          key_files_json: '[]',
+          key_decisions: null,
+          open_threads_json: null,
+          pinned_checklist_json: null,
+          rolled_up_at: 100,
+        });
+
+        const monitor = new TranscriptMonitor({ roots: [root], hookEventsDir: null, store });
+        expect(await monitor.reopenSession(sessionId)).toBe(true);
+
+        const ids = monitor.store.snapshot().map((p) => p.id);
+        // Parent surfaces...
+        expect(ids).toContain(sessionId);
+        // ...and so does its subagent (panel id is the bare agent id).
+        const sub = monitor.store.panel('zzz');
+        expect(sub?.kind).toBe('subagent');
+        expect(sub?.parent_panel_id).toBe(sessionId);
+        expect(ids).toContain('zzz');
       } finally {
         store.close();
         await rm(root, { recursive: true, force: true });

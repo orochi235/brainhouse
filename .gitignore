@@ -17,3 +17,8 @@ coverage/
 *.png
 # …except the README screenshots
 !docs/screenshots/*.png
+
+# Claude Code agent worktrees (transient, hold their own .git)
+.claude/worktrees/
+# Local UI aria-snapshot scratch from smoke tests
+snap-*.yml

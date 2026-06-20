@@ -257,6 +257,13 @@ export class SessionStore {
    * land before the first JSONL record for the new session, so the
    * panel does not yet exist when supersede fires. */
   private readonly pendingClearTitleSuppression = new Set<string>();
+  /** Owner panel ids the user has explicitly kept alive (restored from the
+   * dock or reopened from history). They bypass the {@link uiWindowSeconds}
+   * surfacing gate so a kept/reopened session survives a reload instead of
+   * being silently re-hidden once it ages out of the window. Seeded from the
+   * persisted `user_kept` intentions on {@link hydrate} and kept in sync via
+   * {@link setForceSurfaced}. */
+  private readonly forceSurfaced = new Set<string>();
 
   constructor(opts: SessionStoreOptions = {}) {
     this.idleSeconds = opts.idleSeconds ?? 60;
@@ -278,6 +285,19 @@ export class SessionStore {
     for (const row of this.store.allPanels()) {
       this.panels.set(row.id, panelRowToPanel(row));
     }
+    // Re-seed the force-surface allowlist so kept/reopened sessions survive
+    // the window gate across restarts (see {@link forceSurfaced}).
+    for (const intent of this.store.allIntentions()) {
+      if (intent.user_kept) this.forceSurfaced.add(intent.panel_id);
+    }
+  }
+
+  /** Add or remove a panel from the force-surface allowlist. Called when the
+   * user keeps/restores a panel or reopens a session (add), and when they
+   * dismiss it again (remove). Idempotent. */
+  setForceSurfaced(panelId: string, on: boolean): void {
+    if (on) this.forceSurfaced.add(panelId);
+    else this.forceSurfaced.delete(panelId);
   }
 
   /** Hot-swap lifecycle timings. The next `tick()` immediately respects
@@ -638,6 +658,8 @@ export class SessionStore {
   private isSurfaceable(p: Panel, cutoff: number): boolean {
     const owner = p.kind === 'subagent' ? (p.parent_panel_id ?? p.id) : p.id;
     if (this.isSessionLive(owner)) return true;
+    // A user-kept/reopened owner (and its subagents) bypasses the window gate.
+    if (this.forceSurfaced.has(owner)) return true;
     return p.last_event_at >= cutoff;
   }
 

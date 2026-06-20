@@ -22,18 +22,27 @@ First prod run (`node server/dist/index.js`, not dev) surfaced three issues:
   surfaced set bounded below total-known, indexer wrote ~330 summaries,
   reopen surfaces a real reaped session. Behavior in `docs/assertions.md`.
   **Follow-ups discovered during build:**
-  - `reopenSession` is ephemeral — a reopened OLD session vanishes on reload
-    (re-gated). If "pin a reopened session" is wanted, the gate needs a
-    user-reopened allowlist. Also: reopen restores only the parent panel, not
-    its subagents.
-  - `sourceFileForPanel` (panelHistory scroll-back) has the SAME latent path
-    bug `reopenSession` just fixed — `<root>/<encoded>/` only, no `projects/`
-    fallback. Broken for account-level roots (Mike's real config). Fix it the
-    same way (try both layouts) — out of scope for this branch.
-  - `setRoots` (runtime root hot-swap) re-bootstraps but does NOT restart the
-    `BackgroundIndexer`, so newly-deferred files wait until next restart.
+  - **[FIXED]** `reopenSession` was ephemeral — a reopened OLD session
+    vanished on reload (re-gated). Now durable: reopen marks the owner
+    force-surfaced (bypasses the `uiWindowSeconds` gate) and persists
+    `user_kept = true`; `SessionStore.hydrate()` re-seeds the allowlist from
+    intentions, so it survives reload. `intentions.upsert` keeps the set in
+    sync (dismiss clears it), which also fixes the latent restore-from-dock
+    vanish-on-reload bug. Behavior in `docs/assertions.md`.
+  - **[FIXED]** reopen now restores subagents too — it enumerates the
+    session's `subagents/` dir and ingests each `.jsonl` (+ `.meta.json`
+    sidecar) so the nested tray rebuilds, not just the parent panel.
+    (`watcher.subagentFilesFor` / `parseMetaFile`.)
+  - **[FIXED]** `sourceFileForPanel` (panelHistory scroll-back) had the SAME
+    latent path bug — fixed in 9f5712f (tries both `<root>/<encoded>/` and
+    `<root>/projects/<encoded>/`).
+  - **[FIXED]** `setRoots` (runtime root hot-swap) now restarts the
+    `BackgroundIndexer` (shared `startBackgroundIndexer()` helper), so
+    newly-deferred files get summarized immediately instead of waiting for
+    the next restart.
   - Tuning: 48h surfaced ~437 panels on the real account (genuine recent
-    volume). If still too many, lower `discovery.uiWindowSeconds`.
+    volume). If still too many, lower `discovery.uiWindowSeconds`. (Config
+    only — left as a dial.)
 
 - **[FIXED] Project widget can't be dismissed — reappears ~1s later.**
   Root cause was twofold: the widget hide reused `usePanelDismissal`,
