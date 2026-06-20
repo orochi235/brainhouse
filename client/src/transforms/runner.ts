@@ -133,6 +133,7 @@ export function runViewPipeline(
       subagentSpawns: [],
       pendingBtw: [],
       pendingReply: null,
+      pendingReplyHolder: null,
     },
   };
   const stage1 = eligible.filter(isStage1);

@@ -28,6 +28,38 @@ const toolUse = (id: string, name = 'Bash', input: unknown = {}) =>
 const toolResult = (id: string, content: unknown = 'ok', is_error = false) =>
   ev('tool_result', { tool_use_id: id, content, is_error });
 
+describe('threaded reply trails to the answering bubble', () => {
+  const btw = (prompt: string) =>
+    ev('meta', {
+      record_type: 'attachment',
+      raw: { type: 'attachment', attachment: { type: 'queued_command', prompt } },
+    });
+
+  it('attaches the /btw quote to the last assistant bubble of the turn, not the lead-in', () => {
+    // Mirrors the real eric sequence: a /btw lands mid-turn, the next bubble
+    // is a "I'll get to it" lead-in, and the actual answer comes later in the
+    // same turn after a tool round-trip.
+    const { items } = preprocessEvents([
+      userText('original prompt'),
+      asstText('working on the original task'),
+      btw('does weasel know about the requirements for item 1?'),
+      asstText("I'll get to the item-1 question. First let me finish scoping."),
+      toolUse('t1', 'Bash'),
+      toolResult('t1'),
+      asstText('Yes — weasel needs the MSDF atlas and glyph metrics. Confirmed it knows both.'),
+      userText('a fresh top-line prompt'),
+    ]);
+    const asstBubbles = items.filter((i) => i.type === 'bubble' && i.role === 'assistant');
+    const withReply = asstBubbles.filter((b) => b.type === 'bubble' && b.replyTo);
+    expect(withReply.length).toBe(1);
+    const holder = withReply[0];
+    expect(
+      holder?.type === 'bubble' &&
+        holder.parts.some((p) => p.kind === 'text' && /Yes — weasel/.test(p.text)),
+    ).toBe(true);
+  });
+});
+
 describe('notification-anchor stage-2 safety', () => {
   // Regression: the compact `notification-anchor` item carries its own
   // anchorUuid/ts and has no backing `event`. The stage-2 anchor/timestamp

@@ -92,6 +92,7 @@ export const tagBtwUserText: Stage1Transform = {
               ts: event.ts,
             });
             ctx.scratch.pendingReply = { kind: 'task', quote: summary, refUuid: event.uuid };
+            ctx.scratch.pendingReplyHolder = null;
             return true;
           }
 
@@ -106,6 +107,7 @@ export const tagBtwUserText: Stage1Transform = {
             parts: [{ kind: 'text', text: prompt }],
           });
           ctx.scratch.pendingReply = { kind: 'btw', quote: prompt, refUuid: event.uuid };
+          ctx.scratch.pendingReplyHolder = null;
           return true;
         }
         // Other attachment shapes fall through; defaultEventItem absorbs them.
@@ -121,6 +123,7 @@ export const tagBtwUserText: Stage1Transform = {
       // Non-/btw fresh top-line prompt — clears any stale pending reply so a
       // new turn doesn't inherit a quote.
       ctx.scratch.pendingReply = null;
+      ctx.scratch.pendingReplyHolder = null;
       return false;
     }
     ctx.scratch.pendingBtw.splice(idx, 1);
@@ -142,6 +145,7 @@ export const tagBtwUserText: Stage1Transform = {
         parts: [{ kind: 'text', text }],
       });
       ctx.scratch.pendingReply = { kind: 'btw', quote: text, refUuid: event.uuid };
+      ctx.scratch.pendingReplyHolder = null;
     }
     return true;
   },
