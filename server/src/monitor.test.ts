@@ -13,13 +13,17 @@ function userTextEvent(opts: {
   uuid?: string;
   text?: string;
   cwd?: string | null;
+  ts?: string;
 }): Event {
   return {
     session_id: opts.session_id ?? 'S',
     agent_id: opts.agent_id ?? null,
     uuid: opts.uuid ?? 'u1',
     parent_uuid: null,
-    ts: '2026-05-19T00:00:00Z',
+    // Default to a fixed past date for deterministic age math. Tests that need
+    // a *live* panel pass a fresh `ts` — a stale replay now settles straight to
+    // mini/done instead of flashing live (see session cold-start behavior).
+    ts: opts.ts ?? '2026-05-19T00:00:00Z',
     cwd: opts.cwd ?? null,
     kind: 'user_text',
     payload: { text: opts.text ?? 'hi' },
@@ -105,7 +109,7 @@ describe('TranscriptMonitor', () => {
 
   it('applyHookEvent stop demotes the parent to done', () => {
     const monitor = newMonitor();
-    monitor.ingest(userTextEvent({}));
+    monitor.ingest(userTextEvent({ ts: new Date().toISOString() }));
     expect(monitor.store.panel('S')?.status).toBe('live');
     monitor.applyHookEvent({ session_id: 'S', kind: 'stop' });
     expect(monitor.store.panel('S')?.status).toBe('done');
@@ -120,9 +124,10 @@ describe('TranscriptMonitor', () => {
 
   it('applyHookEvent subagent_stop demotes all live subagents of the parent', () => {
     const monitor = newMonitor();
-    monitor.ingest(userTextEvent({}));
-    monitor.ingest(userTextEvent({ agent_id: 'sub1', uuid: 'u2', text: 'sub-a' }));
-    monitor.ingest(userTextEvent({ agent_id: 'sub2', uuid: 'u3', text: 'sub-b' }));
+    const ts = new Date().toISOString();
+    monitor.ingest(userTextEvent({ ts }));
+    monitor.ingest(userTextEvent({ agent_id: 'sub1', uuid: 'u2', text: 'sub-a', ts }));
+    monitor.ingest(userTextEvent({ agent_id: 'sub2', uuid: 'u3', text: 'sub-b', ts }));
     monitor.applyHookEvent({ session_id: 'S', kind: 'subagent_stop' });
     expect(monitor.store.panel('sub1')?.status).toBe('done');
     expect(monitor.store.panel('sub2')?.status).toBe('done');
