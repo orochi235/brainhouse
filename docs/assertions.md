@@ -119,16 +119,48 @@ UI/server is meant to uphold. New entries go at the bottom.
   panels, no deltas — so project widgets/history stay complete. `last_event_at`
   and the cutoff are both in **seconds**. Bootstrap's live-ingest window and
   this gate share `uiWindowSeconds` so they agree.
-- **`reopenSession` is ephemeral / delta-only.** The on-demand fast-load
-  (`monitor.reopenSession` → trpc → `openSessionFromWidget`) parses a reaped
-  session's transcript and feeds it through `ingest()`, so the panel reaches
-  *already-connected* clients via `panel_upsert` deltas (which bypass the
-  surfacing gate). A *fresh* `snapshot()` re-applies the gate, so an old
-  reopened session is gone again after a reload — reopen surfaces it for the
-  current session, not permanently. Transcript path resolution tries both
+- **`reopenSession` is durable + restores subagents.** The on-demand
+  fast-load (`monitor.reopenSession` → trpc → `openSessionFromWidget`) parses a
+  reaped session's transcript and feeds it through `ingest()`, so the panel
+  reaches *already-connected* clients via `panel_upsert` deltas. It also
+  enumerates the session's `subagents/` dir and ingests each subagent's
+  `.jsonl` (and its `.meta.json` sidecar first, for titles) so reopen rebuilds
+  the nested tray, not just the parent. To survive a reload it marks the owner
+  **force-surfaced** — bypassing the `uiWindowSeconds` gate — and persists
+  `user_kept = true` in intentions; the allowlist is re-seeded from those
+  intentions on `hydrate()`. Transcript path resolution tries both
   `<root>/<encoded-cwd>/` and `<root>/projects/<encoded-cwd>/` because a
   configured root may sit at the account level (`~/.claude-pw`) or the
   transcripts level (`~/.claude-pw/projects`, the `defaultRoots()` shape).
+  Resolution does **not** require a `session_summary` row: when `getSession`
+  misses (the background indexer hasn't reached the session yet), reopen
+  falls back to scanning each root's project dirs (and `projects/<…>`) for a
+  bare `<id>.jsonl`, recovering the cwd from the transcript's own records on
+  ingest. So "open regardless of status" works for an un-summarized session —
+  if the file is on disk, clicking its row surfaces it.
+- **Back-fill is durable across restarts.** `BackgroundIndexer.runToCompletion`
+  drains the deferred queue once per start, so a pass interrupted by a restart
+  would otherwise re-walk from the top and drop the same tail every time —
+  leaving a band of older sessions permanently unsummarized (and therefore
+  invisible to widgets *and* un-reopenable). Bootstrap fixes this by **not
+  re-deferring** files the store has already summarized: a parent is queued
+  only when no `session_summary` row exists for it whose `rolled_up_at` is at
+  least as fresh as the file's mtime (`TranscriptWatcher.alreadySummarized`).
+  The queue shrinks to outstanding work, so each restart re-queues only what's
+  still missing and progress is monotonic. No store (persistence off) → nothing
+  is treated as summarized.
+- **Force-surface allowlist.** `SessionStore.snapshot()` surfaces an
+  out-of-window panel when its owner is in the force-surface set, kept in sync
+  with the persisted `user_kept` intention: restoring a panel from the dock or
+  reopening a session adds it (and the panel survives reload); dismissing it
+  (`user_kept → false` via `intentions.upsert`) removes it. This fixes the
+  latent bug where a user-kept session silently vanished on reload once it aged
+  past the window.
+- **`setRoots` restarts the `BackgroundIndexer`.** A runtime root hot-swap
+  builds a fresh watcher with a fresh deferred-file queue, so `setRoots` stops
+  the prior indexer and starts a new one (shared `startBackgroundIndexer()`
+  helper) — newly out-of-window files get summarized immediately instead of
+  waiting for the next process restart.
 - Each panel carries a `repo_root` field: the closest ancestor of its
   `cwd` containing a `.git` directory (or file, for worktrees).
   Resolved server-side via `findRepoRoot()` at panel creation and

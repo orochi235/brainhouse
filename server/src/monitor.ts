@@ -210,23 +210,33 @@ export class TranscriptMonitor {
     // session_summary, paced in batches, so project widgets/history are
     // complete without flooding the grid with panels. Never creates panels or
     // emits deltas — each file is summarized on a throwaway SessionStore.
-    if (this.persistStore && this.discovery && this.discovery.backgroundMaxAgeSeconds > 0) {
-      const persist = this.persistStore;
-      this.indexer = new BackgroundIndexer({
-        takeFiles: () => this.watcher.takeDeferredFiles(),
-        parseFile: (p) => this.watcher.parseFile(p),
-        summarize: (events) =>
-          new SessionStore({
-            clock: () => Date.now() / 1000,
-            isSessionLive: () => false,
-            store: null,
-          }).summarizeOffline(events),
-        write: (row) => persist.materializeSession(row),
-        batchSize: this.discovery.backgroundBatchSize,
-        intervalMs: this.discovery.backgroundIntervalMs,
-      });
-      void this.indexer.runToCompletion();
-    }
+    this.startBackgroundIndexer();
+  }
+
+  /** (Re)start the throttled background indexer against the *current*
+   * watcher's deferred-file queue. Stops any prior indexer first so a
+   * runtime root hot-swap ({@link setRoots}) drains its newly-deferred files
+   * instead of leaving them unindexed until the next process restart. No-op
+   * when persistence or background discovery is disabled. */
+  private startBackgroundIndexer(): void {
+    if (!(this.persistStore && this.discovery && this.discovery.backgroundMaxAgeSeconds > 0))
+      return;
+    this.indexer?.stop();
+    const persist = this.persistStore;
+    this.indexer = new BackgroundIndexer({
+      takeFiles: () => this.watcher.takeDeferredFiles(),
+      parseFile: (p) => this.watcher.parseFile(p),
+      summarize: (events) =>
+        new SessionStore({
+          clock: () => Date.now() / 1000,
+          isSessionLive: () => false,
+          store: null,
+        }).summarizeOffline(events),
+      write: (row) => persist.materializeSession(row),
+      batchSize: this.discovery.backgroundBatchSize,
+      intervalMs: this.discovery.backgroundIntervalMs,
+    });
+    void this.indexer.runToCompletion();
   }
 
   private themePollHandle: NodeJS.Timeout | null = null;
@@ -482,6 +492,10 @@ export class TranscriptMonitor {
       },
     );
     await this.watcher.start({ watch: true });
+    // A fresh watcher means a fresh deferred-file queue; restart the indexer
+    // so files newly out-of-window under the swapped-in roots get summarized
+    // now rather than after the next process restart.
+    this.startBackgroundIndexer();
   }
 
   /** Push a synthesized event (used by both the watcher and debug spawns).
@@ -512,25 +526,96 @@ export class TranscriptMonitor {
    * Returns false if the session isn't known or its file is gone. */
   async reopenSession(sessionId: string): Promise<boolean> {
     if (this.store.snapshotHas(sessionId)) return true; // already live
-    const row = this.persistStore?.getSession(sessionId);
-    if (!row || !row.cwd) return false;
-    const rel = encodeCwdToProjectDir(row.cwd);
-    for (const root of this.watcher.roots) {
-      // A configured root may sit at the account level (`~/.claude-pw`) or
-      // already at the transcripts level (`~/.claude-pw/projects`, the
-      // `defaultRoots()` shape). The watcher finds files either way via its
-      // recursive walk; here we reconstruct the path, so try both layouts.
-      const candidates = [
-        path.join(root, rel, `${sessionId}.jsonl`),
-        path.join(root, 'projects', rel, `${sessionId}.jsonl`),
-      ];
-      const file = candidates.find((c) => existsSync(c));
-      if (!file) continue;
-      const events = await this.watcher.parseFile(file);
-      for (const event of events) this.ingest(event, root);
-      return true;
+    const resolved = await this.resolveReopenTranscript(sessionId);
+    if (!resolved) return false;
+    const { file, root } = resolved;
+    const events = await this.watcher.parseFile(file);
+    for (const event of events) this.ingest(event, root);
+    // Restore the session's subagents too — otherwise reopen brings back a
+    // parent panel with an empty nested tray. Meta sidecars first so each
+    // subagent panel surfaces with its real title before its content lands.
+    const subFiles = await this.watcher.subagentFilesFor(file);
+    for (const metaPath of subFiles.meta) {
+      for (const event of await this.watcher.parseMetaFile(metaPath)) this.ingest(event, root);
     }
-    return false;
+    for (const subPath of subFiles.jsonl) {
+      for (const event of await this.watcher.parseFile(subPath)) this.ingest(event, root);
+    }
+    // Persist the reopen so it survives a reload: mark the owner kept (the
+    // in-memory surfacing gate) and stamp `user_kept` in intentions (the
+    // durable seed re-read on the next hydrate). Without this the surfacing
+    // gate re-hides the (out-of-window) session on the next snapshot.
+    this.store.setForceSurfaced(sessionId, true);
+    this.persistKept(sessionId, true);
+    return true;
+  }
+
+  /** Resolve the parent transcript file backing a reopen, plus the watched
+   * root it lives under. Two strategies, in order:
+   *
+   *   1. Persisted summary row → reconstruct the path from its cwd. A
+   *      configured root may sit at the account level (`~/.claude-pw`) or
+   *      already at the transcripts level (`~/.claude-pw/projects`, the
+   *      `defaultRoots()` shape), so try both layouts.
+   *   2. Disk scan — when there's no summary row yet (the background indexer
+   *      hasn't reached this session), search each root's project dirs for a
+   *      bare `<id>.jsonl`. This is what lets "open regardless of status"
+   *      work for an un-summarized session: the file exists on disk even
+   *      though brainhouse has never indexed it. The cwd is recovered from
+   *      the transcript's own records when its events are ingested.
+   *
+   * Returns null when no transcript can be found under any root. */
+  private async resolveReopenTranscript(
+    sessionId: string,
+  ): Promise<{ file: string; root: string } | null> {
+    const row = this.persistStore?.getSession(sessionId);
+    if (row?.cwd) {
+      const rel = encodeCwdToProjectDir(row.cwd);
+      for (const root of this.watcher.roots) {
+        const candidates = [
+          path.join(root, rel, `${sessionId}.jsonl`),
+          path.join(root, 'projects', rel, `${sessionId}.jsonl`),
+        ];
+        const file = candidates.find((c) => existsSync(c));
+        if (file) return { file, root };
+      }
+    }
+    const target = `${sessionId}.jsonl`;
+    for (const root of this.watcher.roots) {
+      for (const base of [root, path.join(root, 'projects')]) {
+        let entries: string[];
+        try {
+          entries = await readdir(base);
+        } catch {
+          continue; // base doesn't exist (e.g. no projects/ layout) — skip
+        }
+        for (const entry of entries) {
+          const candidate = path.join(base, entry, target);
+          if (existsSync(candidate)) return { file: candidate, root };
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Patch a panel's `user_kept` intention without clobbering its other
+   * sticky fields. Used by reopen to make the kept state durable. No-op when
+   * persistence is disabled. */
+  private persistKept(panelId: string, kept: boolean): void {
+    if (!this.persistStore) return;
+    const existing = this.persistStore.getIntentions(panelId);
+    this.persistStore.upsertIntentions({
+      panel_id: panelId,
+      pinned: existing?.pinned ?? false,
+      wide: existing?.wide ?? false,
+      manual_order: existing?.manual_order ?? null,
+      user_mini: existing?.user_mini ?? false,
+      hidden_at: existing?.hidden_at ?? null,
+      auto_mini_at: existing?.auto_mini_at ?? null,
+      broken_out: existing?.broken_out ?? false,
+      user_kept: kept,
+      updated_at: Date.now() / 1000,
+    });
   }
 
   /** Resolve the transcript JSONL that owns a panel's events, or null if
