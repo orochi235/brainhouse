@@ -2704,6 +2704,13 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   gap: 0.3rem;
   cursor: pointer;
   min-height: 1.5rem;
+  /* Span the full row so the capsule box (and the pending sweep clipped to
+   * it) reaches under the timestamp, which lives in the absolutely-positioned
+   * `.event-trailer` over the row's right edge. Without this the flex box
+   * shrink-wraps its content and the sweep stops short of the timestamp.
+   * `.tool-label` (flex: 1) absorbs the extra width and the reserved
+   * `padding-right` (below) holds the timestamp gutter. */
+  width: 100%;
 }
 /* Pending pulse: a goldenrod 20px-wide highlight that travels
  * left-to-right across the capsule. Implemented as a positioned
