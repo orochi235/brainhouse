@@ -631,13 +631,17 @@ describe('SessionStore', () => {
 
     it('uses the event ts for last_event_at (capped at clock)', () => {
       const clock = new FakeClock(10_000); // "now"
-      const store = new SessionStore({ clock: clock.now });
+      const store = new SessionStore({ clock: clock.now }); // idle 60, mini 300
       // Replay an old event written 2 hours ago.
       const old = { ...ev('user_text', { payload: { text: 'hi' } }), ts: toIso(10_000 - 7_200) };
       store.apply(old as Event);
       const p = store.panel('S');
       expect(p?.last_event_at).toBe(10_000 - 7_200);
-      expect(p?.status_changed_at).toBe(10_000 - 7_200);
+      // A 2h-old replay settles straight to mini (no live flash); its
+      // status_changed_at is back-dated to when it would have entered mini
+      // (event ts + idle + mini), still event-relative rather than "now".
+      expect(p?.status).toBe('mini');
+      expect(p?.status_changed_at).toBe(10_000 - 7_200 + 60 + 300);
     });
 
     it('never projects last_event_at past the clock', () => {
@@ -656,17 +660,20 @@ describe('SessionStore', () => {
       expect(store.panel('S')?.last_event_at).toBe(10_000);
     });
 
-    it('tick stamps status_changed_at at the threshold crossing, not the tick time', () => {
+    it('settles a replayed event to its threshold-crossing status_changed_at, not the apply/tick time', () => {
       const clock = new FakeClock(10_000);
-      const store = new SessionStore({ clock: clock.now, idleSeconds: 60 });
-      // Bootstrap replay: event was 2h ago.
-      const old = { ...ev('user_text', { payload: { text: 'hi' } }), ts: toIso(10_000 - 7_200) };
+      const store = new SessionStore({ clock: clock.now, idleSeconds: 60, miniSeconds: 300 });
+      // Bootstrap replay aged into the done window (past idle, before mini).
+      const old = { ...ev('user_text', { payload: { text: 'hi' } }), ts: toIso(10_000 - 120) };
       store.apply(old as Event);
-      store.tick();
       const p = store.panel('S');
+      // Settles to done on apply — full-size but no live flash.
       expect(p?.status).toBe('done');
-      // status_changed_at should be last_event_at + idleSeconds, not "now".
-      expect(p?.status_changed_at).toBe(10_000 - 7_200 + 60);
+      // status_changed_at is when it would have entered done, not "now".
+      expect(p?.status_changed_at).toBe(10_000 - 120 + 60);
+      // A tick doesn't disturb it (still inside the done→mini window).
+      store.tick();
+      expect(store.panel('S')?.status).toBe('done');
     });
 
     it('done → mini status_changed_at also lands at the threshold crossing', () => {
@@ -1268,5 +1275,39 @@ describe('summarizeOffline', () => {
     expect(row).not.toBeNull();
     expect(row?.session_id).toBe('sx');
     expect(row?.cwd).toBe('/tmp/p');
+  });
+});
+
+describe('cold-start replay status (no live flash for stale events)', () => {
+  // A realistic wall-clock so old ISO timestamps sit *before* it (the small
+  // default FakeClock t=1000 would cap every real date down to "now").
+  const NOW = Date.parse('2026-06-20T12:00:00.000Z') / 1000;
+  function at(uuid: string, iso: string): Event {
+    return { ...ev('user_text', { uuid }), ts: iso };
+  }
+
+  it('settles an old replayed session to mini instead of flashing live', () => {
+    // Default lifecycle: idle 60s, mini 300s → past idle+mini (360s) ⇒ mini.
+    const store = new SessionStore({ clock: new FakeClock(NOW).now });
+    store.apply(at('u1', '2026-06-20T11:00:00.000Z')); // 1h ago
+    expect(store.panel('S')?.status).toBe('mini');
+  });
+
+  it('settles a recently-active replayed session to done (full-size), not live', () => {
+    const store = new SessionStore({ clock: new FakeClock(NOW).now });
+    store.apply(at('u1', '2026-06-20T11:58:00.000Z')); // 2m ago: past idle, within mini
+    expect(store.panel('S')?.status).toBe('done');
+  });
+
+  it('still surfaces a genuinely fresh event as live', () => {
+    const store = new SessionStore({ clock: new FakeClock(NOW).now });
+    store.apply(at('u1', '2026-06-20T11:59:59.000Z')); // 1s ago
+    expect(store.panel('S')?.status).toBe('live');
+  });
+
+  it('keeps a stale session live when its process is still alive', () => {
+    const store = new SessionStore({ clock: new FakeClock(NOW).now, isSessionLive: () => true });
+    store.apply(at('u1', '2026-06-20T11:00:00.000Z')); // 1h ago but process alive
+    expect(store.panel('S')?.status).toBe('live');
   });
 });

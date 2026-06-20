@@ -119,6 +119,18 @@ UI/server is meant to uphold. New entries go at the bottom.
   panels, no deltas — so project widgets/history stay complete. `last_event_at`
   and the cutoff are both in **seconds**. Bootstrap's live-ingest window and
   this gate share `uiWindowSeconds` so they agree.
+- **Cold-start replay settles by age — no `live` flash.** A bootstrap replay
+  re-feeds the trailing JSONL window through `apply()`, but a *stale* event
+  (one older than `idleSeconds`, with no live owning process) no longer
+  promotes its panel to `live`. Instead `apply()`/`ensurePanel` settle it
+  straight to the age-appropriate status via `settledState`: `done` if within
+  the done→mini window, `mini` once past `idleSeconds + miniSeconds`, with
+  `status_changed_at` back-dated to the threshold crossing so subsequent ticks
+  stay correct. Genuine activity (event within `idleSeconds`, or
+  `isSessionLive(owner)` true) still surfaces `live`. This kills the restart
+  "god view" — replayed sessions land as docked `mini` (or a few capped-`done`
+  tiles) rather than a wall of full-size `live` panels that slowly collapse. A
+  still-active session re-promotes to `live` the moment it emits a fresh event.
 - **`reopenSession` is durable + restores subagents.** The on-demand
   fast-load (`monitor.reopenSession` → trpc → `openSessionFromWidget`) parses a
   reaped session's transcript and feeds it through `ingest()`, so the panel

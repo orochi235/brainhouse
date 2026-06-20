@@ -2,8 +2,9 @@ import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { useClock } from '../lib/clock.ts';
 import { CopyableId } from '../lib/CopyableId.tsx';
-import { formatDurationShort, formatIdle } from '../lib/format.ts';
+import { formatDurationTwoUnits } from '../lib/format.ts';
 import { CLI_ICONS } from '../lib/tools.ts';
+import { isPlaceholderTitle } from '../lib/sessionTitle.ts';
 import { badgeColor, deriveWorktree, worktreeColor } from '../lib/worktree.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
@@ -44,7 +45,7 @@ const PROVENANCE_CLASS: Record<Row['provenance'], string> = {
 
 // Uptime reads better coarse — two most significant units, not the
 // minute-level precision the Idle column wants.
-const fmtUptime = formatDurationShort;
+const fmtUptime = formatDurationTwoUnits;
 
 function isLoopback(addr: string): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '0.0.0.0' || addr === '*';
@@ -258,15 +259,20 @@ export function ProcessRow({
               </dl>
             }
           >
-            <span
-              className={
-                viewMode === 'sessions' && panel?.title
-                  ? 'process-command is-title'
-                  : 'process-command'
-              }
-            >
-              {viewMode === 'sessions' && panel?.title ? panel.title : row.command}
-            </span>
+            {(() => {
+              // Sessions view shows the session title; network view (and a
+              // titleless session) falls back to the invoking command. A title
+              // that's still just a hex/uuid fragment reads as the muted
+              // command, not a real `is-title` prose title — only a genuine
+              // title earns full-strength styling.
+              const sessionTitle = viewMode === 'sessions' ? (panel?.title ?? '') : '';
+              const realTitle = !!sessionTitle && !isPlaceholderTitle(sessionTitle, panel?.id ?? '');
+              return (
+                <span className={realTitle ? 'process-command is-title' : 'process-command'}>
+                  {sessionTitle || row.command}
+                </span>
+              );
+            })()}
           </HoverPopover>
         </td>
         {viewMode !== 'sessions' && (
@@ -353,7 +359,7 @@ export function IdleCell({ panel }: { panel: PanelState | null }) {
       className={bucket !== null ? `process-idle idle-bucket-${bucket}` : 'process-idle'}
       title={panel ? 'time since last event in this session' : 'no session activity tracked'}
     >
-      {idleSec === null ? '—' : formatIdle(idleSec)}
+      {idleSec === null ? '—' : formatDurationTwoUnits(idleSec)}
     </td>
   );
 }

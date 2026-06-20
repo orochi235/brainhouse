@@ -368,10 +368,28 @@ export class SessionStore {
     // batch of these long after the session went idle; treating them as
     // activity resurrects done/mini panels. Real activity comes through as
     // user_text/assistant_text/tool_use/etc.
-    if (!panel.ended && panel.status !== 'live' && !hasTag(event, 'meta')) {
-      panel.status = 'live';
-      panel.status_changed_at = panel.last_event_at;
-      deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'live' });
+    if (!panel.ended && !hasTag(event, 'meta')) {
+      const owner = panel.kind === 'subagent' ? (panel.parent_panel_id ?? panel.id) : panel.id;
+      if (this.isLiveActivity(owner, ts, now)) {
+        if (panel.status !== 'live') {
+          panel.status = 'live';
+          panel.status_changed_at = panel.last_event_at;
+          deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'live' });
+        }
+      } else if (panel.status !== 'live') {
+        // Stale event — a cold-start replay catch-up, not real activity. Settle
+        // straight to the age-appropriate status instead of flashing `live`,
+        // which would claim a full-size grid slot and produce the restart
+        // "god view" of dozens of full panels. (A panel already promoted to
+        // `live` by a fresher event in the same replay batch is left alone — a
+        // later stale straggler shouldn't demote it; the tick handles that.)
+        const settled = this.settledState(panel.last_event_at, now);
+        if (panel.status !== settled.status) {
+          panel.status = settled.status;
+          deltas.push({ op: 'panel_status', panel_id: panel.id, status: settled.status });
+        }
+        panel.status_changed_at = settled.changed_at;
+      }
     }
     const titleBefore = panel.title;
     this.maybeUpdateTitle(panel, event, deltas);
@@ -726,6 +744,30 @@ export class SessionStore {
     return panel.events.find((e) => e.uuid === uuid) ?? null;
   }
 
+  /** Whether an event represents genuine live activity (so its panel should
+   * surface `live`) rather than a stale cold-start replay catch-up. A session
+   * whose owning process is alive is always live; otherwise the event must be
+   * recent (within `idleSeconds`). `ts` is the event's clamped timestamp. */
+  private isLiveActivity(ownerId: string, ts: number, now: number): boolean {
+    return this.isSessionLive(ownerId) || now - ts < this.idleSeconds;
+  }
+
+  /** The status + `status_changed_at` a non-live panel should hold given how
+   * long ago its last event was, mirroring the live→done→mini thresholds.
+   * Lets a cold-start replay land a session exactly where the lifecycle would
+   * have put it, with no transient `live` flash. `changed_at` is back-dated to
+   * the moment the panel would have entered that state so the subsequent
+   * done→mini / mini→remove tick timing stays correct. */
+  private settledState(lastEventAt: number, now: number): {
+    status: 'done' | 'mini';
+    changed_at: number;
+  } {
+    const doneAt = lastEventAt + this.idleSeconds;
+    const miniAt = doneAt + this.miniSeconds;
+    if (now >= miniAt) return { status: 'mini', changed_at: miniAt };
+    return { status: 'done', changed_at: doneAt };
+  }
+
   private ensurePanel(
     event: Event,
     now: number,
@@ -736,6 +778,13 @@ export class SessionStore {
     const { id, kind, parent_panel_id } = panelIdentity(event);
     const existing = this.panels.get(id);
     if (existing) return existing;
+    // A brand-new panel seeded by a cold-start replay of an old transcript
+    // settles straight to its age-appropriate status rather than defaulting to
+    // `live` (see {@link settledState} / {@link isLiveActivity}).
+    const owner = kind === 'subagent' ? (parent_panel_id ?? id) : id;
+    const settled = this.isLiveActivity(owner, eventTs, now)
+      ? null
+      : this.settledState(eventTs, now);
     const panel: Panel = {
       id,
       kind,
@@ -755,7 +804,7 @@ export class SessionStore {
       clear_title_suppression: this.pendingClearTitleSuppression.delete(id)
         ? { suppressed_title: null }
         : null,
-      status: 'live',
+      status: settled ? settled.status : 'live',
       // started_at gets the event's ts so a bootstrap-replayed old session
       // reflects its real age, not wall-clock-now-of-restart. The first
       // event we see is typically a SessionStart or the first user_text,
@@ -764,7 +813,7 @@ export class SessionStore {
       // shows the right "X ago" for the idle / status-change displays.
       started_at: eventTs,
       last_event_at: eventTs,
-      status_changed_at: eventTs,
+      status_changed_at: settled ? settled.changed_at : eventTs,
       cwd: event.cwd,
       repo_root: findRepoRoot(event.cwd),
       theme: null,

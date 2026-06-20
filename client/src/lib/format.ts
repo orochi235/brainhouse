@@ -22,6 +22,33 @@ export function formatIdle(seconds: number): string {
   return secs ? `${minutes}m ${secs}s` : `${minutes}m`;
 }
 
+/** The two most significant *nonzero* units of a duration, largest first,
+ * skipping any zero units in between (`1w 0d 3h 3m → "1w 3h"`,
+ * `1w 1d 3h 3m → "1w 1d"`). Goes up to weeks. Sub-minute durations render as
+ * bare seconds; a duration with a single nonzero unit renders just that unit
+ * (`3600 → "1h"`). Used by the top widget's time columns (idle, uptime). */
+export function formatDurationTwoUnits(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const units: Array<[string, number]> = [
+    ['w', 604800],
+    ['d', 86400],
+    ['h', 3600],
+    ['m', 60],
+    ['s', 1],
+  ];
+  const parts: string[] = [];
+  let rem = total;
+  for (const [label, size] of units) {
+    const v = Math.floor(rem / size);
+    if (v > 0) {
+      parts.push(`${v}${label}`);
+      rem -= v * size;
+    }
+    if (parts.length === 2) break;
+  }
+  return parts.length > 0 ? parts.join(' ') : '0s';
+}
+
 /** Like formatIdle, but capped at the two most significant units —
  * "1d 13h" rather than "1d 13h 3m". Trailing zero units are dropped, so a
  * duration just over a boundary collapses to one unit ("1d", "1h"). Used
