@@ -101,6 +101,20 @@ describe('HookEventWatcher', () => {
     expect(received).toEqual([{ kind: 'stop', session_id: 'sess1', ts: 1 }]);
   });
 
+  test('replays existing records deterministically — delivered before start() resolves', async () => {
+    // Cold-start liveness priming depends on every historical session_pid being
+    // registered by the time start() resolves (the monitor runs the first
+    // process tick immediately after). Assert delivery with NO post-start wait.
+    const file = path.join(dir, 'weasel.jsonl');
+    writeFileSync(
+      file,
+      `${JSON.stringify({ kind: 'session_pid', session_id: 'weasel', pid: 4242, ppid: 1, cwd: '/x', start_ts: 1, ts: 1 })}\n`,
+    );
+    await watcher.start();
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({ kind: 'session_pid', session_id: 'weasel', pid: 4242 });
+  });
+
   test('appended lines arrive once each', async () => {
     await watcher.start();
     await new Promise((r) => setTimeout(r, 50));
