@@ -1,5 +1,8 @@
 import { infer } from '../../client/src/components/transforms-inspector/inference.ts';
-import { SELECTOR_REGISTRY, resolveSelector } from '../../client/src/transforms/selectors/registry.ts';
+import {
+  resolveSelector,
+  SELECTOR_REGISTRY,
+} from '../../client/src/transforms/selectors/registry.ts';
 import { parseLine } from '../../server/src/parser.ts';
 import { clusterKey } from './cluster.mts';
 import type { Cluster, ScanResult, SelectorTally } from './types.mts';
@@ -15,7 +18,7 @@ import { maxVersion, minVersion } from './version.mts';
  * surfaces novel tool names and event shapes that lack their own selector
  * entry even though a broad selector would cover them.
  */
-export function scanLines(lines: string[], scanAt: string): ScanResult {
+export function scanLines(lines: string[]): ScanResult {
   const perSelector: Record<string, SelectorTally> = {};
   for (const def of SELECTOR_REGISTRY) {
     perSelector[def.key] = { count: 0, minVersion: null, maxVersion: null };

@@ -3,11 +3,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { scanLines } from './scan.mts';
 
-const fixture = readFileSync(fileURLToPath(new URL('./__fixtures__/sample.jsonl', import.meta.url)), 'utf8');
+const fixture = readFileSync(
+  fileURLToPath(new URL('./__fixtures__/sample.jsonl', import.meta.url)),
+  'utf8',
+);
 const lines = fixture.split('\n').filter((l) => l.trim().length > 0);
 
 describe('scanLines', () => {
-  const r = scanLines(lines, '2026-06-20T12:00:00Z');
+  const r = scanLines(lines);
 
   it('counts a malformed line without aborting', () => {
     expect(r.stats.malformedLines).toBe(1);

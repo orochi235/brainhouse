@@ -18,7 +18,11 @@ function real(v: string | undefined): string | null {
  * registry. The `'unknown'` sentinel is only a display value; it never
  * participates in min/max comparison.
  */
-export function mergeObserved(existing: ObservedDb, result: ScanResult, scanAt: string): ObservedDb {
+export function mergeObserved(
+  existing: ObservedDb,
+  result: ScanResult,
+  scanAt: string,
+): ObservedDb {
   const out: ObservedDb = {};
   for (const [key, tally] of Object.entries(result.perSelector)) {
     const prev = existing[key];
