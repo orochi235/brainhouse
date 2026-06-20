@@ -160,7 +160,10 @@ UI/server is meant to uphold. New entries go at the bottom.
   least as fresh as the file's mtime (`TranscriptWatcher.alreadySummarized`).
   The queue shrinks to outstanding work, so each restart re-queues only what's
   still missing and progress is monotonic. No store (persistence off) → nothing
-  is treated as summarized.
+  is treated as summarized. A summary row with a **blank `cwd`** (written by an
+  older indexer pass, and invisible in cwd-keyed project widgets) is treated as
+  *not* summarized, so the back-fill re-runs it and `summarizeOffline` recovers
+  the cwd from the transcript.
 - **Force-surface allowlist.** `SessionStore.snapshot()` surfaces an
   out-of-window panel when its owner is in the force-surface set, kept in sync
   with the persisted `user_kept` intention: restoring a panel from the dock or

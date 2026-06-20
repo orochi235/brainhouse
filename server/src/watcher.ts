@@ -224,7 +224,11 @@ export class TranscriptWatcher {
    * monotonic. No store (persistence off) → nothing is known summarized. */
   private alreadySummarized(sessionId: string, mtime: number): boolean {
     const row = this.store?.getSession(sessionId);
-    return !!row && row.rolled_up_at >= mtime;
+    // A blank cwd means an older indexer pass wrote an incomplete row (it's
+    // invisible in cwd-keyed project widgets). Treat it as unsummarized so the
+    // back-fill re-runs it — current summarizeOffline recovers the cwd from
+    // the transcript.
+    return !!row && !!row.cwd && row.rolled_up_at >= mtime;
   }
 
   /** Hand off the files collected for background summarization, clearing the
