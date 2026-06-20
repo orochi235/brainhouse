@@ -53,6 +53,30 @@ describe('ProcessTracker', () => {
     expect(portEvents.some(e => e.ports.length === 0)).toBe(false);
   });
 
+  it('never runs overlapping ticks (reentrancy guard caps concurrent spawns)', async () => {
+    let active = 0;
+    let maxActive = 0;
+    let calls = 0;
+    const slowPs = async () => {
+      calls++;
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((r) => setTimeout(r, 20));
+      active--;
+      return [];
+    };
+    const t = new ProcessTracker({
+      listProcesses: slowPs,
+      listListeningPorts: async () => [],
+      listCwds: async () => new Map(),
+      now: () => 0,
+    });
+    // Three ticks fired while the first is still awaiting its slow `ps`.
+    await Promise.all([t.tickOnce(), t.tickOnce(), t.tickOnce()]);
+    expect(maxActive).toBe(1); // never two `ps` spawns in flight at once
+    expect(calls).toBe(1); // overlapping ticks are skipped, not queued
+  });
+
   it('port sweeper idles when no subscribers', async () => {
     const lsof = vi.fn().mockResolvedValue([]);
     const t = new ProcessTracker({

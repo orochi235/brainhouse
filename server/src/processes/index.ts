@@ -27,6 +27,14 @@ export class ProcessTracker extends EventEmitter {
   private tickTimer?: NodeJS.Timeout;
   private portTimer?: NodeJS.Timeout;
   private httpProbe = new HttpProbe();
+  // Reentrancy guards: `ps`/`lsof` over a full process table can take longer
+  // than the tick/sweep interval. Without these, a slow run lets the next
+  // interval fire while the prior is still in flight, stacking concurrent
+  // child_process spawns — which is exactly what triggers the intermittent
+  // libuv `spawn EBADF` fd race. A skipped tick is harmless: the next
+  // interval samples fresh state anyway.
+  private ticking = false;
+  private sweeping = false;
 
   constructor(deps: TrackerDeps = {}) {
     super();
@@ -106,6 +114,8 @@ export class ProcessTracker extends EventEmitter {
   }
 
   async tickOnce() {
+    if (this.ticking) return;
+    this.ticking = true;
     try {
       const [ps, cwds] = await Promise.all([this.listProcesses(), this.listCwds()]);
       const cwdLookup = (pid: number) => cwds.get(pid) ?? null;
@@ -114,11 +124,15 @@ export class ProcessTracker extends EventEmitter {
       for (const id of deletes) this.emit('delete', id);
     } catch (e) {
       console.error('[processes] tick failed:', e);
+    } finally {
+      this.ticking = false;
     }
   }
 
   async maybeSweepPorts() {
     if (this.subscribers === 0) return;
+    if (this.sweeping) return;
+    this.sweeping = true;
     try {
       const portRows = await this.listPorts();
       // A null result means the lsof call failed (timeout / fork-exec
@@ -224,6 +238,7 @@ export class ProcessTracker extends EventEmitter {
         });
       }
     } catch (e) { console.error('[processes] port sweep failed:', e); }
+    finally { this.sweeping = false; }
   }
 
   async kill(processId: string): Promise<void> {

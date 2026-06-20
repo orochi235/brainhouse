@@ -3,6 +3,45 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+/** Transient `spawn` failures from libuv under concurrent child_process load.
+ * EBADF is an fd race (NOT exhaustion — the fd ulimit is ~1M), EMFILE/ENFILE
+ * are momentary fd pressure, EAGAIN a momentary process-table limit. All clear
+ * on a short retry; only the persistent variants should surface. */
+const TRANSIENT_SPAWN_CODES = new Set(['EBADF', 'EMFILE', 'ENFILE', 'EAGAIN']);
+
+function isTransientSpawnError(e: unknown): boolean {
+  return (
+    !!e &&
+    typeof e === 'object' &&
+    (e as { syscall?: unknown }).syscall === 'spawn' &&
+    TRANSIENT_SPAWN_CODES.has((e as { code?: string }).code ?? '')
+  );
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Run a child-process thunk, retrying transient `spawn` failures with a short
+ * linear backoff. `execFileAsync` can throw `spawn EBADF` *synchronously* when
+ * libuv loses an fd race (the error is raised before the promise is returned),
+ * so `await fn()` inside the try catches both the synchronous throw and the
+ * async rejection. Non-transient errors and the final attempt rethrow. */
+export async function execWithRetry<T>(
+  fn: () => Promise<T>,
+  { attempts = 3, delayMs = 50 }: { attempts?: number; delayMs?: number } = {},
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (!isTransientSpawnError(e) || i === attempts - 1) throw e;
+      await sleep(delayMs * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
 export type PsRow = { pid: number; ppid: number; start_ts: number; comm: string; command: string };
 export type PortRow = { pid: number; ports: Array<{ proto: 'TCP'; addr: string; port: number }> };
 
@@ -69,9 +108,11 @@ export function parseLsofOutput(out: string): PortRow[] {
 }
 
 export async function listProcesses(): Promise<PsRow[]> {
-  const { stdout } = await execFileAsync(
-    'ps', ['-A', '-o', 'pid,ppid,lstart,comm,command'],
-    { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+  const { stdout } = await execWithRetry(() =>
+    execFileAsync(
+      'ps', ['-A', '-o', 'pid,ppid,lstart,comm,command'],
+      { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+    ),
   );
   return parsePsOutput(stdout);
 }
@@ -84,9 +125,11 @@ export async function listProcesses(): Promise<PsRow[]> {
  * every network row flickers out and back on the next good sample. */
 export async function listListeningPorts(): Promise<PortRow[] | null> {
   try {
-    const { stdout } = await execFileAsync(
-      'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pPn'],
-      { timeout: 3000, maxBuffer: 8 * 1024 * 1024 },
+    const { stdout } = await execWithRetry(() =>
+      execFileAsync(
+        'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pPn'],
+        { timeout: 3000, maxBuffer: 8 * 1024 * 1024 },
+      ),
     );
     return parseLsofOutput(stdout);
   } catch {
@@ -120,9 +163,11 @@ export function parseLsofCwdOutput(out: string): Map<number, string> {
  * per tick; we cache nothing because cwds can change (cd in a shell). */
 export async function listCwds(): Promise<Map<number, string>> {
   try {
-    const { stdout } = await execFileAsync(
-      'lsof', ['-d', 'cwd', '-Fpn'],
-      { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+    const { stdout } = await execWithRetry(() =>
+      execFileAsync(
+        'lsof', ['-d', 'cwd', '-Fpn'],
+        { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+      ),
     );
     return parseLsofCwdOutput(stdout);
   } catch {
