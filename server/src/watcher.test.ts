@@ -447,6 +447,31 @@ describe('TranscriptWatcher', () => {
       expect(w.takeDeferredFiles().map((p) => p.split('/').pop())).toEqual(['todo.jsonl']);
       store.close();
     });
+
+    it('re-defers a session whose existing summary has an empty cwd (heals stale backfill)', async () => {
+      // Older indexer runs wrote summaries with a blank cwd; those rows are
+      // invisible in cwd-keyed project widgets. Treat a cwd-less summary as
+      // not-properly-summarized so the back-fill re-runs it (current
+      // summarizeOffline recovers the cwd from the transcript).
+      const store = Store.open(':memory:');
+      const proj = path.join(dir, 'proj');
+      mkdirSync(proj, { recursive: true });
+      const f = path.join(proj, 'nocwd.jsonl');
+      writeFileSync(f, `${JSON.stringify(record('u1', 'x', 'nocwd'))}\n`);
+      const now = Date.now() / 1000;
+      const threeDaysAgo = now - 3 * 24 * 3600;
+      utimesSync(f, threeDaysAgo, threeDaysAgo);
+      store.materializeSession({ ...summaryRow('nocwd', now), cwd: '' });
+
+      const w = new TranscriptWatcher([dir], sink, {
+        bootstrapAgeSeconds: 172800,
+        deferredMaxAgeSeconds: 7776000,
+        store,
+      });
+      await w.bootstrap();
+      expect(w.takeDeferredFiles().map((p) => p.split('/').pop())).toEqual(['nocwd.jsonl']);
+      store.close();
+    });
   });
 
   describe('rereadFromStart', () => {
