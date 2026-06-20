@@ -1,0 +1,110 @@
+{
+  "tool-use.any": {
+    "firstSeenVersion": "2.1.34",
+    "lastSeenVersion": "2.1.118",
+    "lastWindowCount": 54791,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "tool-use.todo-write": {
+    "firstSeenVersion": "unknown",
+    "lastSeenVersion": "unknown",
+    "lastWindowCount": 0,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "tool-use.task-create": {
+    "firstSeenVersion": "2.1.92",
+    "lastSeenVersion": "2.1.118",
+    "lastWindowCount": 654,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "tool-use.task-update": {
+    "firstSeenVersion": "2.1.92",
+    "lastSeenVersion": "2.1.118",
+    "lastWindowCount": 1301,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "tool-use.task": {
+    "firstSeenVersion": "unknown",
+    "lastSeenVersion": "unknown",
+    "lastWindowCount": 0,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "tool-use.ask-user-question": {
+    "firstSeenVersion": "2.1.80",
+    "lastSeenVersion": "2.1.80",
+    "lastWindowCount": 1,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "tool-result.any": {
+    "firstSeenVersion": "2.1.34",
+    "lastSeenVersion": "2.1.118",
+    "lastWindowCount": 54785,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "assistant-text.any": {
+    "firstSeenVersion": "2.1.34",
+    "lastSeenVersion": "2.1.138",
+    "lastWindowCount": 24804,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "assistant-text.bh-title": {
+    "firstSeenVersion": "unknown",
+    "lastSeenVersion": "unknown",
+    "lastWindowCount": 0,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "user-text.any": {
+    "firstSeenVersion": "2.1.34",
+    "lastSeenVersion": "2.1.138",
+    "lastWindowCount": 9263,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "user-text.bash": {
+    "firstSeenVersion": "2.1.92",
+    "lastSeenVersion": "2.1.118",
+    "lastWindowCount": 60,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "user-text.meta": {
+    "firstSeenVersion": "2.1.76",
+    "lastSeenVersion": "2.1.118",
+    "lastWindowCount": 2304,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "user-text.artifact": {
+    "firstSeenVersion": "2.1.76",
+    "lastSeenVersion": "2.1.118",
+    "lastWindowCount": 318,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "meta.any": {
+    "firstSeenVersion": "2.1.34",
+    "lastSeenVersion": "2.1.138",
+    "lastWindowCount": 28576,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "thinking.any": {
+    "firstSeenVersion": "2.1.76",
+    "lastSeenVersion": "2.1.138",
+    "lastWindowCount": 7024,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "system.any": {
+    "firstSeenVersion": "2.1.76",
+    "lastSeenVersion": "2.1.138",
+    "lastWindowCount": 3606,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "dialogue.any": {
+    "firstSeenVersion": "2.1.34",
+    "lastSeenVersion": "2.1.138",
+    "lastWindowCount": 34067,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  },
+  "pending.bump": {
+    "firstSeenVersion": "2.1.34",
+    "lastSeenVersion": "2.1.138",
+    "lastWindowCount": 88852,
+    "lastScanAt": "2026-06-20T22:25:21.064Z"
+  }
+}
