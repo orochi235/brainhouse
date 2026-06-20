@@ -26,4 +26,11 @@ describe('mergeObserved', () => {
     const out = mergeObserved(existing, result({ 'a.b': { count: 0, minVersion: null, maxVersion: null } }), scanAt);
     expect(out['a.b']).toEqual({ firstSeenVersion: '2.0.0', lastSeenVersion: '2.1.50', lastWindowCount: 0, lastScanAt: scanAt });
   });
+
+  it('heals a stored "unknown" sentinel once a real version appears', () => {
+    const existing: ObservedDb = { 'a.b': { firstSeenVersion: 'unknown', lastSeenVersion: 'unknown', lastWindowCount: 0, lastScanAt: 'old' } };
+    const out = mergeObserved(existing, result({ 'a.b': { count: 654, minVersion: '2.1.40', maxVersion: '2.1.118' } }), scanAt);
+    expect(out['a.b'].firstSeenVersion).toBe('2.1.40');
+    expect(out['a.b'].lastSeenVersion).toBe('2.1.118');
+  });
 });
