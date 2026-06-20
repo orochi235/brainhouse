@@ -7,7 +7,7 @@ function result(perSelector: ScanResult['perSelector']): ScanResult {
     perSelector,
     clusters: [],
     maxVersionSeen: null,
-    stats: { linesParsed: 0, malformedLines: 0, eventsTotal: 0, eventsMatchedZero: 0 },
+    stats: { linesParsed: 0, malformedLines: 0, eventsTotal: 0, eventsUnmatchedSpecific: 0 },
   };
 }
 

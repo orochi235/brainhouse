@@ -19,11 +19,24 @@ const hasFlag = (name: string) => process.argv.includes(name);
 function findLogs(root: string, sinceMs: number | null): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+      process.stderr.write(`[scan] skipped ${dir}: ${String(err)}\n`);
+      return;
+    }
+    for (const ent of entries) {
       const p = join(dir, ent.name);
-      if (ent.isDirectory()) walk(p);
-      else if (ent.name.endsWith('.jsonl')) {
-        if (sinceMs == null || statSync(p).mtimeMs >= sinceMs) out.push(p);
+      try {
+        if (ent.isSymbolicLink()) continue;
+        if (ent.isDirectory()) {
+          walk(p);
+        } else if (ent.name.endsWith('.jsonl')) {
+          if (sinceMs == null || statSync(p).mtimeMs >= sinceMs) out.push(p);
+        }
+      } catch (err) {
+        process.stderr.write(`[scan] skipped ${p}: ${String(err)}\n`);
       }
     }
   };
@@ -38,14 +51,22 @@ function main() {
     process.exit(1);
   }
   const sinceDays = hasFlag('--all') ? null : Number.parseInt(arg('--since') ?? '14', 10);
+  if (sinceDays != null && Number.isNaN(sinceDays)) {
+    process.stderr.write('[scan] invalid --since value (expected a number of days)\n');
+    process.exit(1);
+  }
   const sinceMs = sinceDays == null ? null : Date.now() - sinceDays * 86_400_000;
   const scanAt = new Date().toISOString();
 
   const files = findLogs(root, sinceMs);
   const lines: string[] = [];
   for (const f of files) {
-    for (const l of readFileSync(f, 'utf8').split('\n')) {
-      if (l.trim().length > 0) lines.push(l);
+    try {
+      for (const l of readFileSync(f, 'utf8').split('\n')) {
+        if (l.trim().length > 0) lines.push(l);
+      }
+    } catch (err) {
+      process.stderr.write(`[scan] unreadable ${f}: ${String(err)}\n`);
     }
   }
 

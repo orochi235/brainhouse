@@ -32,6 +32,6 @@ export interface ScanResult {
     linesParsed: number;
     malformedLines: number;
     eventsTotal: number;
-    eventsMatchedZero: number;
+    eventsUnmatchedSpecific: number;
   };
 }

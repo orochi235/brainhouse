@@ -44,7 +44,7 @@ export function scanLines(lines: string[]): ScanResult {
   }
 
   const clusters = new Map<string, Cluster>();
-  const stats = { linesParsed: 0, malformedLines: 0, eventsTotal: 0, eventsMatchedZero: 0 };
+  const stats = { linesParsed: 0, malformedLines: 0, eventsTotal: 0, eventsUnmatchedSpecific: 0 };
   let maxVersionSeen: string | null = null;
 
   for (const line of lines) {
@@ -80,7 +80,7 @@ export function scanLines(lines: string[]): ScanResult {
         }
       }
       if (!matchedSpecific) {
-        stats.eventsMatchedZero++;
+        stats.eventsUnmatchedSpecific++;
         const key = clusterKey(e);
         const hit = clusters.get(key);
         if (hit) {

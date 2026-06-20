@@ -36,4 +36,11 @@ describe('scanLines', () => {
   it('tracks the max version seen across all lines', () => {
     expect(r.maxVersionSeen).toBe('2.1.112');
   });
+
+  it('clusters an event even though a broad .any selector matched it', () => {
+    // BrandNewTool matches the broad `tool-use.any` selector but no name-specific one,
+    // so it must still surface as a cluster.
+    expect(r.perSelector['tool-use.any'].count).toBeGreaterThanOrEqual(2);
+    expect(r.clusters.find((c) => c.shapeKey === 'tool_use|BrandNewTool')).toBeDefined();
+  });
 });
