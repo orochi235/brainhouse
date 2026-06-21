@@ -11,7 +11,7 @@
  */
 
 import { createReadStream } from 'node:fs';
-import { mkdir, stat } from 'node:fs/promises';
+import { mkdir, readdir, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
@@ -97,10 +97,29 @@ export class HookEventWatcher {
 
   async start(): Promise<void> {
     await mkdir(this.dir, { recursive: true });
+    // Deterministic initial replay: drain every existing hook file to EOF and
+    // AWAIT it before returning. Cold-start liveness priming depends on this —
+    // the monitor runs the first process tick right after start() resolves, and
+    // it can only attribute running `claude` processes to sessions once every
+    // historical `session_pid` record has been registered. (The live `add`
+    // handler below fires its drains fire-and-forget, so relying on chokidar's
+    // initial scan would race the tick.)
+    try {
+      const entries = await readdir(this.dir);
+      await Promise.all(
+        entries
+          .filter((f) => f.endsWith('.jsonl'))
+          .map((f) => this.drain(path.join(this.dir, f))),
+      );
+    } catch {
+      // Dir vanished / race — the live watch below still catches up.
+    }
     // Chokidar v4 dropped built-in glob support — watch the dir, filter in
-    // the handler.
+    // the handler. ignoreInitial: the explicit replay above already covered
+    // existing files (and per-file offsets dedupe any overlap), so only tail
+    // subsequent writes.
     this.watcher = chokidar.watch(this.dir, {
-      ignoreInitial: false,
+      ignoreInitial: true,
       awaitWriteFinish: false,
       persistent: true,
       depth: 0,

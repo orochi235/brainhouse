@@ -132,14 +132,18 @@ async function main() {
   // Heavy bootstrap, now that the port is live: walk the transcript roots
   // and discover the process table. Both stream into already-connected
   // clients via the deltas / processes subscriptions — no refresh needed.
+  // Identify the brainhouse server's own pid in the processes table BEFORE the
+  // first process tick (which now runs inside startWatching, ahead of the
+  // transcript walk). The framework + version stamp the self row so the
+  // Network view surfaces it as `brainhouse vX.Y.Z` and the UI applies the
+  // purple diamond status glyph. No synthetic account_label — brainhouse isn't
+  // a Claude account, and the chip would mislead.
+  tracker.registerSelf(null, 'brainhouse', readBrainhouseVersion());
+  // Walk transcripts + prime process discovery. startWatching replays hook
+  // events and runs the first process tick before the slow walk so quiet-but-
+  // alive sessions surface as live (see its body for ordering rationale).
   await monitor.startWatching();
   tracker.start();
-  // Identify the brainhouse server's own pid in the processes table.
-  // The framework + version stamp the self row so the Network view
-  // surfaces it as `brainhouse vX.Y.Z` and the UI applies the purple
-  // diamond status glyph. No synthetic account_label — brainhouse
-  // isn't a Claude account, and the chip would mislead.
-  tracker.registerSelf(null, 'brainhouse', readBrainhouseVersion());
   await runStartupDiscovery(tracker);
 
   // One-shot onboarding nudge: if the user clearly uses subagents but

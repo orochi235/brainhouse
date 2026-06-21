@@ -1,5 +1,70 @@
 import { describe, it, expect } from 'vitest';
-import { listProcesses, listListeningPorts, signalProcess, parsePsOutput, parseLsofOutput } from './native.js';
+import { execWithRetry, listProcesses, listListeningPorts, signalProcess, parsePsOutput, parseLsofOutput } from './native.js';
+
+function spawnError(code: string): Error {
+  const e = new Error(`spawn ${code}`) as Error & { code: string; syscall: string; errno: number };
+  e.code = code;
+  e.syscall = 'spawn';
+  e.errno = -9;
+  return e;
+}
+
+describe('execWithRetry', () => {
+  it('retries a transient spawn EBADF, then succeeds', async () => {
+    let calls = 0;
+    const result = await execWithRetry(
+      async () => {
+        calls++;
+        if (calls < 3) throw spawnError('EBADF');
+        return 'ok';
+      },
+      { attempts: 3, delayMs: 0 },
+    );
+    expect(result).toBe('ok');
+    expect(calls).toBe(3);
+  });
+
+  it('catches a SYNCHRONOUS spawn throw (libuv raises EBADF before the promise)', async () => {
+    let calls = 0;
+    // Not async — throws inline, mirroring how execFileAsync can throw before
+    // returning a promise when uv_spawn loses an fd race.
+    const fn = (): Promise<string> => {
+      calls++;
+      if (calls < 2) throw spawnError('EBADF');
+      return Promise.resolve('ok');
+    };
+    expect(await execWithRetry(fn, { attempts: 3, delayMs: 0 })).toBe('ok');
+    expect(calls).toBe(2);
+  });
+
+  it('rethrows a non-transient spawn error without retrying', async () => {
+    let calls = 0;
+    await expect(
+      execWithRetry(
+        async () => {
+          calls++;
+          throw spawnError('EACCES');
+        },
+        { attempts: 3, delayMs: 0 },
+      ),
+    ).rejects.toThrow(/EACCES/);
+    expect(calls).toBe(1);
+  });
+
+  it('gives up after the final attempt on a persistent transient error', async () => {
+    let calls = 0;
+    await expect(
+      execWithRetry(
+        async () => {
+          calls++;
+          throw spawnError('EBADF');
+        },
+        { attempts: 3, delayMs: 0 },
+      ),
+    ).rejects.toThrow(/EBADF/);
+    expect(calls).toBe(3);
+  });
+});
 
 describe('parsePsOutput', () => {
   it('extracts pid/ppid/start/comm/command', () => {

@@ -304,7 +304,11 @@ export function ProcessesPanel({
     try { localStorage.setItem(SHOW_WRAPPERS_KEY, showWrappers ? '1' : '0'); } catch {}
   }, [showWrappers]);
 
-  if (all.length === 0) return null;
+  // NOTE: don't bail to `null` when there's no process data yet (e.g. the
+  // reconnect window right after a server restart). The panel is mounted
+  // because the topbar toggle is on, and the layout reserves its top slot +
+  // resize handle either way — returning null left a dangling handle under a
+  // still-"pressed" toggle. Render the panel with an empty state instead.
 
   // Common noise gate — applies to both views.
   const baseFiltered = all.filter(r => {
@@ -475,6 +479,11 @@ export function ProcessesPanel({
       {rows.length === 0 && all.length > 0 && (
         <p className="processes-filter-empty">
           No processes match the current filters. Toggle a checkbox above to broaden the view.
+        </p>
+      )}
+      {all.length === 0 && (
+        <p className="processes-filter-empty">
+          Waiting for process data… (the tracker repopulates a moment after the server starts.)
         </p>
       )}
     </section>

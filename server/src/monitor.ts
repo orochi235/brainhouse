@@ -195,13 +195,21 @@ export class TranscriptMonitor {
    * — the tRPC snapshot reads live store state, which the walk mutates in
    * place. */
   async startWatching({ watch = true }: { watch?: boolean } = {}): Promise<void> {
+    // Order matters for cold-start liveness. Replay hook events (session_pid
+    // registrations) and prime the process tracker BEFORE the transcript walk:
+    // the walk settles each session's status, and isLiveActivity() consults the
+    // tracker, so a quiet-but-alive session (e.g. one waiting on a background
+    // agent) only settles to `live` instead of `done` when the tracker already
+    // knows its `claude` process is running. This also front-loads discovery of
+    // the most relevant (actually-running) processes before the slow walk.
+    if (this.hookWatcher) await this.hookWatcher.start();
+    if (this.tracker) await this.tracker.tickOnce();
     await this.watcher.start({ watch });
     // Bootstrap-time subagent replays produce panels with no SubagentStop
     // hook to drive a real end. Sweep any whose last event is older than
     // the idle window and mark them ended so the dock doesn't fill with
     // phantom "live" rows from prior days.
     for (const d of this.store.endStaleSubagents(this.store.idleSeconds)) this.broadcast(d);
-    if (this.hookWatcher) await this.hookWatcher.start();
     this.startTick();
     this.startPruneLoop();
     this.startThemePoll();
