@@ -807,6 +807,7 @@ function AppMain() {
                     <ProcessesPanel
                       allPanels={allPanels}
                       accountColorByLabel={accountColorByLabel}
+                      onOpenSession={openSessionFromWidget}
                     />
                   )}
                 </>

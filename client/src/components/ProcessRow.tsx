@@ -90,6 +90,7 @@ export function ProcessRow({
   expanded = false,
   onToggleExpand,
   showIdle = false,
+  onOpenSession,
 }: {
   row: Row;
   panel: PanelState | null;
@@ -124,6 +125,11 @@ export function ProcessRow({
    * renderer-native raster leak documented in lib/clock.ts). Network view
    * omits the column. */
   showIdle?: boolean;
+  /** Promote a row's owning session to a full-size grid window. Wired to the
+   * same flow as the project widget (App.tsx openSessionFromWidget): restores
+   * a docked/hidden panel, or re-opens a reaped session from its transcript.
+   * Only rows with a `session_id` are promotable. */
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const kill = () => {
     if (!window.confirm(`Send SIGTERM to PID ${row.pid}?`)) return;
@@ -267,11 +273,29 @@ export function ProcessRow({
               // title earns full-strength styling.
               const sessionTitle = viewMode === 'sessions' ? (panel?.title ?? '') : '';
               const realTitle = !!sessionTitle && !isPlaceholderTitle(sessionTitle, panel?.id ?? '');
-              return (
-                <span className={realTitle ? 'process-command is-title' : 'process-command'}>
-                  {sessionTitle || row.command}
-                </span>
-              );
+              const label = sessionTitle || row.command;
+              const cls = realTitle ? 'process-command is-title' : 'process-command';
+              // Rows tied to a session can be clicked to promote that session
+              // to a full-size grid window (same flow as the project widget).
+              // Rows with no session_id (host-wide network listeners) have no
+              // window to open, so they stay plain text.
+              if (row.session_id && onOpenSession) {
+                const sid = row.session_id;
+                return (
+                  <button
+                    type="button"
+                    className={`${cls} process-command-open`}
+                    title="Open this session in a full-size window"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenSession(sid);
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              }
+              return <span className={cls}>{label}</span>;
             })()}
           </HoverPopover>
         </td>

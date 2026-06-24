@@ -38,6 +38,16 @@ describe('ProcessesPanel', () => {
     expect(screen.getByText(/5173/)).toBeInTheDocument(); // Ports (network-only)
   });
 
+  it('promotes the owning session when a row title is clicked', async () => {
+    const onOpenSession = vi.fn();
+    render(<ProcessesPanel allPanels={new Map()} onOpenSession={onOpenSession} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /network/i }));
+    // The session-attributed row's title renders as a button (session_id 's1').
+    await user.click(screen.getByRole('button', { name: 'node vite' }));
+    expect(onOpenSession).toHaveBeenCalledWith('s1');
+  });
+
   it('stays mounted with an empty state when there is no process data (restart window)', () => {
     // Regression: an open panel used to return null when the tracker had no
     // rows yet (e.g. right after a server restart), leaving the topbar toggle

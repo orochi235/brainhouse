@@ -223,12 +223,17 @@ function flattenTree(
 export function ProcessesPanel({
   allPanels,
   accountColorByLabel,
+  onOpenSession,
 }: {
   allPanels: Map<string, PanelState>;
   /** account_label → hex color from prefs.roots[]. Drives the
    * --account-color CSS var on the Account badge so its tint matches
    * the session card / project widget account badge. */
   accountColorByLabel?: Map<string, string>;
+  /** Promote a process row's owning session to a full-size grid window
+   * (same flow as the project widget). Threaded down to each ProcessRow's
+   * clickable title. */
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const all = useProcesses();
 
@@ -472,6 +477,7 @@ export function ProcessesPanel({
               expanded={expandedRoots.has(row.pid)}
               onToggleExpand={isRoot && hasChildren ? () => toggleRoot(row.pid) : undefined}
               showIdle={viewMode === 'sessions'}
+              onOpenSession={onOpenSession}
             />
           ))}</tbody>
         </table>

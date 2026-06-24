@@ -4409,6 +4409,25 @@ body.replay-drop-target::after {
 .debug-id-list li { font-size: 0.7rem; }
 .debug-gap-pos { color: #c44; font-weight: 600; }
 .debug-gap-neg { color: #888; }
+/* Label/value summary that flows into as many columns as the width allows
+ * (auto-fill) instead of one item per line — 6 stats on a 1000px tile land in
+ * ~2 rows, not 6. */
+.debug-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 0 1.5rem;
+  margin: 0;
+  font-size: 0.7rem;
+}
+.debug-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+}
+.debug-kv dt { color: var(--muted); }
+.debug-kv dd { margin: 0; font-variant-numeric: tabular-nums; }
 .debug-cell-truncate {
   max-width: 18ch;
   overflow: hidden;
@@ -5777,6 +5796,25 @@ body.hide-thinking .event-thought-agent {
   font-family: inherit;
   font-size: 1em;
   color: inherit;
+}
+/* Clickable session title: a button that promotes the row's session to a
+ * full-size window. Reset the button box only — font/color come from the
+ * sibling .process-command / .is-title classes so it reads identically to a
+ * non-clickable title until hovered. */
+.process-command-open {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.process-command-open:hover {
+  color: var(--fg);
+  text-decoration: underline;
 }
 
 .process-info-popover {

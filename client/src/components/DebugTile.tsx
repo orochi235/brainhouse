@@ -376,34 +376,32 @@ const ClientContents = memo(function ClientContents({
   return (
     <div className="debug-stack">
       <Section title="Client routing summary">
-        <table className="debug-table">
-          <tbody>
-            <tr>
-              <td>panels known to client</td>
-              <td>{allPanels.size}</td>
-            </tr>
-            <tr>
-              <td>rendered in grid</td>
-              <td>{gridIds.length}</td>
-            </tr>
-            <tr>
-              <td>rendered in dock</td>
-              <td>{dockIds.length}</td>
-            </tr>
-            <tr>
-              <td>subagents (any slot)</td>
-              <td>{subagentCount}</td>
-            </tr>
-            <tr>
-              <td>rendered nested under parent</td>
-              <td>{nestedSubs.length}</td>
-            </tr>
-            <tr>
-              <td>orphans (known but not rendered anywhere)</td>
-              <td className={orphans.length ? 'debug-gap-pos' : ''}>{orphans.length}</td>
-            </tr>
-          </tbody>
-        </table>
+        <dl className="debug-kv-grid">
+          <div className="debug-kv">
+            <dt>panels known to client</dt>
+            <dd>{allPanels.size}</dd>
+          </div>
+          <div className="debug-kv">
+            <dt>rendered in grid</dt>
+            <dd>{gridIds.length}</dd>
+          </div>
+          <div className="debug-kv">
+            <dt>rendered in dock</dt>
+            <dd>{dockIds.length}</dd>
+          </div>
+          <div className="debug-kv">
+            <dt>subagents (any slot)</dt>
+            <dd>{subagentCount}</dd>
+          </div>
+          <div className="debug-kv">
+            <dt>rendered nested under parent</dt>
+            <dd>{nestedSubs.length}</dd>
+          </div>
+          <div className="debug-kv">
+            <dt>orphans (known but not rendered anywhere)</dt>
+            <dd className={orphans.length ? 'debug-gap-pos' : ''}>{orphans.length}</dd>
+          </div>
+        </dl>
       </Section>
 
       <Section title={`Panel tree (${allPanels.size})`}>
