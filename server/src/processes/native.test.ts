@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { execWithRetry, listProcesses, listListeningPorts, signalProcess, parsePsOutput, parseLsofOutput } from './native.js';
+import { execWithRetry, getSpawnDiagnostics, resetSpawnDiagnostics, listProcesses, listListeningPorts, signalProcess, parsePsOutput, parseLsofOutput } from './native.js';
 
 function spawnError(code: string): Error {
   const e = new Error(`spawn ${code}`) as Error & { code: string; syscall: string; errno: number };
@@ -63,6 +63,61 @@ describe('execWithRetry', () => {
       ),
     ).rejects.toThrow(/EBADF/);
     expect(calls).toBe(3);
+  });
+});
+
+describe('execWithRetry diagnostics', () => {
+  it('counts transient retries that eventually succeed, without marking them exhausted', async () => {
+    resetSpawnDiagnostics();
+    let calls = 0;
+    await execWithRetry(
+      async () => {
+        calls++;
+        if (calls < 3) throw spawnError('EBADF');
+        return 'ok';
+      },
+      { attempts: 3, delayMs: 0, label: 'ps' },
+    );
+    const d = getSpawnDiagnostics();
+    expect(d.transient.EBADF).toBe(2); // two failed attempts before success
+    expect(d.exhausted.EBADF ?? 0).toBe(0);
+    expect(d.inFlight).toBe(0); // gauge balanced
+  });
+
+  it('records the command label + attempt count when retries are exhausted', async () => {
+    resetSpawnDiagnostics();
+    await expect(
+      execWithRetry(async () => { throw spawnError('EBADF'); }, { attempts: 3, delayMs: 0, label: 'ps' }),
+    ).rejects.toThrow(/EBADF/);
+    const d = getSpawnDiagnostics();
+    expect(d.exhausted.EBADF).toBe(1);
+    expect(d.recent.at(-1)).toMatchObject({ label: 'ps', code: 'EBADF', attempts: 3 });
+  });
+
+  it('serializes spawns so concurrent callers never overlap (kills the EBADF fd race)', async () => {
+    resetSpawnDiagnostics();
+    let active = 0;
+    let maxActive = 0;
+    const task = (label: string) =>
+      execWithRetry(
+        () =>
+          new Promise<string>((resolve) => {
+            active++;
+            maxActive = Math.max(maxActive, active);
+            setTimeout(() => {
+              active--;
+              resolve(label);
+            }, 5);
+          }),
+        { label },
+      );
+    // Fire all three the way a tick + port sweep would — concurrently.
+    await Promise.all([task('ps'), task('lsof:ports'), task('lsof:cwd')]);
+    // The queue lets only one spawn run at a time, so the fd race never arises.
+    expect(maxActive).toBe(1);
+    const d = getSpawnDiagnostics();
+    expect(d.peakInFlight).toBe(1);
+    expect(d.inFlight).toBe(0);
   });
 });
 

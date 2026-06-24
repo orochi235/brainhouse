@@ -20,22 +20,130 @@ function isTransientSpawnError(e: unknown): boolean {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Observability for the transient-spawn-failure problem. EBADF & friends are
+ * an fd race that climbs with the number of `child_process` spawns in flight at
+ * once (each tick fires `ps` + `lsof` concurrently, and port sweeps overlap).
+ * We can't always prevent the race, but we can measure it: which command, how
+ * many were in flight, how often it self-heals on retry vs. surfaces. Read via
+ * {@link getSpawnDiagnostics} (e.g. from a debug surface) or watch the
+ * one-line warning emitted when retries are exhausted. */
+export interface SpawnDiagnostics {
+  /** child_process spawns currently mid-flight across all callers. */
+  inFlight: number;
+  /** High-water mark of {@link inFlight} since the last reset — the headline
+   * signal for "is this a concurrency race?" */
+  peakInFlight: number;
+  /** Every transient spawn error observed, by errno code (incl. ones that then
+   * succeeded on retry — the silent majority that never reached a log). */
+  transient: Record<string, number>;
+  /** Transient errors that exhausted all retries and surfaced to the caller. */
+  exhausted: Record<string, number>;
+  /** Rolling tail of exhaustion contexts for quick eyeballing. */
+  recent: Array<{ label: string; code: string; attempts: number; inFlight: number; peakInFlight: number }>;
+}
+
+const RECENT_CAP = 20;
+let inFlight = 0;
+let peakInFlight = 0;
+const transientCounts = new Map<string, number>();
+const exhaustedCounts = new Map<string, number>();
+let recentExhaustions: SpawnDiagnostics['recent'] = [];
+
+function bump(m: Map<string, number>, key: string): void {
+  m.set(key, (m.get(key) ?? 0) + 1);
+}
+
+/** Max child_process spawns allowed in flight at once. The transient `spawn`
+ * failures (EBADF/EMFILE/…) are a libuv fd race that only shows up when several
+ * spawns overlap — each tick fires `ps` + `lsof` concurrently and port sweeps
+ * pile on. Serializing to one at a time removes the race entirely; the cost is
+ * negligible since these are sub-second shell-outs (and each carries a 3s
+ * timeout). Bump this only if a future profile shows the queue is a bottleneck
+ * — but then the race can return, so prefer keeping it at 1. */
+const MAX_CONCURRENT_SPAWNS = 1;
+
+/** FIFO of callers parked because the spawn queue is full; each is resumed by a
+ * finishing spawn's `finally`. */
+const spawnWaiters: Array<() => void> = [];
+
+/** Run `fn` through the global spawn semaphore (≤ {@link MAX_CONCURRENT_SPAWNS}
+ * at once), tracking the in-flight gauge around the actual spawn. Only the spawn
+ * is gated — `execWithRetry`'s backoff sleeps happen outside the slot, so a
+ * retrying call doesn't hold a permit while it waits. */
+async function serializeSpawn<T>(fn: () => Promise<T>): Promise<T> {
+  while (inFlight >= MAX_CONCURRENT_SPAWNS) {
+    await new Promise<void>((resolve) => spawnWaiters.push(resolve));
+  }
+  inFlight++;
+  if (inFlight > peakInFlight) peakInFlight = inFlight;
+  try {
+    return await fn();
+  } finally {
+    inFlight--;
+    spawnWaiters.shift()?.();
+  }
+}
+
+/** Snapshot of the spawn-failure counters. Maps are copied out so callers can't
+ * mutate internal state. */
+export function getSpawnDiagnostics(): SpawnDiagnostics {
+  return {
+    inFlight,
+    peakInFlight,
+    transient: Object.fromEntries(transientCounts),
+    exhausted: Object.fromEntries(exhaustedCounts),
+    recent: recentExhaustions.slice(),
+  };
+}
+
+/** Reset all spawn diagnostics. Primarily for tests; also handy to zero the
+ * peak after investigating a spike. */
+export function resetSpawnDiagnostics(): void {
+  inFlight = 0;
+  peakInFlight = 0;
+  transientCounts.clear();
+  exhaustedCounts.clear();
+  recentExhaustions = [];
+}
+
 /** Run a child-process thunk, retrying transient `spawn` failures with a short
  * linear backoff. `execFileAsync` can throw `spawn EBADF` *synchronously* when
  * libuv loses an fd race (the error is raised before the promise is returned),
  * so `await fn()` inside the try catches both the synchronous throw and the
- * async rejection. Non-transient errors and the final attempt rethrow. */
+ * async rejection. Non-transient errors and the final attempt rethrow.
+ *
+ * `label` names the command (e.g. `ps`, `lsof:cwd`) so the diagnostics and the
+ * exhaustion warning can pinpoint which shell-out is racing. Every attempt is
+ * counted against a shared in-flight gauge so a spike correlates the failures
+ * with concurrency. */
 export async function execWithRetry<T>(
   fn: () => Promise<T>,
-  { attempts = 3, delayMs = 50 }: { attempts?: number; delayMs?: number } = {},
+  { attempts = 3, delayMs = 50, label = 'spawn' }: { attempts?: number; delayMs?: number; label?: string } = {},
 ): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
-      return await fn();
+      return await serializeSpawn(fn);
     } catch (e) {
       lastErr = e;
-      if (!isTransientSpawnError(e) || i === attempts - 1) throw e;
+      const transient = isTransientSpawnError(e);
+      if (!transient) throw e;
+      const code = (e as { code?: string }).code ?? 'UNKNOWN';
+      bump(transientCounts, code);
+      if (i === attempts - 1) {
+        bump(exhaustedCounts, code);
+        recentExhaustions.push({ label, code, attempts, inFlight, peakInFlight });
+        if (recentExhaustions.length > RECENT_CAP) recentExhaustions.shift();
+        // One concise line (not the raw multi-line spawn stack) with the context
+        // needed to locate the source: which command, and the peak concurrency
+        // seen — which should now sit at MAX_CONCURRENT_SPAWNS since spawns are
+        // serialized, so a surviving EBADF points somewhere other than our race.
+        console.warn(
+          `[processes] spawn ${code} on "${label}" exhausted after ${attempts} attempts ` +
+            `(peakInFlight=${peakInFlight}) — transient spawn failure`,
+        );
+        throw e;
+      }
       await sleep(delayMs * (i + 1));
     }
   }
@@ -108,11 +216,13 @@ export function parseLsofOutput(out: string): PortRow[] {
 }
 
 export async function listProcesses(): Promise<PsRow[]> {
-  const { stdout } = await execWithRetry(() =>
-    execFileAsync(
-      'ps', ['-A', '-o', 'pid,ppid,lstart,comm,command'],
-      { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
-    ),
+  const { stdout } = await execWithRetry(
+    () =>
+      execFileAsync(
+        'ps', ['-A', '-o', 'pid,ppid,lstart,comm,command'],
+        { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+      ),
+    { label: 'ps' },
   );
   return parsePsOutput(stdout);
 }
@@ -125,11 +235,13 @@ export async function listProcesses(): Promise<PsRow[]> {
  * every network row flickers out and back on the next good sample. */
 export async function listListeningPorts(): Promise<PortRow[] | null> {
   try {
-    const { stdout } = await execWithRetry(() =>
-      execFileAsync(
-        'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pPn'],
-        { timeout: 3000, maxBuffer: 8 * 1024 * 1024 },
-      ),
+    const { stdout } = await execWithRetry(
+      () =>
+        execFileAsync(
+          'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pPn'],
+          { timeout: 3000, maxBuffer: 8 * 1024 * 1024 },
+        ),
+      { label: 'lsof:ports' },
     );
     return parseLsofOutput(stdout);
   } catch {
@@ -163,11 +275,13 @@ export function parseLsofCwdOutput(out: string): Map<number, string> {
  * per tick; we cache nothing because cwds can change (cd in a shell). */
 export async function listCwds(): Promise<Map<number, string>> {
   try {
-    const { stdout } = await execWithRetry(() =>
-      execFileAsync(
-        'lsof', ['-d', 'cwd', '-Fpn'],
-        { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
-      ),
+    const { stdout } = await execWithRetry(
+      () =>
+        execFileAsync(
+          'lsof', ['-d', 'cwd', '-Fpn'],
+          { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+        ),
+      { label: 'lsof:cwd' },
     );
     return parseLsofCwdOutput(stdout);
   } catch {

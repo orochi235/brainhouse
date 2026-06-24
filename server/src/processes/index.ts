@@ -126,7 +126,13 @@ export class ProcessTracker extends EventEmitter {
       for (const r of upserts) this.emit('upsert', r);
       for (const id of deletes) this.emit('delete', id);
     } catch (e) {
-      console.error('[processes] tick failed:', e);
+      // A transient spawn race (EBADF/EMFILE/…) already logged its rich context
+      // in native.ts; keep this concise so a recurring race doesn't spam the
+      // full multi-line spawn stack every tick. Unexpected errors still surface
+      // their message + code.
+      const code = (e as { code?: string })?.code;
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[processes] tick failed: ${msg}${code ? ` [${code}]` : ''}`);
     } finally {
       this.ticking = false;
     }
