@@ -19,6 +19,7 @@ import { execFile } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { execWithRetry } from './processes/spawnQueue.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -96,10 +97,17 @@ async function readThemeFromPath(huedPath: string): Promise<PanelTheme | null> {
 
 async function mainWorktreeRoot(cwd: string): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync(
-      'git',
-      ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-      { timeout: 1000 },
+    // Through the shared spawn gate: theme polling shells out to `git` for every
+    // session ~10×/min, and an ungated spawn here races the process tracker's
+    // `ps`/`lsof` and reintroduces the EBADF fd race. See spawnQueue.ts.
+    const { stdout } = await execWithRetry(
+      () =>
+        execFileAsync(
+          'git',
+          ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+          { timeout: 1000 },
+        ),
+      { label: 'git:common-dir' },
     );
     const commonDir = stdout.trim();
     if (!commonDir) return null;
