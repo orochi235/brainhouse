@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { findRepoRoot } from '../session.js';
 import { HttpProbe } from './httpProbe.js';
 import { Reconciler, type ProcessRow } from './reconciler.js';
 import {
@@ -81,9 +82,11 @@ export class ProcessTracker extends EventEmitter {
 
   handleHookRecord(rec: any) {
     if (rec.kind === 'session_pid') {
+      const cwd = rec.cwd ?? '';
       this.rec.registerSession(rec.session_id, {
         pid: rec.pid,
-        cwd: rec.cwd ?? '',
+        cwd,
+        repoRoot: findRepoRoot(cwd),
         accountLabel: typeof rec.account_label === 'string' ? rec.account_label : null,
       });
     } else if (rec.kind === 'bash_intent') {

@@ -34,12 +34,16 @@ export interface ProcessRow {
    * PostToolUse `bash_id_map` hook record. Lets the UI query
    * `processes.tailStdout` to fetch the latest captured stdout. */
   bash_id: string | null;
-  /** Project path (a known Claude session's cwd) when we can pin the
-   * process to a project but not to a single specific session. Set
-   * either because multiple sessions share the cwd (ambiguous), or
-   * because the process's cwd is inside a known project root but no
-   * session is an exact match. The UI shows this as a project chip
-   * in the Session column when session_id is null. */
+  /** Project identity for the row: the attributed session's `repoRoot`
+   * (its `findRepoRoot(cwd)`), falling back to the raw cwd for non-repo
+   * scratch dirs. Keying on the repo root — not the session's working
+   * subdir — keeps the chip's label + hash color stable and in sync with
+   * the project widget, so a session run from a subdir (or adding a deeper
+   * same-repo session) can't reshuffle it. Set either because multiple
+   * sessions share the cwd (ambiguous) or because the process's cwd is
+   * inside a known project root but no session is an exact match. The UI
+   * shows this as a project chip in the Session column when session_id is
+   * null. */
   project: string | null;
   /** Account label this row should be attributed to. Set when the
    * spawning Claude session's hook carries a CLAUDE_CONFIG_DIR we can
@@ -57,7 +61,11 @@ export interface ProcessRow {
   original_ancestors: number[];
 }
 
-interface SessionInfo { pid: number; cwd: string; accountLabel?: string | null; }
+// `repoRoot` (`findRepoRoot(cwd)`, stamped at registration) is the stable repo
+// identity the Project chip keys on instead of `cwd` — so a session running from
+// a subdir tags the same repo as the project widget, and adding a deeper
+// same-repo session can't shift an existing row's chip color.
+interface SessionInfo { pid: number; cwd: string; repoRoot?: string | null; accountLabel?: string | null; }
 interface BashIntent { command: string; run_in_background: boolean; cwd: string; ts: number; }
 
 const SIGNAL_MIN_UPTIME_S = 3;
@@ -246,7 +254,7 @@ export class Reconciler {
       // cwd-heuristic tier).
       if (row.session_id && !row.project) {
         const info = this.sessions.get(row.session_id);
-        if (info?.cwd) row.project = info.cwd;
+        if (info?.cwd) row.project = info.repoRoot ?? info.cwd;
       }
       // cwd-based attribution if not in tree. We treat exact and
       // descendant matches the same way: a session's cwd is either
@@ -260,24 +268,26 @@ export class Reconciler {
       if (!row.session_id && !row.project && cwdLookup) {
         const cwd = cwdLookup(p.pid);
         if (cwd) {
-          const matches: Array<{ sid: string; cwd: string }> = [];
+          const matches: Array<{ sid: string; cwd: string; repoRoot: string | null }> = [];
           for (const [sid, info] of this.sessions) {
             if (!info.cwd) continue;
             if (info.cwd === cwd || cwd.startsWith(`${info.cwd}/`)) {
-              matches.push({ sid, cwd: info.cwd });
+              matches.push({ sid, cwd: info.cwd, repoRoot: info.repoRoot ?? null });
             }
           }
           if (matches.length === 1) {
             const only = matches[0]!;
             row.session_id = only.sid;
-            row.project = only.cwd;
+            row.project = only.repoRoot ?? only.cwd;
             if (row.provenance === 'discovered') row.provenance = 'heuristic';
           } else if (matches.length > 1) {
-            // Multiple sessions are candidates. Use the deepest cwd as
-            // the project root (most specific). Don't set session_id —
+            // Multiple sessions are candidates. Pick the deepest cwd as the
+            // most-specific session, but tag the row with its repo root so
+            // every session in the same repo collapses to one stable project
+            // identity (matching the project widget). Don't set session_id —
             // we genuinely can't tell which session it belongs to.
             const deepest = matches.sort((a, b) => b.cwd.length - a.cwd.length)[0]!;
-            row.project = deepest.cwd;
+            row.project = deepest.repoRoot ?? deepest.cwd;
             if (row.provenance === 'discovered') row.provenance = 'heuristic';
           }
         }

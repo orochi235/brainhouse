@@ -21,6 +21,34 @@ describe('Reconciler', () => {
     expect(vite!.framework).toBe('vite');
   });
 
+  it('project chip uses the session repo root, not its working subdir', () => {
+    const r = new Reconciler();
+    r.registerSession('s1', { pid: 50, cwd: '/repo/client', repoRoot: '/repo' });
+    const { upserts } = r.tick([
+      baseProc({ pid: 50, ppid: 1, command: 'claude' }),
+      baseProc({ pid: 100, ppid: 50, command: 'node /repo/client/node_modules/vite/bin/vite.js' }),
+    ], 5);
+    // The Project chip identifies the repo, not whichever subdir the session
+    // happened to run from — so it stays stable and matches the project widget.
+    expect(upserts.find(u => u.pid === 100)?.project).toBe('/repo');
+  });
+
+  it('multi-session cwd match resolves project to the repo root, not the deepest cwd', () => {
+    const r = new Reconciler();
+    // Two sessions in the same repo, one in a subdir. A non-tree process deep
+    // inside the repo matches both; the deepest session is /repo/client, but the
+    // project identity must remain the repo so adding the subdir session can't
+    // shift an existing row's tag color.
+    r.registerSession('s1', { pid: 50, cwd: '/repo', repoRoot: '/repo' });
+    r.registerSession('s2', { pid: 60, cwd: '/repo/client', repoRoot: '/repo' });
+    const { upserts } = r.tick([
+      baseProc({ pid: 50, ppid: 1 }),
+      baseProc({ pid: 60, ppid: 1 }),
+      baseProc({ pid: 200, ppid: 1, command: 'node x', start_ts: 0 }),
+    ], 5, (pid) => pid === 200 ? '/repo/client/sub' : null);
+    expect(upserts.find(u => u.pid === 200)?.project).toBe('/repo');
+  });
+
   it('promotes provenance to hooked when bash_intent matches', () => {
     const r = new Reconciler();
     r.registerSession('s1', { pid: 50, cwd: '/p' });
