@@ -359,7 +359,7 @@ describe('SessionStore', () => {
     expect(store.panel('S')?.status).toBe('done');
   });
 
-  it('process-aware: a subagent keys liveness off its parent session', () => {
+  it('process-aware: a subagent settles on its own recency, not the parent process', () => {
     const clock = new FakeClock();
     const liveSids = new Set<string>(['S']); // parent session S process alive
     const store = new SessionStore({
@@ -373,10 +373,37 @@ describe('SessionStore', () => {
       ev('assistant_text', { session_id: 'S', agent_id: 'A', uuid: 'a1', payload: { text: 'sub' } }),
     );
     clock.advance(120);
-    // Both stay live because the owning session's process (S) is alive.
-    expect(store.tick()).toEqual([]);
+    // The parent session stays live — its claude process is alive, and long
+    // agentic turns flush the transcript in bursts. But a subagent is a finite
+    // Task with no process of its own, so it must NOT ride the parent's
+    // liveness: once its own events go quiet past idleSeconds it settles to
+    // done. (Borrowing the parent's liveness left every completed subagent
+    // pulsing `live` and un-reapable for the whole life of a long session.)
+    expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'A', status: 'done' }]);
     expect(store.panel('S')?.status).toBe('live');
-    expect(store.panel('A')?.status).toBe('live');
+    expect(store.panel('A')?.status).toBe('done');
+  });
+
+  it('does not surface a stale subagent of a live parent once it ages out of the window', () => {
+    const clock = new FakeClock();
+    const liveSids = new Set<string>(['S']); // parent session S process alive
+    const store = new SessionStore({
+      idleSeconds: 60,
+      miniSeconds: 600,
+      uiWindowSeconds: 1000,
+      clock: clock.now,
+      isSessionLive: (sid) => liveSids.has(sid),
+    });
+    store.apply(ev('user_text', { session_id: 'S', payload: { text: 'hi' } }));
+    store.apply(
+      ev('assistant_text', { session_id: 'S', agent_id: 'A', uuid: 'a1', payload: { text: 'sub' } }),
+    );
+    clock.advance(2000); // subagent A's last event is now well outside the window
+    const ids = store.snapshot().map((p) => p.id);
+    // The live parent still surfaces (its process is alive), but its long-dead
+    // subagent must not — a subagent doesn't inherit the parent's surfacing.
+    expect(ids).toContain('S');
+    expect(ids).not.toContain('A');
   });
 
   it('done panel transitions to mini', () => {

@@ -369,8 +369,7 @@ export class SessionStore {
     // activity resurrects done/mini panels. Real activity comes through as
     // user_text/assistant_text/tool_use/etc.
     if (!panel.ended && !hasTag(event, 'meta')) {
-      const owner = panel.kind === 'subagent' ? (panel.parent_panel_id ?? panel.id) : panel.id;
-      if (this.isLiveActivity(owner, ts, now)) {
+      if (this.isLiveActivity(panel, ts, now)) {
         if (panel.status !== 'live') {
           panel.status = 'live';
           panel.status_changed_at = panel.last_event_at;
@@ -452,16 +451,16 @@ export class SessionStore {
     for (const panel of this.panels.values()) {
       // Binned panels are frozen — no auto live→done→mini→removed progression.
       if (panel.binned_at !== null) continue;
-      // Process-aware liveness: a session whose `claude` process is still
-      // alive is still working even when the transcript has been quiet past
-      // idleSeconds (long agentic turns flush records in bursts). Subagents
-      // inherit the owning session's process. Hold `live` until the process
-      // actually exits, after which this same guard lets it flip.
-      const ownerSid = panel.kind === 'subagent' ? (panel.parent_panel_id ?? panel.id) : panel.id;
+      // Process-aware liveness: a parent session whose `claude` process is
+      // still alive is still working even when the transcript has been quiet
+      // past idleSeconds (long agentic turns flush records in bursts). Hold
+      // `live` until the process exits. A subagent has no process of its own
+      // ({@link isOwnerProcessLive} returns false), so it demotes purely on its
+      // own idle gap instead of riding the parent's liveness.
       if (
         panel.status === 'live' &&
         t - panel.last_event_at >= this.idleSeconds &&
-        !this.isSessionLive(ownerSid)
+        !this.isOwnerProcessLive(panel)
       ) {
         panel.status = 'done';
         // Stamp when the panel *actually* went idle so a bootstrap-replayed
@@ -674,9 +673,12 @@ export class SessionStore {
    * it has been active within the UI window. An out-of-window panel is never
    * surfaced (a stale persisted row must not leak in). */
   private isSurfaceable(p: Panel, cutoff: number): boolean {
-    const owner = p.kind === 'subagent' ? (p.parent_panel_id ?? p.id) : p.id;
-    if (this.isSessionLive(owner)) return true;
+    // Only a live parent process force-surfaces; a subagent never inherits the
+    // parent's surfacing (else long-dead subagents of a still-running session
+    // leak in regardless of age — see {@link isOwnerProcessLive}).
+    if (this.isOwnerProcessLive(p)) return true;
     // A user-kept/reopened owner (and its subagents) bypasses the window gate.
+    const owner = p.kind === 'subagent' ? (p.parent_panel_id ?? p.id) : p.id;
     if (this.forceSurfaced.has(owner)) return true;
     return p.last_event_at >= cutoff;
   }
@@ -744,12 +746,25 @@ export class SessionStore {
     return panel.events.find((e) => e.uuid === uuid) ?? null;
   }
 
+  /** Whether a panel's own owning *process* should keep it `live` regardless of
+   * transcript recency. Only a parent session has a trackable `claude` process;
+   * a subagent is a finite Task with no process of its own, so it must NOT
+   * borrow its parent's liveness. Borrowing it left every completed subagent of
+   * a still-running session riding `live` forever — pulsing in the grid, never
+   * demoting, never reaping, and surfacing regardless of age (most visible
+   * after a restart, when a long-lived session's whole subagent history
+   * replays at once). Subagents settle purely on their own event recency. */
+  private isOwnerProcessLive(panel: { kind: PanelKind; id: string }): boolean {
+    return panel.kind === 'parent' && this.isSessionLive(panel.id);
+  }
+
   /** Whether an event represents genuine live activity (so its panel should
-   * surface `live`) rather than a stale cold-start replay catch-up. A session
-   * whose owning process is alive is always live; otherwise the event must be
-   * recent (within `idleSeconds`). `ts` is the event's clamped timestamp. */
-  private isLiveActivity(ownerId: string, ts: number, now: number): boolean {
-    return this.isSessionLive(ownerId) || now - ts < this.idleSeconds;
+   * surface `live`) rather than a stale cold-start replay catch-up. A parent
+   * whose owning process is alive is always live; otherwise (and always, for a
+   * subagent) the event must be recent (within `idleSeconds`). `ts` is the
+   * event's clamped timestamp. */
+  private isLiveActivity(panel: { kind: PanelKind; id: string }, ts: number, now: number): boolean {
+    return this.isOwnerProcessLive(panel) || now - ts < this.idleSeconds;
   }
 
   /** The status + `status_changed_at` a non-live panel should hold given how
@@ -781,8 +796,7 @@ export class SessionStore {
     // A brand-new panel seeded by a cold-start replay of an old transcript
     // settles straight to its age-appropriate status rather than defaulting to
     // `live` (see {@link settledState} / {@link isLiveActivity}).
-    const owner = kind === 'subagent' ? (parent_panel_id ?? id) : id;
-    const settled = this.isLiveActivity(owner, eventTs, now)
+    const settled = this.isLiveActivity({ kind, id }, eventTs, now)
       ? null
       : this.settledState(eventTs, now);
     const panel: Panel = {

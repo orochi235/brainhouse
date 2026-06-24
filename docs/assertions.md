@@ -131,6 +131,19 @@ UI/server is meant to uphold. New entries go at the bottom.
   "god view" — replayed sessions land as docked `mini` (or a few capped-`done`
   tiles) rather than a wall of full-size `live` panels that slowly collapse. A
   still-active session re-promotes to `live` the moment it emits a fresh event.
+- **Subagents settle on their own recency, never the parent's process.** A
+  subagent is a finite Task with no `claude` process of its own, so it does
+  *not* inherit the parent session's process liveness — `isOwnerProcessLive`
+  returns true only for a `kind === 'parent'` panel. Concretely: a completed
+  subagent demotes `live → done → mini` on its own idle gap even while the
+  parent process is alive (`tick`), is created/replayed `live` only when its
+  own last event is recent (`isLiveActivity`), and stops force-surfacing once
+  its own last event ages past `uiWindowSeconds` (`isSurfaceable`). Without
+  this, every completed subagent of a long-running session rode `live`
+  forever — pulsing in the grid, never reaping, and surfacing regardless of
+  age — most visibly after a restart replays a session's whole subagent
+  history at once. (Force-surfacing still cascades from a *user-kept* parent so
+  `reopenSession` can rebuild the tray.)
 - **`reopenSession` is durable + restores subagents.** The on-demand
   fast-load (`monitor.reopenSession` → trpc → `openSessionFromWidget`) parses a
   reaped session's transcript and feeds it through `ingest()`, so the panel
