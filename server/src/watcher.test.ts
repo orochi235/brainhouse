@@ -107,6 +107,23 @@ describe('TranscriptWatcher', () => {
     expect(events.every((e) => e.session_id === 'sess-1' && e.agent_id === null)).toBe(true);
   });
 
+  it('stamps the file mtime as the fallback ts for records that omit a timestamp', async () => {
+    const proj = path.join(dir, 'proj');
+    mkdirSync(proj, { recursive: true });
+    const f = path.join(proj, 'sess-1.jsonl');
+    // A side-channel record (e.g. custom-title) — Claude Code omits `timestamp`
+    // on these. Without the mtime fallback the panel's age would be pinned to
+    // wall-clock-now instead of the session's real last activity.
+    const tsless = { type: 'user', uuid: 'm1', sessionId: 'sess-1', message: { role: 'user', content: 'x' } };
+    writeFileSync(f, `${JSON.stringify(tsless)}\n`);
+    const mtime = new Date('2020-01-02T03:04:05.000Z');
+    utimesSync(f, mtime, mtime);
+    const w = new TranscriptWatcher([dir], sink);
+    await w.processPath(f);
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((e) => e.ts === mtime.toISOString())).toBe(true);
+  });
+
   it('appending only emits new events', async () => {
     const proj = path.join(dir, 'proj');
     mkdirSync(proj, { recursive: true });

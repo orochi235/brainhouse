@@ -298,31 +298,26 @@ export class TranscriptWatcher {
     } catch {
       return [];
     }
-    // Use the meta.json's mtime as the synthetic event's ts so a brand-new
-    // subagent panel seeded by this event starts with a realistic
-    // last_event_at (subagent creation time) rather than wall-clock-now.
-    // Without this, bootstrap-replaying an old subagent locks its
-    // "last activity" timestamp to today and the +X idle timer always
-    // reads 0 regardless of how stale the transcript actually is.
-    let mtimeIso = '';
-    try {
-      mtimeIso = new Date(statSync(p).mtimeMs).toISOString();
-    } catch {
-      // file gone — leave empty so apply() falls back to clock-now
-    }
-    return [
-      {
-        session_id: info.session_id,
-        agent_id: info.agent_id,
-        uuid: `${info.agent_id}:meta`,
-        parent_uuid: null,
-        ts: mtimeIso,
-        cwd: null,
-        kind: 'meta',
-        tags: ['meta'],
-        payload: { record_type: 'subagent-meta', raw },
-      },
-    ];
+    // The synthetic event carries no inline ts; stampFallbackTs gives it the
+    // meta.json's mtime (subagent creation time) — the same single defaulting
+    // step the tail path uses, so a bootstrap-replayed old subagent reflects
+    // its real last activity instead of wall-clock-now.
+    return this.stampFallbackTs(
+      [
+        {
+          session_id: info.session_id,
+          agent_id: info.agent_id,
+          uuid: `${info.agent_id}:meta`,
+          parent_uuid: null,
+          ts: '',
+          cwd: null,
+          kind: 'meta',
+          tags: ['meta'],
+          payload: { record_type: 'subagent-meta', raw },
+        },
+      ],
+      p,
+    );
   }
 
   /** Parse a subagent `.meta.json` sidecar into its synthetic event(s)
@@ -353,6 +348,34 @@ export class TranscriptWatcher {
       else if (entry.name.endsWith('.jsonl')) jsonl.push(full);
     }
     return { jsonl, meta };
+  }
+
+  /** Give a record its default age from the backing file's mtime.
+   *
+   * Claude Code omits the inline `timestamp` on side-channel records
+   * (custom-title, last-prompt, ai-title, file-history-snapshot,
+   * permission-mode). Left empty, those reach `apply()` and fall back to
+   * wall-clock-now, so a panel first seen via such a record gets an age pinned
+   * to server-start instead of its real last activity. The file the record
+   * lives in always has an mtime (≈ last write), which is the right default.
+   *
+   * This is the SINGLE place that default is applied. Every path that turns a
+   * file into events — the live tail, the `.meta.json` sidecar, the on-demand
+   * reopen, the background indexer — must run its events through here so they
+   * can't drift apart again (the tail path lacking what the meta path had is
+   * exactly the bug this fixes). The per-path file *reading* stays separate
+   * (incremental tail vs. whole-file vs. JSON sidecar are genuinely different);
+   * only this ts-defaulting step is shared. */
+  private stampFallbackTs(events: Event[], filePath: string): Event[] {
+    if (!events.some((e) => !e.ts)) return events;
+    let mtimeIso = '';
+    try {
+      mtimeIso = new Date(statSync(filePath).mtimeMs).toISOString();
+    } catch {
+      // file gone — leave empty so apply() falls back to clock-now
+    }
+    if (mtimeIso) for (const e of events) if (!e.ts) e.ts = mtimeIso;
+    return events;
   }
 
   /** Find which configured root a given path lives under. Returns the
@@ -396,10 +419,13 @@ export class TranscriptWatcher {
         continue;
       }
       if (!parsed || typeof parsed !== 'object') continue;
-      const events = parseLine(parsed as Record<string, unknown>, {
-        session_id: info.session_id,
-        agent_id: info.agent_id,
-      });
+      const events = this.stampFallbackTs(
+        parseLine(parsed as Record<string, unknown>, {
+          session_id: info.session_id,
+          agent_id: info.agent_id,
+        }),
+        p,
+      );
       const sourceRoot = this.findRoot(p);
       for (const event of events) this.onEvent(event, sourceRoot);
     }
@@ -434,7 +460,7 @@ export class TranscriptWatcher {
         out.push(event);
       }
     }
-    return out;
+    return this.stampFallbackTs(out, absPath);
   }
 
   private async walk(root: string): Promise<string[]> {

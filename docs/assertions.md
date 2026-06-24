@@ -144,6 +144,18 @@ UI/server is meant to uphold. New entries go at the bottom.
   age — most visibly after a restart replays a session's whole subagent
   history at once. (Force-surfacing still cascades from a *user-kept* parent so
   `reopenSession` can rebuild the tray.)
+- **A record's default age comes from its file's mtime, never wall-clock-now.**
+  Claude Code omits the inline `timestamp` on side-channel records (custom-title,
+  last-prompt, ai-title, file-history-snapshot, permission-mode). When a panel is
+  first seen via such a record, its age must not default to "now" — that pins
+  every such session's age to server-start (so the whole pile reads "age = how
+  long brainhouse has been up"). Instead the watcher stamps the backing file's
+  mtime (≈ last write) as the event ts, which for an expired session is exactly
+  its last activity. This defaulting lives in ONE place — `Watcher.stampFallbackTs`
+  — and every file→events path (live tail, `.meta.json` sidecar, on-demand
+  reopen, background indexer) runs through it, so the paths can't diverge (the
+  tail path silently lacking the meta path's mtime fallback was the original
+  bug). Only the per-path file *reading* differs; the ts default is shared.
 - **`reopenSession` is durable + restores subagents.** The on-demand
   fast-load (`monitor.reopenSession` → trpc → `openSessionFromWidget`) parses a
   reaped session's transcript and feeds it through `ingest()`, so the panel
