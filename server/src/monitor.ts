@@ -778,10 +778,15 @@ export class TranscriptMonitor {
    * deltas to all clients. Removed `.hued` clears the theme back to
    * null so the panel returns to its default tint. */
   private async pollThemes(): Promise<void> {
+    // Sequential, NOT Promise.all: firing one `.hued` stat (plus a possible
+    // git worktree lookup) per panel concurrently every 10s bursts dozens of
+    // child_process/fs ops at once — exactly the kind of spawn pile-up the
+    // single-permit gate exists to prevent. A serial walk keeps the poll cheap
+    // and steady; each loadThemeFor is sub-millisecond once its caches are warm.
     const panels = this.store.snapshot();
-    await Promise.all(
-      panels.map((p) => (p.cwd ? this.loadThemeFor(p.id, p.cwd) : Promise.resolve())),
-    );
+    for (const p of panels) {
+      if (p.cwd) await this.loadThemeFor(p.id, p.cwd);
+    }
   }
 }
 

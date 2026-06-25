@@ -15,13 +15,8 @@
  * 10× a minute is one stat per call when nothing's changed.
  */
 
-import { execFile } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { execWithRetry } from './processes/spawnQueue.js';
-
-const execFileAsync = promisify(execFile);
 
 export interface PanelTheme {
   /** Original hex from .hued, e.g. "#320053". */
@@ -40,6 +35,22 @@ interface CacheEntry {
 // Cache keyed by the absolute path to the `.hued` file, not the cwd, so
 // many cwds that share a single repo-level `.hued` collapse to one entry.
 const cache = new Map<string, CacheEntry>();
+
+// Cache of cwd → main-worktree root (or null when the cwd isn't in a git
+// worktree). The git topology of a checkout is fixed for the lifetime of that
+// path — the same path-stability assumption the `.hued` cache above already
+// makes — so this never needs invalidating within a run. It keeps the per-panel
+// worktree lookup (a small directory walk + a couple of file reads, see
+// {@link readGitCommonDir}) from repeating on every 10s theme poll across every
+// panel. `undefined` (Map miss) means "not looked up yet"; a stored `null`
+// means "looked up, not a worktree" and is a cache hit.
+const mainRootCache = new Map<string, string | null>();
+
+/** Resolve a cwd to its repo's git common dir (absolute), or null when the cwd
+ * isn't inside a git worktree. Indirected through a module-level binding so
+ * tests can swap in a counting fake. */
+type CommonDirResolver = (cwd: string) => Promise<string | null>;
+let resolveCommonDir: CommonDirResolver = readGitCommonDir;
 
 export async function readPanelTheme(cwd: string): Promise<PanelTheme | null> {
   if (!cwd) return null;
@@ -96,27 +107,63 @@ async function readThemeFromPath(huedPath: string): Promise<PanelTheme | null> {
 }
 
 async function mainWorktreeRoot(cwd: string): Promise<string | null> {
-  try {
-    // Through the shared spawn gate: theme polling shells out to `git` for every
-    // session ~10×/min, and an ungated spawn here races the process tracker's
-    // `ps`/`lsof` and reintroduces the EBADF fd race. See spawnQueue.ts.
-    const { stdout } = await execWithRetry(
-      () =>
-        execFileAsync(
-          'git',
-          ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-          { timeout: 1000 },
-        ),
-      { label: 'git:common-dir' },
-    );
-    const commonDir = stdout.trim();
-    if (!commonDir) return null;
-    // `--git-common-dir` returns the shared `.git` directory of the main
-    // worktree; its parent is the main worktree's root. (For bare repos
-    // it's the repo dir itself, which won't have a `.hued` — harmless.)
-    return path.dirname(commonDir);
-  } catch {
-    return null;
+  const cached = mainRootCache.get(cwd);
+  if (cached !== undefined) return cached;
+  const commonDir = await resolveCommonDir(cwd);
+  // `--git-common-dir` returns the shared `.git` directory of the main
+  // worktree; its parent is the main worktree's root. (For bare repos it's the
+  // repo dir itself, which won't have a `.hued` — harmless.)
+  const root = commonDir ? path.dirname(commonDir) : null;
+  mainRootCache.set(cwd, root);
+  return root;
+}
+
+/** The real resolver: find the repo's git common dir by READING the filesystem
+ * — no `git` subprocess. Shelling out to `git` here was the single biggest
+ * source of the intermittent libuv `spawn EBADF` (it ran once per unique cwd on
+ * every cold start, hundreds of spawns), and being queued through the
+ * single-permit spawn gate it also starved the Network view's `lsof:ports`
+ * sweep. Reading `.git` directly removes both problems and is what git itself
+ * does:
+ *
+ *   - Walk up from `cwd` to the nearest `.git`.
+ *   - `.git` is a directory  → a normal checkout; that dir IS the common dir.
+ *   - `.git` is a file       → a linked worktree; it holds `gitdir: <path>`,
+ *     and `<gitdir>/commondir` points (usually relatively) at the shared
+ *     `.git`. Resolve and return that.
+ *
+ * Called at most once per cwd thanks to {@link mainRootCache}. */
+async function readGitCommonDir(cwd: string): Promise<string | null> {
+  let cur = path.resolve(cwd);
+  // Bound the walk by filesystem root (dirname of '/' is '/').
+  for (let parent = path.dirname(cur); ; cur = parent, parent = path.dirname(cur)) {
+    const dotGit = path.join(cur, '.git');
+    let st: Awaited<ReturnType<typeof stat>>;
+    try {
+      st = await stat(dotGit);
+    } catch {
+      if (parent === cur) return null; // hit the filesystem root, no repo
+      continue;
+    }
+    if (st.isDirectory()) return dotGit;
+    // `.git` is a file → linked worktree. Parse `gitdir: <path>`.
+    let gitdir: string;
+    try {
+      const m = (await readFile(dotGit, 'utf8')).match(/^gitdir:\s*(.+)$/m);
+      const raw = m?.[1]?.trim();
+      if (!raw) return null;
+      gitdir = path.isAbsolute(raw) ? raw : path.resolve(cur, raw);
+    } catch {
+      return null;
+    }
+    // The `commondir` file inside gitdir locates the shared `.git` (relative
+    // to gitdir for linked worktrees). Absent on older layouts → gitdir is it.
+    try {
+      const common = (await readFile(path.join(gitdir, 'commondir'), 'utf8')).trim();
+      return path.isAbsolute(common) ? common : path.resolve(gitdir, common);
+    } catch {
+      return gitdir;
+    }
   }
 }
 
@@ -155,4 +202,12 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 // Test-only: forget cached lookups so .hued edits show up on the next read.
 export function clearPanelThemeCache(): void {
   cache.clear();
+  mainRootCache.clear();
+}
+
+// Test-only: swap the git common-dir resolver (e.g. a counting fake) so tests
+// can assert the per-cwd cache without touching the real filesystem. Pass null
+// to restore the default.
+export function __setCommonDirResolverForTest(fn: CommonDirResolver | null): void {
+  resolveCommonDir = fn ?? readGitCommonDir;
 }

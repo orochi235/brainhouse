@@ -1,8 +1,12 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clearPanelThemeCache, readPanelTheme } from './theme.js';
+import {
+  __setCommonDirResolverForTest,
+  clearPanelThemeCache,
+  readPanelTheme,
+} from './theme.js';
 
 let dir: string;
 
@@ -14,6 +18,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
   clearPanelThemeCache();
+  __setCommonDirResolverForTest(null);
 });
 
 async function writeHued(body: string): Promise<void> {
@@ -104,6 +109,59 @@ describe('readPanelTheme', () => {
     await writeHued('background=#664422\n');
     const theme = await readPanelTheme(dir);
     expect(theme?.background).toBe('#664422');
+  });
+
+  it('falls back to the main worktree .hued from a linked worktree (no git subprocess)', async () => {
+    // Mirror a real linked-worktree layout on disk and verify readGitCommonDir
+    // (the default fs resolver) walks `.git` file → gitdir → commondir to find
+    // the main checkout's `.hued`, without shelling out to `git`.
+    const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-wt-'));
+    try {
+      const main = path.join(root, 'main');
+      const wt = path.join(root, 'wt');
+      const gitdir = path.join(main, '.git', 'worktrees', 'wt');
+      await mkdir(gitdir, { recursive: true });
+      await mkdir(wt, { recursive: true });
+      // commondir points back at the shared .git, relative to gitdir.
+      await writeFile(path.join(gitdir, 'commondir'), '../..\n', 'utf8');
+      // The worktree's `.git` is a file naming its gitdir.
+      await writeFile(path.join(wt, '.git'), `gitdir: ${gitdir}\n`, 'utf8');
+      // Theme lives only in the main checkout; the worktree has no .hued.
+      await writeFile(path.join(main, '.hued'), 'background=#123456\n', 'utf8');
+
+      const theme = await readPanelTheme(wt);
+      expect(theme?.background).toBe('#123456');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('caches the git worktree lookup across polls (one spawn per cwd)', async () => {
+    // Regression: the per-poll `git --git-common-dir` shell-out used to run on
+    // every readPanelTheme call. Routed through the single-permit spawn gate,
+    // a burst of one-per-panel git calls every 10s starved the Network view's
+    // lsof:ports sweep. The lookup is now cached per cwd.
+    let calls = 0;
+    __setCommonDirResolverForTest(async () => {
+      calls++;
+      return null;
+    });
+    await readPanelTheme(dir);
+    await readPanelTheme(dir);
+    await readPanelTheme(dir);
+    expect(calls).toBe(1);
+  });
+
+  it('clearPanelThemeCache also forgets the cached worktree lookup', async () => {
+    let calls = 0;
+    __setCommonDirResolverForTest(async () => {
+      calls++;
+      return null;
+    });
+    await readPanelTheme(dir);
+    clearPanelThemeCache();
+    await readPanelTheme(dir);
+    expect(calls).toBe(2);
   });
 
   it('picks up a newly-created .hued (previous absence was cached)', async () => {
