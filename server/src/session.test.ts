@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Event, EventKind, Tag } from './parser.js';
-import { SessionStore } from './session.js';
+import { HYDRATE_WINDOW_SECONDS, SessionStore } from './session.js';
 import { Store } from './store.js';
 
 class FakeClock {
@@ -1008,6 +1008,46 @@ describe('SessionStore', () => {
       restored.hydrate();
       expect(restored.panel('S')).toBeDefined();
       expect(restored.panel('S')?.title).toBe('hi');
+      store.close();
+    });
+
+    it('hydrate() skips panels whose last activity is outside the retention window', () => {
+      const store = Store.open(':memory:');
+      const seed = new SessionStore({ clock: () => 1000, store });
+      seed.apply(ev('user_text', { payload: { text: 'hi' } }));
+      // Restore far enough ahead that the panel's last_event_at (1000) falls
+      // before the hydrate cutoff.
+      const restored = new SessionStore({
+        clock: () => 1000 + HYDRATE_WINDOW_SECONDS + 100,
+        store,
+      });
+      restored.hydrate();
+      expect(restored.panel('S')).toBeUndefined();
+      store.close();
+    });
+
+    it('hydrate() still loads an out-of-window panel that is pinned or user-kept', () => {
+      const store = Store.open(':memory:');
+      const seed = new SessionStore({ clock: () => 1000, store });
+      seed.apply(ev('user_text', { payload: { text: 'hi' } }));
+      store.upsertIntentions({
+        panel_id: 'S',
+        pinned: false,
+        wide: false,
+        manual_order: null,
+        user_mini: false,
+        hidden_at: null,
+        auto_mini_at: null,
+        broken_out: false,
+        user_kept: true,
+        updated_at: 0,
+      });
+      const restored = new SessionStore({
+        clock: () => 1000 + HYDRATE_WINDOW_SECONDS + 100,
+        store,
+      });
+      restored.hydrate();
+      expect(restored.panel('S')).toBeDefined();
       store.close();
     });
 

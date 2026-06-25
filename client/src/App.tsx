@@ -137,6 +137,11 @@ function isAllSameDigitMinute(now: Date = new Date()): boolean {
 // and the brand label both see the same tier without prop-drilling.
 const CURRENT_BRAND = pickBrand();
 
+/** Max parked sessions the dock renders before folding the (older) tail behind
+ * a "show N more" toggle. trayPanels is sorted most-recent-first, so the cap
+ * always keeps the freshest sessions visible. */
+const DOCK_RENDER_CAP = 50;
+
 function BrandLabel() {
   const brand = CURRENT_BRAND;
   return (
@@ -690,6 +695,14 @@ function AppMain() {
 
   const dockVisible = trayPanels.length > 0 || dockRollups.length > 0;
 
+  // Dock overflow: trayPanels is sorted most-recent-first, so when a backlog of
+  // parked sessions accumulates we render only the freshest DOCK_RENDER_CAP and
+  // fold the rest behind one expand toggle. Keeps the tray scannable (and the
+  // DOM light) without hiding anything — "show N more" reveals the tail.
+  const [dockExpanded, setDockExpanded] = useState(false);
+  const visibleTray = dockExpanded ? trayPanels : trayPanels.slice(0, DOCK_RENDER_CAP);
+  const hiddenTrayCount = trayPanels.length - visibleTray.length;
+
   return (
     <SelectorStoreProvider>
       <LightboxProvider>
@@ -1012,7 +1025,7 @@ function AppMain() {
                   }}
                 >
                   <AnimatePresence initial={false}>
-                    {trayPanels.map((p) => (
+                    {visibleTray.map((p) => (
                       <MiniPanel
                         key={p.id}
                         panel={p}
@@ -1047,6 +1060,15 @@ function AppMain() {
                       />
                     ))}
                   </AnimatePresence>
+                  {(hiddenTrayCount > 0 || dockExpanded) && trayPanels.length > DOCK_RENDER_CAP && (
+                    <button
+                      type="button"
+                      className="session-dock-overflow"
+                      onClick={() => setDockExpanded((v) => !v)}
+                    >
+                      {dockExpanded ? 'show fewer' : `${hiddenTrayCount} more…`}
+                    </button>
+                  )}
                   {dockRollups.length > 0 && (
                     <div className="session-dock-projects">
                       <div className="session-dock-projects-label">projects</div>

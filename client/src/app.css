@@ -330,6 +330,26 @@ body {
   font-size: 0.7rem;
   padding: 0.3rem;
 }
+/* Dock overflow toggle: folds the older tail of parked sessions behind one
+ * control so a large backlog stays scannable. Reads as a quiet dock element,
+ * not a primary button. */
+.session-dock-overflow {
+  appearance: none;
+  -webkit-appearance: none;
+  background: color-mix(in srgb, var(--panel-border) 30%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.session-dock-overflow:hover {
+  color: var(--fg);
+  border-color: var(--fg);
+}
 .empty {
   grid-column: 1 / -1;
   color: var(--muted);

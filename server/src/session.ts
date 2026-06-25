@@ -66,6 +66,12 @@ export type PanelStatus = 'live' | 'done' | 'mini';
 export const MAX_EVENTS_PER_PANEL = 10_000;
 const EVICT_FRACTION = 0.1;
 
+/** How far back a persisted panel's last activity can be and still hydrate into
+ * the live model on boot. Sessions older than this stay in the DB (project
+ * widgets / timeline) but don't reload as live panels. Pinned / user-kept
+ * panels are exempt (see {@link SessionStore.hydrate}). */
+export const HYDRATE_WINDOW_SECONDS = 48 * 60 * 60;
+
 export interface PanelTheme {
   background: string;
   foreground: string;
@@ -282,12 +288,26 @@ export class SessionStore {
    * the watcher fills them back in from bootstrap_offsets. */
   hydrate(): void {
     if (!this.store) return;
+    // Retention window: only resurrect panels touched within HYDRATE_WINDOW
+    // into the live model. Older sessions stay in the DB — reachable via the
+    // project widgets / timeline — but don't reload as live panels. Without
+    // this, every persisted session (hundreds, accumulated over weeks) hydrates
+    // and lands stale-on-first-sight in the dock, and each one drives per-poll
+    // theme work, process-tracker churn, and auto-mini persistence. Pinned and
+    // user-kept panels are exempt: an explicit keep overrides age.
+    const cutoff = this.clock() - HYDRATE_WINDOW_SECONDS;
+    const intents = this.store.allIntentions();
+    const exempt = new Set<string>();
+    for (const intent of intents) {
+      if (intent.user_kept || intent.pinned) exempt.add(intent.panel_id);
+    }
     for (const row of this.store.allPanels()) {
+      if (row.last_event_at < cutoff && !exempt.has(row.id)) continue;
       this.panels.set(row.id, panelRowToPanel(row));
     }
     // Re-seed the force-surface allowlist so kept/reopened sessions survive
     // the window gate across restarts (see {@link forceSurfaced}).
-    for (const intent of this.store.allIntentions()) {
+    for (const intent of intents) {
       if (intent.user_kept) this.forceSurfaced.add(intent.panel_id);
     }
   }
