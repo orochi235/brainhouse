@@ -2717,7 +2717,13 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   background: var(--code-bg);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
-  padding: 0.18rem 0.55rem;
+  /* Horizontal padding split into named vars: padding-right reserves the
+   * timestamp gutter, and the pending sweep keyframe reads both to travel
+   * the full border-box (cq units measure the content box, which excludes
+   * padding — without this the sweep stops at the timestamp's left edge). */
+  --cap-pad-l: 0.55rem;
+  --cap-pad-r: 4.75rem;
+  padding: 0.18rem var(--cap-pad-r) 0.18rem var(--cap-pad-l);
   font-size: 0.78rem;
   display: flex;
   align-items: center;
@@ -2766,7 +2772,10 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
 }
 @keyframes tool-pending-sweep {
   from { transform: translateX(-20px); }
-  to   { transform: translateX(100cqw); }
+  /* 100cqw is the content-box width (cq units exclude padding); add the
+   * horizontal padding so the sweep crosses the whole capsule — under the
+   * timestamp gutter on the right — instead of stopping at its edge. */
+  to   { transform: translateX(calc(100cqw + var(--cap-pad-l) + var(--cap-pad-r))); }
 }
 .tool-capsule.ok {
   border-color: rgba(132, 204, 22, 0.35);
@@ -3521,9 +3530,6 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
  * right edge so `.tool-label` ellipsizes BEFORE the trailer. Budget:
  * clock `HH:MM:SS` (~2.4rem) + status glyph (0.85) + inter-gap (0.3) +
  * trailer right offset (0.4) + a little breathing room. */
-.tool-capsule {
-  padding-right: 4.75rem;
-}
 .tool-capsule[data-tool-name="Bash"] .tool-label {
   font-family: ui-monospace, monospace;
 }
