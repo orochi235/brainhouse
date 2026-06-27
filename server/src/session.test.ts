@@ -1011,6 +1011,32 @@ describe('SessionStore', () => {
       store.close();
     });
 
+    it('relocatePanel re-stamps cwd + repo_root and emits a panel_upsert', () => {
+      const store = Store.open(':memory:');
+      const sess = new SessionStore({ clock: () => 1000, store });
+      sess.apply(ev('user_text', { payload: { text: 'hi' }, cwd: '/Users/mike/src/old-name' }));
+      expect(sess.panel('S')?.cwd).toBe('/Users/mike/src/old-name');
+
+      const deltas = sess.relocatePanel('S', '/Users/mike/src/new-name');
+
+      expect(sess.panel('S')?.cwd).toBe('/Users/mike/src/new-name');
+      expect(deltas.some((d) => d.op === 'panel_upsert')).toBe(true);
+      // Persisted: a fresh store sees the new cwd after hydrate.
+      const restored = new SessionStore({ clock: () => 1000, store });
+      restored.hydrate();
+      expect(restored.panel('S')?.cwd).toBe('/Users/mike/src/new-name');
+      store.close();
+    });
+
+    it('relocatePanel is a no-op for an unknown panel or an unchanged cwd', () => {
+      const store = Store.open(':memory:');
+      const sess = new SessionStore({ clock: () => 1000, store });
+      sess.apply(ev('user_text', { payload: { text: 'hi' }, cwd: '/x' }));
+      expect(sess.relocatePanel('nonexistent', '/y')).toEqual([]);
+      expect(sess.relocatePanel('S', '/x')).toEqual([]);
+      store.close();
+    });
+
     it('hydrate() skips panels whose last activity is outside the retention window', () => {
       const store = Store.open(':memory:');
       const seed = new SessionStore({ clock: () => 1000, store });

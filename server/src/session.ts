@@ -464,6 +464,22 @@ export class SessionStore {
     return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 
+  /** Re-point a session at a new working directory after its original cwd was
+   * renamed in place on disk. The single sanctioned override of the "first cwd
+   * wins" lock in {@link maybeAdoptCwd}: cwd is otherwise immutable, but a verified
+   * inode-matched rename (see findRenamed.ts + the monitor's theme poll) means
+   * the session genuinely moved. Recomputing repo_root lets renamed siblings
+   * that now share a root collapse back into one project widget. No-op (returns
+   * `[]`) for an unknown panel or an unchanged cwd. */
+  relocatePanel(panelId: string, newCwd: string): Delta[] {
+    const panel = this.panels.get(panelId);
+    if (!panel || panel.cwd === newCwd) return [];
+    panel.cwd = newCwd;
+    panel.repo_root = findRepoRoot(newCwd);
+    this.persistPanel(panel);
+    return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
+  }
+
   tick(now?: number): Delta[] {
     const t = now ?? this.clock();
     const deltas: Delta[] = [];

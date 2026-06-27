@@ -9,8 +9,9 @@
 
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { findDirByInode } from './findRenamed.js';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
 import { BackgroundIndexer } from './indexer.js';
 import type { Event } from './parser.js';
@@ -248,6 +249,11 @@ export class TranscriptMonitor {
   }
 
   private themePollHandle: NodeJS.Timeout | null = null;
+  /** cwd → its inode, recorded by the theme poll while the directory exists.
+   * Lets a later poll that finds the cwd gone tell an in-place rename (inode
+   * preserved, findable in the same parent) from a real delete. In-memory only;
+   * rebuilt naturally on the next poll after a restart. See followRenameIfGone. */
+  private cwdInodes = new Map<string, { dev: number; ino: number }>();
   /** How often to re-stat every active panel's `.hued`. 10s is the sweet
    * spot: a single stat per panel cwd, cheap enough to run on every
    * iteration, but slow enough that editing `.hued` and saving feels
@@ -785,8 +791,45 @@ export class TranscriptMonitor {
     // and steady; each loadThemeFor is sub-millisecond once its caches are warm.
     const panels = this.store.snapshot();
     for (const p of panels) {
-      if (p.cwd) await this.loadThemeFor(p.id, p.cwd);
+      if (!p.cwd) continue;
+      const cwd = await this.followRenameIfGone(p.id, p.cwd);
+      if (cwd) await this.loadThemeFor(p.id, cwd);
     }
+  }
+
+  /** Track a panel's cwd across in-place renames. Returns the effective cwd to
+   * use for the rest of this poll (the new path if it was relocated, the same
+   * path if still present), or `null` when the directory is gone and no rename
+   * was found.
+   *
+   *   - cwd exists      → record its inode (once) and return it unchanged.
+   *   - cwd gone, inode known → scan the parent for the same inode (a verified
+   *     in-place rename); on a hit, re-stamp the panel + broadcast, re-key the
+   *     inode map, and return the new path. On a miss (real delete / moved out
+   *     of the parent), forget the inode so we don't re-scan every poll.
+   *   - cwd gone, inode unknown → we never saw it alive; leave it (return null).
+   */
+  private async followRenameIfGone(panelId: string, cwd: string): Promise<string | null> {
+    try {
+      const st = await stat(cwd);
+      if (!this.cwdInodes.has(cwd)) this.cwdInodes.set(cwd, { dev: st.dev, ino: st.ino });
+      return cwd;
+    } catch {
+      // fall through to the disappearance path
+    }
+    const known = this.cwdInodes.get(cwd);
+    if (!known) return null;
+    const newCwd = await findDirByInode(path.dirname(cwd), known.dev, known.ino);
+    if (!newCwd) {
+      this.cwdInodes.delete(cwd);
+      return null;
+    }
+    for (const delta of this.store.relocatePanel(panelId, newCwd)) {
+      this.emitter.emit('delta', delta);
+    }
+    this.cwdInodes.delete(cwd);
+    this.cwdInodes.set(newCwd, known);
+    return newCwd;
   }
 }
 

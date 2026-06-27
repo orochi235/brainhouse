@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -893,6 +893,32 @@ describe('TranscriptMonitor', () => {
         const file = path.join(subDir, 'agent-sub1.jsonl');
         writeFileSync(file, '{}\n');
         expect(monitor.sourceFileForPanel('sub1')).toBe(file);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('follows a renamed session cwd', () => {
+    it('re-points a panel when its cwd is renamed in place', async () => {
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-monitor-rename-'));
+      try {
+        const oldCwd = path.join(root, 'old-name');
+        mkdirSync(oldCwd);
+        const monitor = newMonitor();
+        // Fresh ts so the panel is surfaceable (pollThemes walks snapshot()).
+        monitor.ingest(userTextEvent({ cwd: oldCwd, ts: new Date().toISOString() }));
+        expect(monitor.store.panel('S')?.cwd).toBe(oldCwd);
+
+        // First poll records the cwd's inode while the dir still exists.
+        await (monitor as unknown as { pollThemes(): Promise<void> }).pollThemes();
+        // Rename in place; the inode is preserved.
+        const newCwd = path.join(root, 'new-name');
+        renameSync(oldCwd, newCwd);
+        // Next poll notices the disappearance and follows the rename.
+        await (monitor as unknown as { pollThemes(): Promise<void> }).pollThemes();
+
+        expect(monitor.store.panel('S')?.cwd).toBe(newCwd);
       } finally {
         await rm(root, { recursive: true, force: true });
       }
