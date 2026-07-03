@@ -5,7 +5,12 @@ import { execWithRetry } from './spawnQueue.js';
 // The shared spawn gate + diagnostics live in spawnQueue.ts. Re-export them here
 // so existing importers/tests keep their path, and so it stays obvious that the
 // `ps`/`lsof` shell-outs below run through the same gate as every other spawn.
-export { execWithRetry, getSpawnDiagnostics, resetSpawnDiagnostics } from './spawnQueue.js';
+export {
+  execWithRetry,
+  getSpawnDiagnostics,
+  isTransientSpawnError,
+  resetSpawnDiagnostics,
+} from './spawnQueue.js';
 export type { SpawnDiagnostics } from './spawnQueue.js';
 
 const execFileAsync = promisify(execFile);

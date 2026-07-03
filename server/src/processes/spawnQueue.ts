@@ -1,14 +1,18 @@
 /**
  * The server's single chokepoint for spawning child processes.
  *
- * Transient `spawn` failures (EBADF/EMFILE/ENFILE/EAGAIN) are a libuv fd race
- * that arises whenever *any* two `child_process` spawns overlap in the same
- * process — it is NOT specific to one command. The process tracker fires
- * `ps` + `lsof` every tick, port sweeps pile on, and `.hued` theme polling
- * shells out to `git` for every session; left unsynchronized these race each
- * other constantly. Routing every spawn through {@link execWithRetry} (which
- * gates on a shared semaphore) serializes them so the race can't happen, and
- * gives one place to measure what's left ({@link getSpawnDiagnostics}).
+ * Transient `spawn` failures (EBADF/EMFILE/ENFILE/EAGAIN) are a libuv fd race.
+ * It was first assumed to be a spawn-vs-spawn overlap, so every spawn is gated
+ * through a single-permit semaphore ({@link execWithRetry}). That helps, but it
+ * does NOT eliminate `spawn EBADF`: the race is process-wide — the spawning
+ * child's stdio-fd setup collides with *any* concurrent fd activity in the
+ * process, not just another spawn. The fs threadpool churn from `.hued` theme
+ * resolution (`stat`/`readFile`), monitor transcript reads, and chokidar
+ * watchers all race the gated `ps`/`lsof` the same way two spawns would. So
+ * serialization caps spawn concurrency (and gives one place to measure load via
+ * {@link getSpawnDiagnostics}), but the RETRY is what actually absorbs the race
+ * — which is why it needs enough attempts to ride out a cold-start fd-churn
+ * burst, not just a couple of quick tries.
  */
 
 /** Transient `spawn` failures from libuv under concurrent child_process load.
@@ -17,7 +21,7 @@
  * on a short retry; only the persistent variants should surface. */
 const TRANSIENT_SPAWN_CODES = new Set(['EBADF', 'EMFILE', 'ENFILE', 'EAGAIN']);
 
-function isTransientSpawnError(e: unknown): boolean {
+export function isTransientSpawnError(e: unknown): boolean {
   return (
     !!e &&
     typeof e === 'object' &&
@@ -82,11 +86,12 @@ export function resetSpawnDiagnostics(): void {
   recentExhaustions = [];
 }
 
-/** Max child_process spawns allowed in flight at once. The fd race only shows
- * up when several spawns overlap, so serializing to one at a time removes it;
- * the cost is negligible for sub-second shell-outs (each carries its own
- * timeout). Bump only if a profile shows the queue is a bottleneck — but then
- * the race can return, so prefer keeping it at 1. */
+/** Max child_process spawns allowed in flight at once. Serializing to one at a
+ * time caps spawn-vs-spawn overlap, but does NOT remove the fd race on its own
+ * (it also collides with non-spawn fd churn — see the file header); the retry
+ * is what absorbs the remainder. The cost is negligible for sub-second
+ * shell-outs (each carries its own timeout). Bump only if a profile shows the
+ * queue is a bottleneck. */
 const MAX_CONCURRENT_SPAWNS = 1;
 
 /** FIFO of callers parked because the gate is full; each is resumed by a
@@ -124,7 +129,7 @@ async function serializeSpawn<T>(fn: () => Promise<T>): Promise<T> {
  * the gate can still race the gated ones and reintroduce EBADF. */
 export async function execWithRetry<T>(
   fn: () => Promise<T>,
-  { attempts = 3, delayMs = 50, label = 'spawn' }: { attempts?: number; delayMs?: number; label?: string } = {},
+  { attempts = 6, delayMs = 40, label = 'spawn' }: { attempts?: number; delayMs?: number; label?: string } = {},
 ): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
@@ -150,7 +155,10 @@ export async function execWithRetry<T>(
         );
         throw e;
       }
-      await sleep(delayMs * (i + 1));
+      // Linear backoff with jitter. Jitter decorrelates the retry from the
+      // recurring tick/threadpool cadence so successive attempts don't keep
+      // landing in the same fd-churn window that caused the race.
+      await sleep(delayMs * (i + 1) + Math.floor(Math.random() * delayMs));
     }
   }
   throw lastErr;

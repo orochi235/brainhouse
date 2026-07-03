@@ -3,6 +3,7 @@ import { findRepoRoot } from '../session.js';
 import { HttpProbe } from './httpProbe.js';
 import { Reconciler, type ProcessRow } from './reconciler.js';
 import {
+  isTransientSpawnError,
   listCwds as realListCwds,
   listListeningPorts as realListPorts,
   listProcesses as realListProcesses,
@@ -126,13 +127,15 @@ export class ProcessTracker extends EventEmitter {
       for (const r of upserts) this.emit('upsert', r);
       for (const id of deletes) this.emit('delete', id);
     } catch (e) {
-      // A transient spawn race (EBADF/EMFILE/…) already logged its rich context
-      // in native.ts; keep this concise so a recurring race doesn't spam the
-      // full multi-line spawn stack every tick. Unexpected errors still surface
-      // their message + code.
-      const code = (e as { code?: string })?.code;
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error(`[processes] tick failed: ${msg}${code ? ` [${code}]` : ''}`);
+      // A transient spawn race (EBADF/EMFILE/…) that reaches here already
+      // exhausted its retries and logged one rich warning in spawnQueue.ts.
+      // Re-logging it would double every exhaustion line, so swallow it here —
+      // only unexpected (non-transient) errors surface their message + code.
+      if (!isTransientSpawnError(e)) {
+        const code = (e as { code?: string })?.code;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[processes] tick failed: ${msg}${code ? ` [${code}]` : ''}`);
+      }
     } finally {
       this.ticking = false;
     }
@@ -246,8 +249,13 @@ export class ProcessTracker extends EventEmitter {
           if (ok && this.subscribers > 0) void this.maybeSweepPorts();
         });
       }
-    } catch (e) { console.error('[processes] port sweep failed:', e); }
-    finally { this.sweeping = false; }
+    } catch (e) {
+      // Exhausted transient spawn races already logged once in spawnQueue.ts
+      // (see tickOnce) — don't double-log them off the port sweep either.
+      if (!isTransientSpawnError(e)) console.error('[processes] port sweep failed:', e);
+    } finally {
+      this.sweeping = false;
+    }
   }
 
   async kill(processId: string): Promise<void> {
