@@ -59,6 +59,30 @@ describe('roots', () => {
   it('resolveRoots falls back to defaultRoots when prefs is empty', () => {
     expect(resolveRoots(withRoots())).toEqual(defaultRoots());
   });
+
+  it('narrows a .claude config-dir root to its projects subdir (fd-leak guard)', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-roots-'));
+    const cfg = path.join(home, '.claude-pw');
+    fs.mkdirSync(path.join(cfg, 'projects'), { recursive: true });
+    fs.mkdirSync(path.join(cfg, 'file-history'), { recursive: true });
+    // A config dir passed whole must resolve to <cfg>/projects, never the
+    // tree that also holds file-history/plugins/etc.
+    expect(resolveRoots(withRoots(cfg))).toEqual([path.join(cfg, 'projects')]);
+  });
+
+  it('leaves a config-dir root without a projects subdir untouched', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-roots-'));
+    const cfg = path.join(home, '.claude-empty');
+    fs.mkdirSync(cfg, { recursive: true });
+    expect(resolveRoots(withRoots(cfg))).toEqual([cfg]);
+  });
+
+  it('leaves a non-config custom root untouched even if it has a projects subdir', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-roots-'));
+    const custom = path.join(home, 'my-transcripts');
+    fs.mkdirSync(path.join(custom, 'projects'), { recursive: true });
+    expect(resolveRoots(withRoots(custom))).toEqual([custom]);
+  });
 });
 
 describe('deriveAccountLabel', () => {

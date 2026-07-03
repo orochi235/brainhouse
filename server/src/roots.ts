@@ -41,9 +41,30 @@ export function defaultRoots(home: string = os.homedir()): string[] {
 
 export function resolveRoots(prefs: Prefs): string[] {
   const envRoots = process.env.BRAINHOUSE_ROOTS?.split(':');
-  if (envRoots) return envRoots;
-  const prefRoots = prefs.roots.map((r) => r.path);
+  if (envRoots) return envRoots.map(narrowConfigDirRoot);
+  const prefRoots = prefs.roots.map((r) => narrowConfigDirRoot(r.path));
   return prefRoots.length > 0 ? prefRoots : defaultRoots();
+}
+
+/**
+ * A root pointed at a `.claude…` *config* dir (e.g. `~/.claude-pw`) rather than
+ * its `projects` subdir makes the watcher recurse the ENTIRE config tree —
+ * `file-history`, `plugins`, `tasks`, `session-env`, tens of thousands of
+ * files. chokidar (v4, no fsevents on this platform) holds one open fd per
+ * watched file, so that exhausts the process's fd limit; once no fds are free,
+ * libuv can't allocate child-stdio pipes and every `child_process` spawn fails
+ * `EBADF`. Transcripts only ever live under `<configDir>/projects`, so narrow
+ * such a root to that subdir. Non-config roots (an explicit custom path) pass
+ * through untouched. */
+export function narrowConfigDirRoot(p: string): string {
+  if (!/^\.claude(?:-.+)?$/.test(path.basename(p))) return p;
+  const projects = path.join(p, 'projects');
+  try {
+    if (fs.statSync(projects).isDirectory()) return projects;
+  } catch {
+    // No projects subdir — leave as-is; walk() over an empty/odd dir is cheap.
+  }
+  return p;
 }
 
 /**
