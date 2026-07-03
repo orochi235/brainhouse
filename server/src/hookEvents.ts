@@ -15,8 +15,8 @@ import { mkdir, readdir, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
-import chokidar, { type FSWatcher } from 'chokidar';
 import { z } from 'zod';
+import { type Watcher, startWatcher } from './watchBackend.js';
 
 export const HookEventSchema = z.object({
   kind: z.enum([
@@ -85,7 +85,7 @@ export type HookEventHandler = (event: HookEvent) => void | Promise<void>;
 export class HookEventWatcher {
   readonly dir: string;
   private readonly onEvent: HookEventHandler;
-  private watcher: FSWatcher | null = null;
+  private watcher: Watcher | null = null;
   /** Per-file byte offset of the next unread byte. Survives `change` events
    * so partial-line writes resume cleanly on the next change. */
   private readonly offsets = new Map<string, number>();
@@ -114,26 +114,17 @@ export class HookEventWatcher {
     } catch {
       // Dir vanished / race — the live watch below still catches up.
     }
-    // Chokidar v4 dropped built-in glob support — watch the dir, filter in
-    // the handler. ignoreInitial: the explicit replay above already covered
-    // existing files (and per-file offsets dedupe any overlap), so only tail
-    // subsequent writes.
-    this.watcher = chokidar.watch(this.dir, {
-      ignoreInitial: true,
-      awaitWriteFinish: false,
-      persistent: true,
-      depth: 0,
+    // The explicit replay above already covered existing files (and per-file
+    // offsets dedupe any overlap), so only tail subsequent writes. Flat dir →
+    // non-recursive; the .jsonl filter lives in the handler.
+    this.watcher = startWatcher([this.dir], {
+      recursive: false,
+      onEvent: (p) => {
+        if (!p.endsWith('.jsonl')) return;
+        void this.drain(p);
+      },
     });
-    const handle = (p: string) => {
-      if (!p.endsWith('.jsonl')) return;
-      void this.drain(p);
-    };
-    this.watcher.on('add', handle);
-    this.watcher.on('change', handle);
-    await new Promise<void>((resolve) => {
-      if (!this.watcher) return resolve();
-      this.watcher.once('ready', () => resolve());
-    });
+    await this.watcher.ready;
   }
 
   async stop(): Promise<void> {

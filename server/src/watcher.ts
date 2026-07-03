@@ -16,9 +16,10 @@
 import { existsSync, statSync } from 'node:fs';
 import { open, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import chokidar, { type ChokidarOptions, type FSWatcher } from 'chokidar';
+import type { ChokidarOptions } from 'chokidar';
 import { type Event, parseLine } from './parser.js';
 import type { Store } from './store.js';
+import { type Watcher, startWatcher } from './watchBackend.js';
 
 export interface PathInfo {
   session_id: string;
@@ -67,8 +68,9 @@ export interface WatcherOptions {
    * this bound are collected for background summarization instead of
    * ingested. 0/undefined disables. */
   deferredMaxAgeSeconds?: number;
-  /** Extra chokidar options merged into the defaults. Mainly a test seam so
-   * tests can force polling on platforms where fsevents coalesces rapid
+  /** Extra chokidar options merged into the defaults. Only consulted when the
+   * chokidar backend is active (non-macOS/Windows, or forced). Mainly a test
+   * seam so tests can force polling on platforms where fsevents coalesces rapid
    * appends. Production should leave this unset. */
   chokidarOptions?: ChokidarOptions;
   /** Optional persistence layer. When set, per-file byte offsets persist
@@ -86,7 +88,7 @@ export class TranscriptWatcher {
   private readonly chokidarOptions: ChokidarOptions;
   private readonly offsets = new Map<string, number>();
   private readonly store: Store | null;
-  private chokidarWatcher: FSWatcher | null = null;
+  private watcher: Watcher | null = null;
   private processing: Promise<void> = Promise.resolve();
 
   constructor(roots: string[], onEvent: EventListener, opts: WatcherOptions = {}) {
@@ -102,20 +104,21 @@ export class TranscriptWatcher {
     this.hydrateOffsets();
     await this.bootstrap();
     if (!watch) return;
-    const watcher = chokidar.watch(this.roots, {
-      ignoreInitial: true,
-      awaitWriteFinish: false,
-      persistent: true,
-      ...this.chokidarOptions,
+    this.watcher = startWatcher(this.roots, {
+      recursive: true,
+      chokidarOptions: this.chokidarOptions,
+      // Native-backend backstop: every 30s re-emit files touched in the last
+      // 2 min, so a coalesced/dropped FSEvents notification can't strand a
+      // quiet session's trailing lines. No-op on the chokidar backend.
+      reconcileWindowMs: 120_000,
+      reconcileIntervalMs: 30_000,
+      onEvent: (p) => {
+        this.processing = this.processing.then(() => this.processPath(p)).catch(() => undefined);
+      },
     });
-    this.chokidarWatcher = watcher;
-    const handle = (p: string) => {
-      this.processing = this.processing.then(() => this.processPath(p)).catch(() => undefined);
-    };
-    watcher.on('add', handle).on('change', handle);
-    // Wait for chokidar's initial scan to complete so writes that land
-    // immediately after start() can't slip through before the watch is armed.
-    await new Promise<void>((resolve) => watcher.once('ready', () => resolve()));
+    // Wait until the watch is armed so writes landing immediately after
+    // start() can't slip through first.
+    await this.watcher.ready;
   }
 
   /** Forget the persisted offset for a path and re-process it from byte 0.
@@ -142,9 +145,9 @@ export class TranscriptWatcher {
   }
 
   async stop(): Promise<void> {
-    if (this.chokidarWatcher) {
-      await this.chokidarWatcher.close();
-      this.chokidarWatcher = null;
+    if (this.watcher) {
+      await this.watcher.close();
+      this.watcher = null;
     }
     await this.processing;
   }

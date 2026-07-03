@@ -874,24 +874,25 @@ the one scalability cliff. Sketch: stream line-by-line (`readline`) and
 feed `scanLines` incrementally, or expose a per-file scan the CLI folds,
 so memory stays flat regardless of corpus size.
 
-## [HIGH] watcher: chokidar holds one fd per watched file — bound it
+## watcher: chokidar fd-per-file blow-up — RESOLVED (native watch backend)
 
 Confirmed empirically (2026-07-03): chokidar v4 with no `fsevents` on
 macOS opens **one file descriptor per watched file** (1700 files →
-1704 REG fds). The transcript watcher watches every `.jsonl` under each
-root, so its fd cost grows unbounded with accumulated transcript count.
-`narrowConfigDirRoot` (roots.ts) fixed the *acute* crash — prefs.roots
-had been pointing at the whole `~/.claude-*` config dirs (~10.6k files
-→ fd-limit exhaustion → persistent `spawn EBADF` on every ps/lsof). But
-even correctly scoped to `/projects` we're at ~2.8k fds today and
-climbing. Durable options: (a) watch each root with native recursive
-`fs.watch(root,{recursive:true})` — one FSEvents-backed handle per root,
-~0 per-file fds — and drop chokidar for the transcript watcher; (b) an
-`ignored` predicate that only watches files inside the hydration window;
-(c) raise the process's RLIMIT_NOFILE at startup. (a) is the real fix.
+1704 REG fds), so the transcript watcher's fd cost grew unbounded with
+accumulated transcript count. `narrowConfigDirRoot` (roots.ts) fixed the
+*acute* crash (prefs.roots pointed at the whole `~/.claude-*` config dirs,
+~10.6k files → fd-limit exhaustion → persistent `spawn EBADF` on ps/lsof).
 
-NOTE: the `MAX_CONCURRENT_SPAWNS=1` gate + retry tuning in
-`processes/spawnQueue.ts` were built on a WRONG diagnosis (that EBADF was
-a spawn-vs-spawn race). Harmless, but the actual cause was always fd
-exhaustion from the watcher. Consider relaxing the single-permit gate
-once (a) lands, since it can starve the Network view's lsof:ports sweep.
+RESOLVED by `watchBackend.ts`: native recursive `fs.watch` per root on
+macOS/Windows (one FSEvents/RDCW handle per root — 1440 files now cost 4
+REG fds, was ~1440); chokidar kept as the fallback for Linux/other (inotify
+per-directory there, never the fd bomb — Linux is *semi-supported*).
+Consumers re-read from a persisted byte offset, so coarse/coalesced native
+events are harmless; a 30s reconcile scan (2-min window) backstops any
+dropped FSEvents.
+
+STILL OPEN (low priority): the `MAX_CONCURRENT_SPAWNS=1` gate + retry tuning
+in `processes/spawnQueue.ts` were built on a WRONG diagnosis (EBADF as a
+spawn-vs-spawn race; it was always watcher fd exhaustion). Harmless, but
+consider relaxing the single-permit gate — it can starve the Network view's
+`lsof:ports` sweep — now that the fd pressure is gone.
