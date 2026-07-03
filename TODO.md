@@ -873,3 +873,25 @@ runs already process ~270k events). Functionally fine today, but it's
 the one scalability cliff. Sketch: stream line-by-line (`readline`) and
 feed `scanLines` incrementally, or expose a per-file scan the CLI folds,
 so memory stays flat regardless of corpus size.
+
+## [HIGH] watcher: chokidar holds one fd per watched file — bound it
+
+Confirmed empirically (2026-07-03): chokidar v4 with no `fsevents` on
+macOS opens **one file descriptor per watched file** (1700 files →
+1704 REG fds). The transcript watcher watches every `.jsonl` under each
+root, so its fd cost grows unbounded with accumulated transcript count.
+`narrowConfigDirRoot` (roots.ts) fixed the *acute* crash — prefs.roots
+had been pointing at the whole `~/.claude-*` config dirs (~10.6k files
+→ fd-limit exhaustion → persistent `spawn EBADF` on every ps/lsof). But
+even correctly scoped to `/projects` we're at ~2.8k fds today and
+climbing. Durable options: (a) watch each root with native recursive
+`fs.watch(root,{recursive:true})` — one FSEvents-backed handle per root,
+~0 per-file fds — and drop chokidar for the transcript watcher; (b) an
+`ignored` predicate that only watches files inside the hydration window;
+(c) raise the process's RLIMIT_NOFILE at startup. (a) is the real fix.
+
+NOTE: the `MAX_CONCURRENT_SPAWNS=1` gate + retry tuning in
+`processes/spawnQueue.ts` were built on a WRONG diagnosis (that EBADF was
+a spawn-vs-spawn race). Harmless, but the actual cause was always fd
+exhaustion from the watcher. Consider relaxing the single-permit gate
+once (a) lands, since it can starve the Network view's lsof:ports sweep.
