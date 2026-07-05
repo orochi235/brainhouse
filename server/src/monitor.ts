@@ -394,6 +394,13 @@ export class TranscriptMonitor {
    * live subagents under that parent. */
   applyHookEvent(event: HookEvent): void {
     const sid = event.session_id;
+    // Panel-level iTerm2 GUID stamp — independent of the process tracker so
+    // the grid tile can reveal its terminal even when the top widget (and
+    // thus the process subscription) is closed. Survives restarts via the
+    // hook watcher's replay of the session_pid record.
+    if (event.kind === 'session_pid' && event.iterm_session_id) {
+      for (const d of this.store.setItermSessionId(sid, event.iterm_session_id)) this.broadcast(d);
+    }
     if (this.tracker) {
       if (
         event.kind === 'session_pid' ||

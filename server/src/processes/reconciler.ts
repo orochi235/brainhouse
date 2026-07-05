@@ -51,6 +51,12 @@ export interface ProcessRow {
    * its server + descendants. Survives session unregistration: a panel
    * teardown no longer erases the chip on the row. */
   account_label: string | null;
+  /** iTerm2 session GUID of the terminal pane the owning Claude session was
+   * launched from, captured by the session_pid hook from $ITERM_SESSION_ID
+   * and inherited down the session's process subtree (same sticky-once
+   * propagation as {@link account_label}). Lets the UI reveal the owning
+   * iTerm2 tab. Null for sessions not started under iTerm2. */
+  iterm_session_id: string | null;
   /** Ancestor PIDs (immediate parent → root, exclusive of self) snapshotted
    * the first time we saw this row in ps. Used to retroactively attribute
    * a process to a Claude session that registers AFTER the process has
@@ -65,7 +71,7 @@ export interface ProcessRow {
 // identity the Project chip keys on instead of `cwd` — so a session running from
 // a subdir tags the same repo as the project widget, and adding a deeper
 // same-repo session can't shift an existing row's chip color.
-interface SessionInfo { pid: number; cwd: string; repoRoot?: string | null; accountLabel?: string | null; }
+interface SessionInfo { pid: number; cwd: string; repoRoot?: string | null; accountLabel?: string | null; itermSessionId?: string | null; }
 interface BashIntent { command: string; run_in_background: boolean; cwd: string; ts: number; }
 
 const SIGNAL_MIN_UPTIME_S = 3;
@@ -248,6 +254,13 @@ export class Reconciler {
         const info = this.sessions.get(row.session_id);
         if (info?.accountLabel) row.account_label = info.accountLabel;
       }
+      // iTerm2 GUID inheritance from the attributed session. Same sticky
+      // rationale as account_label above: stamp once, survive the session
+      // unregistering so the "reveal in iTerm" affordance persists.
+      if (row.session_id && !row.iterm_session_id) {
+        const info = this.sessions.get(row.session_id);
+        if (info?.itermSessionId) row.iterm_session_id = info.itermSessionId;
+      }
       // Whenever we have a session_id, also surface its cwd as the
       // project so the panel's Project column has something to show
       // for every attributed row (not just rows attributed via the
@@ -412,6 +425,7 @@ export class Reconciler {
       bash_id: null,
       project: null,
       account_label: null,
+      iterm_session_id: null,
       original_ancestors: originalAncestors,
     };
   }

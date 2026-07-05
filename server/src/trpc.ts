@@ -167,6 +167,16 @@ export const appRouter = t.router({
         await ctx.tracker.kill(input.process_id);
         return { ok: true };
       }),
+    /** Focus the iTerm2 pane a session runs in, by its $ITERM_SESSION_ID
+     * GUID (stamped on the row as `iterm_session_id`). No-op / `found: false`
+     * off macOS, when iTerm2 isn't running, or when the pane has closed. */
+    revealInIterm: t.procedure
+      .input(z.object({ iterm_session_id: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.tracker) throw new Error('tracker not configured');
+        const found = await ctx.tracker.revealIterm(input.iterm_session_id);
+        return { ok: true, found };
+      }),
     /** Scan the session's transcript JSONL from the end and return the
      * tail of the most recent tool_result whose body contains `bash_id`.
      * Returns the empty string when the tracker isn't configured, the row

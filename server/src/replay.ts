@@ -77,6 +77,7 @@ export function parseJsonlToPanel(contents: string, sourceLabel: string): Replay
     agent_type: null,
     task_description: null,
     account_label: null,
+    iterm_session_id: null,
     status: 'done',
     started_at: firstTs,
     last_event_at: lastTs,

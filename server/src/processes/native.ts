@@ -154,6 +154,50 @@ export async function listCwds(): Promise<Map<number, string>> {
   }
 }
 
+/** AppleScript that walks every iTerm2 window/tab/session, and when it finds
+ * a session whose `id` matches the passed GUID (`item 1 of argv`), selects it
+ * and brings iTerm2 to the front. `id of session` equals the GUID portion of
+ * $ITERM_SESSION_ID, so this reveals the exact pane a Claude session runs in.
+ * Returns "ok" on a hit, "notfound" otherwise. */
+const ITERM_REVEAL_SCRIPT = `on run argv
+  set target to item 1 of argv
+  tell application "iTerm2"
+    repeat with w in windows
+      repeat with t in tabs of w
+        repeat with s in sessions of t
+          if id of s is target then
+            tell s to select
+            tell t to select
+            select w
+            activate
+            return "ok"
+          end if
+        end repeat
+      end repeat
+    end repeat
+  end tell
+  return "notfound"
+end run`;
+
+/** Reveal the iTerm2 pane identified by `guid` (an $ITERM_SESSION_ID GUID).
+ * macOS + iTerm2 only; returns false on any other platform, when iTerm2 isn't
+ * running, when no live pane has that id, or when osascript errors. The GUID
+ * is passed as an execFile argv entry (never a shell string), so it can't be
+ * used to inject AppleScript. */
+export async function revealItermSession(guid: string): Promise<boolean> {
+  if (process.platform !== 'darwin') return false;
+  try {
+    const { stdout } = await execWithRetry(
+      () =>
+        execFileAsync('osascript', ['-e', ITERM_REVEAL_SCRIPT, guid], { timeout: 5000 }),
+      { label: 'osascript:iterm-reveal' },
+    );
+    return stdout.trim() === 'ok';
+  } catch {
+    return false;
+  }
+}
+
 export async function signalProcess(pid: number, sig: 'TERM' | 'KILL'): Promise<void> {
   if (pid <= 1000) throw new Error(`refused: pid ${pid} is system-reserved`);
   try { process.kill(pid, sig === 'TERM' ? 'SIGTERM' : 'SIGKILL'); }

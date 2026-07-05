@@ -17,7 +17,7 @@ const FIXTURE_ROW: ProcessRow = {
   framework: 'vite', framework_version: '5.4.2',
   ports: [{ proto: 'TCP', addr: '127.0.0.1', port: 5173 }],
   ended_ts: null, ended_reason: null, uptime_s: 724,
-  bash_id: null, project: null, account_label: null, original_ancestors: [],
+  bash_id: null, project: null, account_label: null, iterm_session_id: null, original_ancestors: [],
 };
 
 describe('ProcessesPanel', () => {

@@ -350,6 +350,28 @@ UI/server is meant to uphold. New entries go at the bottom.
   Do not thread a `now` prop down through `PanelCard` or `ProcessRow` —
   subscribe at the leaf instead.
 
+- **A session can reveal the iTerm2 pane it runs in — from both the grid
+  tile and the top-widget row.** The `session-start-procs` hook captures the
+  launching pane's `$ITERM_SESSION_ID` GUID (the part after the colon) into
+  the `session_pid` record. That GUID reaches the UI along two independent
+  paths so the affordance works whether or not the process widget is open:
+  (1) the reconciler stamps it as `ProcessRow.iterm_session_id` on the
+  session root and inherits it down the subtree with the same sticky-once
+  propagation as `account_label` (top-widget sessions view); (2) the monitor
+  stamps it onto the owning `Panel`/`PanelDto` via
+  `SessionStore.setItermSessionId` (grid tile). The panel copy is **not
+  persisted** — it re-stamps from the replayed `session_pid` hook on the next
+  boot, like tokens re-accumulate — and only parent panels carry it
+  (subagents share the parent's process and have no pane of their own). A
+  panel/row carrying a GUID renders a `↗` reveal action; clicking it calls
+  `processes.revealInIterm`, which shells out to `osascript` (iTerm2's
+  AppleScript `id of session` equals that GUID) to select the tab and focus
+  iTerm2. Best-effort and macOS-only: off macOS, with iTerm2 closed, or once
+  the pane has exited the mutation returns `found: false` and the UI no-ops
+  rather than stealing focus. Sessions not started under iTerm2 carry a null
+  GUID and show no reveal action. Note the GUID only lands on sessions
+  started *after* this hook was installed — it's captured at SessionStart.
+
 ## Threaded replies (side-channel assistant turns)
 
 - A background-task `<task-notification>` `queued_command` record renders as

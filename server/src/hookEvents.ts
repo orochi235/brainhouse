@@ -70,6 +70,10 @@ export const HookEventSchema = z.object({
   /** session_pid only. Value of $CLAUDE_CONFIG_DIR at hook time, when
    * present. Resolved upstream to an account_label via prefs.roots[].path. */
   claude_config_dir: z.string().nullable().optional(),
+  /** session_pid only. The iTerm2 session GUID (the part after the colon in
+   * $ITERM_SESSION_ID), captured when the session was launched from an iTerm2
+   * pane. Lets the UI reveal the owning terminal tab. Null outside iTerm2. */
+  iterm_session_id: z.string().nullable().optional(),
   /** Unix seconds, set by the dispatcher. */
   ts: z.number(),
 });

@@ -136,6 +136,21 @@ export function ProcessRow({
     void trpc.processes.kill.mutate({ process_id: row.process_id });
   };
 
+  // Focus the iTerm2 pane this session runs in. The GUID is stamped on the
+  // session root and inherited down its subtree, so any attributed row can
+  // reveal the owning terminal. Best-effort: silently no-ops off macOS or
+  // once the pane has closed (the server returns found:false).
+  const revealInIterm = async () => {
+    const guid = row.iterm_session_id;
+    if (!guid) return;
+    const { found } = await trpc.processes.revealInIterm.mutate({ iterm_session_id: guid });
+    if (!found) {
+      // The tab is gone (session exited / window closed) — there's nothing to
+      // focus. A soft hint beats silence without stealing focus from iTerm.
+      console.info('[iterm] no live pane for', guid);
+    }
+  };
+
   const runtimeText = row.runtime ? (row.runtime_version ? `${row.runtime} ${row.runtime_version}` : row.runtime) : '—';
   const frameworkText = row.framework
     ? (row.framework_version ? `${row.framework} ${row.framework_version}` : row.framework)
@@ -258,6 +273,7 @@ export function ProcessRow({
                 )}
                 {row.project && <><dt>Project</dt><dd>{row.project}</dd></>}
                 {row.session_id && <><dt>Session</dt><dd>{row.session_id}</dd></>}
+                {row.iterm_session_id && <><dt>iTerm</dt><dd>{row.iterm_session_id}</dd></>}
                 {panel?.title && <><dt>Title</dt><dd>{panel.title}</dd></>}
                 {row.hook_command && <><dt>Intent</dt><dd>{row.hook_command}</dd></>}
                 <dt>Provenance</dt><dd>{row.provenance}</dd>
@@ -344,7 +360,19 @@ export function ProcessRow({
         </td>
         {showIdle && <IdleCell panel={panel} />}
         <td>{fmtUptime(row.uptime_s)}</td>
-        <td>
+        <td className="process-actions-cell">
+          {/* Reveal-in-iTerm: only for rows whose owning session carries an
+            * iTerm2 GUID (captured by the session_pid hook). Jumps to the
+            * real terminal pane. Hidden otherwise. */}
+          {row.iterm_session_id && (
+            <button
+              type="button"
+              onClick={() => void revealInIterm()}
+              className="process-reveal-iterm"
+              aria-label="Reveal this session's iTerm2 tab"
+              title="Reveal this session's iTerm2 tab"
+            >↗</button>
+          )}
           {/* Tail-stdout toggle (▾) is hidden until the logs UX is
            * redesigned — inline <pre> below the row was too disruptive.
            * Kill action remains. */}

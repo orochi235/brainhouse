@@ -22,6 +22,7 @@ function panel(overrides: Partial<PanelState> = {}): PanelState {
     agent_type: null,
     task_description: null,
     account_label: null,
+    iterm_session_id: null,
     status: 'live',
     started_at: NOW - 600,
     last_event_at: NOW - 5,

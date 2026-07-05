@@ -20,6 +20,7 @@ const p = (
     ended: false,
     title: `title-${id}`,
     account_label: null,
+    iterm_session_id: null,
     theme: null,
     events: [],
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },

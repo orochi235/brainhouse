@@ -95,6 +95,13 @@ export interface Panel {
    * Claude config root owns this session. Client renders a small badge when
    * more than one account is configured. */
   account_label: string | null;
+  /** iTerm2 session GUID of the pane this session was launched from, captured
+   * from $ITERM_SESSION_ID by the session_pid hook. Lets the client reveal
+   * the owning terminal tab. Not persisted — re-stamped from the replayed
+   * session_pid hook on restart (like tokens re-accumulate). Null for
+   * sessions not started under iTerm2, and for subagents (no pane of their
+   * own). */
+  iterm_session_id: string | null;
   status: PanelStatus;
   started_at: number;
   last_event_at: number;
@@ -182,6 +189,9 @@ export interface PanelDto {
   agent_type: string | null;
   task_description: string | null;
   account_label: string | null;
+  /** iTerm2 session GUID (see {@link Panel.iterm_session_id}). Drives the
+   * grid tile's "reveal in iTerm" affordance. */
+  iterm_session_id: string | null;
   status: PanelStatus;
   started_at: number;
   last_event_at: number;
@@ -263,6 +273,11 @@ export class SessionStore {
    * land before the first JSONL record for the new session, so the
    * panel does not yet exist when supersede fires. */
   private readonly pendingClearTitleSuppression = new Set<string>();
+  /** session_id → iTerm2 GUID captured by a session_pid hook that arrived
+   * before the panel existed. Drained at `ensurePanel` time. The hook
+   * typically fires before the first JSONL record for the session, so the
+   * panel isn't created yet when {@link setItermSessionId} first runs. */
+  private readonly pendingItermGuid = new Map<string, string>();
   /** Owner panel ids the user has explicitly kept alive (restored from the
    * dock or reopened from history). They bypass the {@link uiWindowSeconds}
    * surfacing gate so a kept/reopened session survives a reload instead of
@@ -843,6 +858,9 @@ export class SessionStore {
       agent_type: null,
       task_description: null,
       account_label: accountLabel,
+      // Drain any iTerm GUID the session_pid hook stashed before this panel
+      // existed (parent panels only — id === session_id there).
+      iterm_session_id: this.pendingItermGuid.get(id) ?? null,
       binned_at: null,
       awaiting_input: false,
       ended: false,
@@ -870,8 +888,27 @@ export class SessionStore {
       events: [],
     };
     this.panels.set(id, panel);
+    this.pendingItermGuid.delete(id);
     deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
     return panel;
+  }
+
+  /** Stamp a panel with the iTerm2 session GUID captured from its
+   * session_pid hook. If the panel doesn't exist yet (the hook usually
+   * beats the first JSONL record) the GUID is stashed and applied when
+   * {@link ensurePanel} creates it. Idempotent; only emits an upsert when
+   * the value actually changes. Parent sessions only — the id is a
+   * session_id, which never matches a subagent panel. */
+  setItermSessionId(sessionId: string, guid: string): Delta[] {
+    const panel = this.panels.get(sessionId);
+    if (!panel) {
+      this.pendingItermGuid.set(sessionId, guid);
+      return [];
+    }
+    if (panel.iterm_session_id === guid) return [];
+    panel.iterm_session_id = guid;
+    this.persistPanel(panel);
+    return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
   }
 
   /** Late-arriving cwd: most records have it but some metadata ones don't.
@@ -1091,6 +1128,7 @@ export class SessionStore {
       agent_type: p.agent_type,
       task_description: p.task_description,
       account_label: p.account_label,
+      iterm_session_id: p.iterm_session_id,
       binned_at: p.binned_at,
       status: p.status,
       started_at: p.started_at,
@@ -1396,6 +1434,9 @@ function panelRowToPanel(r: PanelRow): Panel {
     agent_type: r.agent_type,
     task_description: null,
     account_label: r.account_label,
+    // Not persisted — re-stamped from the replayed session_pid hook on the
+    // next boot (same rationale as tokens below).
+    iterm_session_id: null,
     status: r.status,
     started_at: r.started_at,
     last_event_at: r.last_event_at,

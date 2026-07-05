@@ -557,6 +557,9 @@ function PanelHeader({
     return () => clearTimeout(t);
   }, [pinned]);
   const worktree = deriveWorktree(panel.cwd);
+  // iTerm2 reveal target: only parent sessions have a pane of their own
+  // (subagents run inside the parent process). Null hides the affordance.
+  const itermGuid = panel.kind === 'parent' ? panel.iterm_session_id : null;
   // Headline is input-equivalent (each bucket × its billing coefficient)
   // rather than a naive sum — cache_read dominates the raw total at 0.1×
   // actual cost, so an unweighted sum overstates effective usage by ~5×.
@@ -688,6 +691,20 @@ function PanelHeader({
           }}
         >
           <span aria-hidden="true">↩</span> {parentTitle}
+        </button>
+      )}
+      {itermGuid && !renderMini && (
+        <button
+          type="button"
+          className="panel-reveal-iterm"
+          title="Reveal this session's iTerm2 tab"
+          aria-label="Reveal this session's iTerm2 tab"
+          onClick={(e) => {
+            e.stopPropagation();
+            void trpc.processes.revealInIterm.mutate({ iterm_session_id: itermGuid });
+          }}
+        >
+          ↗
         </button>
       )}
       {!renderMini && !onRestore && (

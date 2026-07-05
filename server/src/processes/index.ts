@@ -7,6 +7,7 @@ import {
   listCwds as realListCwds,
   listListeningPorts as realListPorts,
   listProcesses as realListProcesses,
+  revealItermSession,
   signalProcess,
 } from './native.js';
 
@@ -89,6 +90,7 @@ export class ProcessTracker extends EventEmitter {
         cwd,
         repoRoot: findRepoRoot(cwd),
         accountLabel: typeof rec.account_label === 'string' ? rec.account_label : null,
+        itermSessionId: typeof rec.iterm_session_id === 'string' ? rec.iterm_session_id : null,
       });
     } else if (rec.kind === 'bash_intent') {
       this.rec.recordBashIntent(rec.session_id, {
@@ -256,6 +258,13 @@ export class ProcessTracker extends EventEmitter {
     } finally {
       this.sweeping = false;
     }
+  }
+
+  /** Reveal the iTerm2 pane a session runs in. `guid` is an
+   * $ITERM_SESSION_ID GUID (as stamped on a ProcessRow's `iterm_session_id`).
+   * Returns whether a matching live pane was found and focused. */
+  async revealIterm(guid: string): Promise<boolean> {
+    return revealItermSession(guid);
   }
 
   async kill(processId: string): Promise<void> {
