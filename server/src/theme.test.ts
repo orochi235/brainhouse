@@ -2,11 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  __setCommonDirResolverForTest,
-  clearPanelThemeCache,
-  readPanelTheme,
-} from './theme.js';
+import { __setCommonDirResolverForTest, clearPanelThemeCache, readPanelTheme } from './theme.js';
 
 let dir: string;
 
@@ -64,9 +60,43 @@ describe('readPanelTheme', () => {
     expect(theme?.foreground).toBe('#fff');
   });
 
-  it('rejects non-hex values', async () => {
-    await writeHued('background=purple\n');
+  it('rejects values that are neither hex nor a known color name', async () => {
+    await writeHued('background=notacolor\n');
     expect(await readPanelTheme(dir)).toBeNull();
+  });
+
+  it('resolves CSS named colors to hex', async () => {
+    // Real-world regression: .hued files using named colors (goldenrod,
+    // cyan, yellow) were silently dropped by the hex-only gate, so those
+    // projects fell back to the worktreeColor hash and showed the wrong
+    // color. Named colors must resolve to hex like any other background.
+    await writeHued('background=goldenrod\n');
+    const theme = await readPanelTheme(dir);
+    expect(theme?.background).toBe('#daa520');
+    expect(theme?.foreground).toBe('#000'); // goldenrod is light-ish → dark text
+  });
+
+  it('resolves a named color case-insensitively', async () => {
+    await writeHued('background=CYAN\n');
+    const theme = await readPanelTheme(dir);
+    expect(theme?.background).toBe('#00ffff');
+  });
+
+  it('honors an explicit foreground (named or hex)', async () => {
+    // brick-icons: yellow background with explicit black text. Without an
+    // explicit foreground the auto-picker + wash-out guard would reject
+    // yellow (too pale for readable auto-white). An explicit foreground
+    // both selects the color AND opts out of the wash-out guard.
+    await writeHued('background=yellow\nforeground=black\n');
+    const theme = await readPanelTheme(dir);
+    expect(theme?.background).toBe('#ffff00');
+    expect(theme?.foreground).toBe('#000000');
+  });
+
+  it('still auto-picks foreground when none is given', async () => {
+    await writeHued('background=#320053\n');
+    const theme = await readPanelTheme(dir);
+    expect(theme).toEqual({ background: '#320053', foreground: '#fff' });
   });
 
   it('re-reads when .hued mtime changes (polling picks up edits)', async () => {

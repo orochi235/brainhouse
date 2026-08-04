@@ -3,10 +3,11 @@
  *
  * Format (ini-style, very simple):
  *   # https://github.com/orochi235/hued
- *   background=#320053
+ *   background=#320053     ← hex, or a CSS color name (e.g. goldenrod, cyan)
+ *   foreground=black       ← optional; auto-picked by luminance when absent
  *
  * Returns null if the file is missing, malformed, or lacks a `background`
- * key.
+ * key. Named colors resolve to hex so everything downstream can assume hex.
  *
  * Caching uses the `.hued` file's mtime so subsequent reads short-circuit
  * when the file hasn't changed, but a real edit (or a `.hued` that didn't
@@ -17,6 +18,7 @@
 
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { CSS_NAMED_COLORS } from './cssColors.js';
 
 export interface PanelTheme {
   /** Original hex from .hued, e.g. "#320053". */
@@ -90,7 +92,8 @@ async function readThemeFromPath(huedPath: string): Promise<PanelTheme | null> {
     return null;
   }
 
-  let theme: PanelTheme | null = null;
+  let background: string | null = null;
+  let foreground: string | null = null;
   for (const rawLine of text.split('\n')) {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
@@ -98,10 +101,10 @@ async function readThemeFromPath(huedPath: string): Promise<PanelTheme | null> {
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
     const value = line.slice(eq + 1).trim();
-    if (key === 'background' && isHexColor(value)) {
-      theme = buildTheme(value);
-    }
+    if (key === 'background') background = resolveColor(value);
+    else if (key === 'foreground') foreground = resolveColor(value);
   }
+  const theme = background ? buildTheme(background, foreground) : null;
   cache.set(huedPath, { mtime, theme });
   return theme;
 }
@@ -171,9 +174,28 @@ function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{3,8}$/.test(value);
 }
 
-function buildTheme(background: string): PanelTheme | null {
+/** Normalize a `.hued` color value to a hex string, or null when it's
+ * neither a hex code nor a known CSS color name. Hex passes through
+ * unchanged (so 3-digit shorthand is preserved); a named color resolves
+ * to its `#rrggbb` form so everything downstream (foreground YIQ pick,
+ * the client's badgeColor/hexToHsl) can assume hex. */
+function resolveColor(value: string): string | null {
+  if (isHexColor(value)) return value;
+  return CSS_NAMED_COLORS[value.toLowerCase()] ?? null;
+}
+
+/** Build a theme from a resolved-to-hex background. When `explicitForeground`
+ * is provided (an author wrote `foreground=...`), use it verbatim and skip
+ * the wash-out guard — the author has taken responsibility for contrast.
+ * Otherwise auto-pick #000/#fff by luminance and refuse near-white
+ * backgrounds that would render auto-white text unreadable. */
+function buildTheme(
+  background: string,
+  explicitForeground: string | null = null,
+): PanelTheme | null {
   const rgb = hexToRgb(background);
   if (!rgb) return null;
+  if (explicitForeground) return { background, foreground: explicitForeground };
   const yiq = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
   // Sanity guard: extremely pale colors would wash the white text out and
   // give barely-visible bubbles. Refuse those rather than silently render
