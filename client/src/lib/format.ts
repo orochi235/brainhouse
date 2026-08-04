@@ -98,6 +98,18 @@ export function formatClockTime(ts: string): string {
   return CLOCK_FORMAT.format(d);
 }
 
+/** Coarse single-unit relative age ("9h ago") for hover tooltips on
+ * absolute timestamps. Accepts an ISO string or epoch millis. */
+export function formatRelative(ts: string | number): string {
+  const ms = typeof ts === 'number' ? ts : Date.parse(ts);
+  if (Number.isNaN(ms)) return '';
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
 export function formatElapsed(seconds: number): string {
   if (seconds < 60) return `+${Math.floor(seconds)}s`;
   if (seconds < 3600) {

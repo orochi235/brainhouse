@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { buildEditorUrl, DEFAULT_EDITOR_TEMPLATE, resolveAbsolute } from '../lib/filenameLinks.ts';
 import { FilenameLinksProvider, useFilenameLinks } from '../lib/filenameLinksContext.tsx';
 import { diffStats, reconstructFile } from '../lib/fileSnapshot.ts';
-import { formatClockTime, formatElapsed } from '../lib/format.ts';
+import { formatClockTime, formatElapsed, formatRelative } from '../lib/format.ts';
 import { useLightbox } from '../lib/lightboxContext.ts';
 import {
   type BubblePart,
@@ -614,11 +614,20 @@ function MetaEvent({ event, startedAt }: { event: Event; startedAt?: number }) {
 
 /** Honors the body.show-elapsed toggle when the panel's start time is known. */
 export function EventTime({ ts, startedAt }: { ts: string; startedAt?: number }) {
+  // Relative age computed on hover (not render) so a long-idle panel's
+  // tooltip doesn't show a stale value.
+  const hover = (e: React.MouseEvent<HTMLSpanElement>) => {
+    e.currentTarget.title = formatRelative(ts);
+  };
   if (document.body.classList.contains('show-elapsed') && startedAt && ts) {
     const t = new Date(ts).getTime() / 1000;
     if (!Number.isNaN(t)) {
-      return <span className="event-time">{formatElapsed(Math.max(0, t - startedAt))}</span>;
+      return (
+        <span className="event-time" onMouseEnter={hover}>
+          {formatElapsed(Math.max(0, t - startedAt))}
+        </span>
+      );
     }
   }
-  return <span className="event-time">{formatClockTime(ts)}</span>;
+  return <span className="event-time" onMouseEnter={hover}>{formatClockTime(ts)}</span>;
 }

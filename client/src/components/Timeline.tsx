@@ -21,7 +21,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { ViewItemList } from './EventList.tsx';
 import { SvgGlyph } from './SvgGlyph.tsx';
 import { ToolChip, ToolChips } from './ToolChips.tsx';
-import { formatClockTime } from '../lib/format.ts';
+import { formatClockTime, formatRelative } from '../lib/format.ts';
 import { type ViewItem, preprocessEvents } from '../lib/pipeline.ts';
 import { iconForTool, prettyJson, summarizeTool } from '../lib/tools.ts';
 
@@ -831,7 +831,10 @@ function DetailPane({ source, startedAt }: { source: MarkSource; startedAt?: num
       <div className="timeline-detail-pane">
         <h4 className="timeline-detail-title">
           {ev.kind}
-          <span className="timeline-detail-ts">
+          <span
+            className="timeline-detail-ts"
+            onMouseEnter={(e) => { e.currentTarget.title = formatRelative(ev.ts); }}
+          >
             {formatClockTime(ev.ts)} · {ev.uuid.slice(0, 8)}
           </span>
         </h4>

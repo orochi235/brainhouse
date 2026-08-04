@@ -123,11 +123,9 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
-  /* When the auto-fit caps the slot (TOP_MAX_FRACTION) the panel is shorter
-   * than its content, so it must scroll internally rather than clip. The
-   * base rule sets overflow:hidden for the non-slot context; restore auto
-   * here. */
-  overflow: auto;
+  /* Scrolling belongs to the inner .processes-scroll wrapper — the panel
+   * header (title + view/filter controls) stays pinned while the table
+   * scrolls beneath it. */
 }
 .layout-slot-main > .session-grid,
 .layout-slot-sidebar > .session-dock {
@@ -1750,6 +1748,21 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   content: "⛁ ";
   opacity: 0.9;
 }
+/* Estimated-$ capsule — sits beside the token chip, shown only for
+ * metered accounts when display.showCost is on (gated in PanelHeader).
+ * Green so it reads as money, distinct from the gold token chip. The
+ * `$` glyph comes from formatUsd(), so no ::before prefix here. */
+.panel-cost {
+  --cost-green: #5cb87a;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cost-green) 22%, transparent);
+  color: color-mix(in srgb, var(--cost-green) 92%, var(--fg));
+  cursor: help;
+  white-space: pre;
+}
 /* Cache-health shading on the token chip. `healthy` and `unknown` keep
  * the default gold; `mixed` warms to amber; `poor` shifts to red.
  * Threshold logic lives in lib/tokenCost.ts cacheHealth(). */
@@ -2295,6 +2308,14 @@ body.imessage .event-assistant_text .bubble {
 .markdown p {
   margin: 0.35em 0;
 }
+/* Translucent rule instead of the browser's solid inset default —
+ * currentColor keeps it legible-but-quiet on any bubble/theme
+ * background (cyan included). */
+.markdown hr {
+  border: none;
+  border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  margin: 0.5em 0;
+}
 .markdown h1,
 .markdown h2,
 .markdown h3 {
@@ -2340,9 +2361,10 @@ body.imessage .event-assistant_text .bubble {
   color: var(--code-block-fg);
   padding: 0.5rem 0.7rem;
   border-radius: 6px;
-  overflow-x: auto;
   margin: 0.4em 0;
   font-size: 0.78em;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .markdown table {
   display: block;
@@ -2416,15 +2438,22 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
    quote of what it's replying to, plus a single-side accent whose color
    encodes the kind. Replaces the old standalone "↩ btw" chip. */
 /* Column wrapper for a threaded reply: quoted prompt on top, reply bubble
-   below. Carries the row's 90% width budget so the bubble inside can fill it;
-   align-items: flex-start keeps the quote pinned to the left edge while the
-   bubble is indented right, giving the quote its "above and to the left"
-   offset relative to the reply. */
+   below. Carries the row's 90% width budget so the bubble inside can fill it.
+   The reply bubble right-aligns to the container like every other assistant
+   bubble; the quote stretches the full wrapper width (its text stays
+   left-aligned), preserving the "above and to the left" offset. */
 .bubble-thread {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   max-width: 90%;
+}
+.bubble-thread .reply-quote {
+  align-self: stretch;
+}
+/* iMessage mode mirrors assistant bubbles to the left — follow suit. */
+body.imessage .event-assistant_text .bubble-thread {
+  align-items: flex-start;
 }
 .bubble-thread .bubble {
   max-width: 100%;
@@ -2760,7 +2789,8 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
    * `padding-right` (below) holds the timestamp gutter. */
   width: 100%;
 }
-/* Pending pulse: a goldenrod 20px-wide highlight that travels
+/* Pending pulse: a project-color (--panel-accent; goldenrod outside
+ * panel scope) 20px-wide highlight that travels
  * left-to-right across the capsule. Implemented as a positioned
  * pseudo-element animated via `transform: translateX(...)`, which
  * runs on the compositor and stays smooth on wide capsules (a Task:
@@ -2768,7 +2798,7 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
  * `100cqw` keyframe value resolves to the capsule's width without
  * referencing the pseudo's own (fixed 20px) dimensions. */
 .tool-capsule.pending {
-  border-color: rgba(251, 191, 36, 0.45);
+  border-color: color-mix(in srgb, var(--panel-accent, #fbbf24) 45%, transparent);
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -2784,7 +2814,7 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, #fbbf24 32%, transparent) 50%,
+    color-mix(in srgb, var(--panel-accent, #fbbf24) 32%, transparent) 50%,
     transparent
   );
   pointer-events: none;
@@ -3170,6 +3200,8 @@ body.imessage .lightbox.has-theme .event-user_text .bubble {
   padding: 0.4rem;
   border-radius: 3px;
   margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .trace-stage-table {
   width: 100%;
@@ -3957,8 +3989,28 @@ body.view-conversation
 }
 .prefs-root-row {
   display: grid;
-  grid-template-columns: 2fr 1fr auto;
+  grid-template-columns: 2fr 1fr auto auto auto;
   gap: 0.4rem;
+  align-items: center;
+}
+/* Metered opt-in toggle in an account row — compact, sits between the
+ * color swatch and the remove button. */
+.prefs-root-metered {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--fg-muted, var(--fg));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.prefs-root-metered input {
+  cursor: pointer;
+  /* Undo the generic .prefs-root-row input chrome for the checkbox. */
+  width: auto;
+  padding: 0;
+  border: none;
+  background: none;
 }
 .prefs-root-row input {
   background: var(--code-bg);
@@ -4169,6 +4221,8 @@ body.view-conversation
   font-family: ui-monospace, monospace;
   font-size: 0.78rem;
   overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .lightbox-text-content {
   margin: 0;
@@ -4360,6 +4414,8 @@ body.replay-drop-target::after {
 .mermaid-fallback {
   opacity: 0.6;
   font-size: 0.85em;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .mermaid-loading {
   /* Slight pulse so the user sees something's coming. */
@@ -4618,14 +4674,14 @@ body.replay-drop-target::after {
  * project-or-worktree gradient as a CSS variable from ProcessRow;
  * the inner .copyable-id button sits on top with a neutral surface
  * so the text stays readable. When --session-chip-bg isn't set
- * (discovered rows or unmatched panels) the wrap is invisible and
- * the button looks identical to the debug-tile case. */
+ * (discovered rows or unmatched panels) the wrap falls back to a
+ * muted gray so every session id in the column reads as a chip. */
 .session-chip-wrap {
   display: inline-flex;
   align-items: center;
   border-radius: 4px;
   padding: 1px;
-  background: var(--session-chip-bg, transparent);
+  background: var(--session-chip-bg, color-mix(in srgb, var(--fg) 22%, transparent));
 }
 .session-chip-wrap .copyable-id {
   background: color-mix(in srgb, var(--bg) 80%, transparent);
@@ -5517,6 +5573,14 @@ body.hide-thinking .event-thought-agent {
   min-height: 0;
   overflow-y: auto;
   overflow-x: auto;
+}
+
+/* Owns the vertical scroll for the table so the panel header above it
+ * stays pinned. The thead sticks to this container's top edge. */
+.processes-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* Pin the table's column-header row inside the scroll container so it
