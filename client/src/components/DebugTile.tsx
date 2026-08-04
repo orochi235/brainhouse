@@ -95,7 +95,10 @@ function makeComparator(
         break;
       }
     }
-    return v * mul;
+    // Deterministic id tiebreak — the panel map's iteration order shifts as
+    // deltas re-insert entries, so equal-keyed rows would otherwise swap
+    // between renders (visible as flicker in the tree).
+    return v * mul || a.id.localeCompare(b.id);
   };
 }
 
@@ -263,14 +266,19 @@ const ClientContents = memo(function ClientContents({
     for (const arr of childrenByParent.values()) arr.sort(cmp);
   } else {
     const slotOrder: Record<string, number> = { orphan: 0, grid: 1, dock: 2, nested: 3 };
+    // Quantize recency to minute buckets: live sessions bump last_event_at
+    // every delta, and ranking on the raw value reorders the tree many
+    // times a minute (flicker). Within a bucket the id tiebreak keeps the
+    // order fully stable.
+    const bucket = (p: PanelState) => Math.floor(p.last_event_at / 60);
     roots.sort((a, b) => {
       const sa = slotOrder[slotById.get(a.id) ?? 'nested'] ?? 99;
       const sb = slotOrder[slotById.get(b.id) ?? 'nested'] ?? 99;
       if (sa !== sb) return sa - sb;
-      return b.last_event_at - a.last_event_at;
+      return bucket(b) - bucket(a) || a.id.localeCompare(b.id);
     });
     for (const arr of childrenByParent.values()) {
-      arr.sort((a, b) => b.last_event_at - a.last_event_at);
+      arr.sort((a, b) => bucket(b) - bucket(a) || a.id.localeCompare(b.id));
     }
   }
 

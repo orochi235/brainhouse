@@ -91,6 +91,7 @@ export function ProcessRow({
   onToggleExpand,
   showIdle = false,
   onOpenSession,
+  preferCommand = false,
 }: {
   row: Row;
   panel: PanelState | null;
@@ -125,6 +126,9 @@ export function ProcessRow({
    * renderer-native raster leak documented in lib/clock.ts). Network view
    * omits the column. */
   showIdle?: boolean;
+  /** Show the row's command instead of its session title — set for nested
+   * rows whose title would just repeat the parent's (see ProcessesPanel). */
+  preferCommand?: boolean;
   /** Promote a row's owning session to a full-size grid window. Wired to the
    * same flow as the project widget (App.tsx openSessionFromWidget): restores
    * a docked/hidden panel, or re-opens a reaped session from its transcript.
@@ -287,7 +291,8 @@ export function ProcessRow({
               // that's still just a hex/uuid fragment reads as the muted
               // command, not a real `is-title` prose title — only a genuine
               // title earns full-strength styling.
-              const sessionTitle = viewMode === 'sessions' ? (panel?.title ?? '') : '';
+              const sessionTitle =
+                viewMode === 'sessions' && !preferCommand ? (panel?.title ?? '') : '';
               const realTitle = !!sessionTitle && !isPlaceholderTitle(sessionTitle, panel?.id ?? '');
               const label = sessionTitle || row.command;
               const cls = realTitle ? 'process-command is-title' : 'process-command';

@@ -48,6 +48,65 @@ describe('ProcessesPanel', () => {
     expect(onOpenSession).toHaveBeenCalledWith('s1');
   });
 
+  it('nests daemon-spawned claude processes under the outermost claude root in Sessions view', async () => {
+    // Claude Code's daemon architecture: claude spawns claude
+    // (`daemon run` → bg-pty-host → …). Only the outermost claude row
+    // should root a tree; the nested claude rows are its descendants,
+    // not sibling top-level entries.
+    const outer: ProcessRow = {
+      ...FIXTURE_ROW, process_id: 'c1', pid: 200, ppid: 1,
+      command: 'claude --dangerously-skip-permissions', runtime: 'claude',
+      framework: null, framework_version: null, ports: [], original_ancestors: [],
+    };
+    const daemon: ProcessRow = {
+      ...outer, process_id: 'c2', pid: 201, ppid: 200,
+      command: 'claude daemon run', original_ancestors: [200],
+    };
+    const ptyHost: ProcessRow = {
+      ...outer, process_id: 'c3', pid: 202, ppid: 201,
+      command: 'claude bg-pty-host', original_ancestors: [201, 200],
+    };
+    mock.rows = [outer, daemon, ptyHost];
+    render(<ProcessesPanel allPanels={new Map()} />);
+    // Earlier tests may have persisted viewMode=network; pick Sessions
+    // explicitly.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /sessions/i }));
+    // Collapsed by default: only the outermost claude row is visible.
+    expect(screen.getByText('200')).toBeInTheDocument();
+    expect(screen.queryByText('201')).not.toBeInTheDocument();
+    expect(screen.queryByText('202')).not.toBeInTheDocument();
+    // Expanding the single root reveals the daemon chain nested beneath it.
+    await user.click(screen.getByRole('button', { name: 'expand' }));
+    expect(screen.getByText('201')).toBeInTheDocument();
+    expect(screen.getByText('202')).toBeInTheDocument();
+  });
+
+  it('adopts orphaned daemon-infra claude rows under their session\'s primary root', async () => {
+    // A bg-pty-host whose daemon parent died reparents to launchd (ppid 1,
+    // no tracked ancestors) but keeps its session_id — it should nest under
+    // the session's interactive claude root, not surface as a sibling tree.
+    const head: ProcessRow = {
+      ...FIXTURE_ROW, process_id: 'c1', pid: 300, ppid: 1,
+      command: 'claude --dangerously-skip-permissions', runtime: 'claude',
+      framework: null, framework_version: null, ports: [], original_ancestors: [],
+      session_id: 'sX',
+    };
+    const orphan: ProcessRow = {
+      ...head, process_id: 'c2', pid: 301,
+      command: 'claude bg-pty-host --bg-pty-host /tmp/cc-daemon/x.pty.sock',
+    };
+    mock.rows = [head, orphan];
+    render(<ProcessesPanel allPanels={new Map()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /sessions/i }));
+    // One root only; the orphan is hidden until expand.
+    expect(screen.getByText('300')).toBeInTheDocument();
+    expect(screen.queryByText('301')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'expand' }));
+    expect(screen.getByText('301')).toBeInTheDocument();
+  });
+
   it('stays mounted with an empty state when there is no process data (restart window)', () => {
     // Regression: an open panel used to return null when the tracker had no
     // rows yet (e.g. right after a server restart), leaving the topbar toggle

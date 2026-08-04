@@ -200,14 +200,14 @@ function flattenTree(
   roots: Row[],
   childrenByPid: Map<number, Row[]>,
   expanded: Set<number>,
-): Array<{ row: Row; depth: number; hasChildren: boolean }> {
-  const out: Array<{ row: Row; depth: number; hasChildren: boolean }> = [];
-  function visit(r: Row, depth: number, skipChildren: boolean) {
+): Array<{ row: Row; depth: number; hasChildren: boolean; parent: Row | null }> {
+  const out: Array<{ row: Row; depth: number; hasChildren: boolean; parent: Row | null }> = [];
+  function visit(r: Row, depth: number, skipChildren: boolean, parent: Row | null) {
     const kids = childrenByPid.get(r.pid) ?? [];
-    out.push({ row: r, depth, hasChildren: kids.length > 0 });
+    out.push({ row: r, depth, hasChildren: kids.length > 0, parent });
     if (skipChildren) return;
     const sorted = kids.slice().sort((a, b) => b.uptime_s - a.uptime_s);
-    for (const k of sorted) visit(k, depth + 1, false);
+    for (const k of sorted) visit(k, depth + 1, false, r);
   }
   // Roots are rendered in caller-supplied order — column sort owns the
   // root ordering. Descendants sort by uptime inside `visit` so the
@@ -215,7 +215,7 @@ function flattenTree(
   for (const r of roots) {
     // Only root-level collapse is supported; nested descendants are
     // always shown when their root is expanded.
-    visit(r, 0, !expanded.has(r.pid));
+    visit(r, 0, !expanded.has(r.pid), null);
   }
   return out;
 }
@@ -322,7 +322,7 @@ export function ProcessesPanel({
     return true;
   });
 
-  let display: Array<{ row: Row; depth: number; hasChildren?: boolean; isRoot?: boolean }>;
+  let display: Array<{ row: Row; depth: number; hasChildren?: boolean; isRoot?: boolean; preferCommand?: boolean }>;
   if (viewMode === 'sessions') {
     // Sessions tree: keep only Claude binaries and their descendants
     // (per ppid + original_ancestors). Roots are the claude-runtime
@@ -337,7 +337,41 @@ export function ProcessesPanel({
       return ancestors.some(p => claudePids.has(p));
     });
     const { childrenByPid } = buildParentLinks(inSessionTree);
-    let roots = inSessionTree.filter(r => r.runtime === 'claude');
+    // Roots are claude-runtime rows with no tracked claude ancestor.
+    // Claude Code's daemon architecture means claude spawns claude
+    // (`daemon run` → bg-pty-host → bg-spare → ClaudeCode.app hosts);
+    // promoting every claude row to a root would list one session's
+    // machinery as several sibling top-level trees.
+    let roots = inSessionTree.filter(r => {
+      if (r.runtime !== 'claude') return false;
+      const ancestors = [r.ppid, ...r.original_ancestors];
+      return !ancestors.some(p => p !== r.pid && claudePids.has(p));
+    });
+    // Orphan adoption: a daemon helper whose parent chain is gone (the
+    // daemon exited, or ancestry was lost across a tracker restart and
+    // the helper reparented to launchd) still carries its session_id.
+    // Nest it under the session's primary non-infra claude root instead
+    // of surfacing it as a sibling top-level tree.
+    const isDaemonInfra = (r: Row) =>
+      /--bg-pty-host|--bg-spare|claude daemon run/.test(r.command);
+    const primaryBySession = new Map<string, Row>();
+    for (const r of roots) {
+      if (!r.session_id || isDaemonInfra(r)) continue;
+      const cur = primaryBySession.get(r.session_id);
+      if (!cur || r.uptime_s > cur.uptime_s) primaryBySession.set(r.session_id, r);
+    }
+    roots = roots.filter(r => {
+      if (!isDaemonInfra(r)) return true;
+      const primary = r.session_id ? primaryBySession.get(r.session_id) : undefined;
+      // No session to adopt into (attribution lost, e.g. across a tracker
+      // restart): the row is bare daemon machinery — treat it as wrapper
+      // noise rather than a top-level tree of its own.
+      if (!primary) return showWrappers;
+      const kids = childrenByPid.get(primary.pid);
+      if (kids) kids.push(r);
+      else childrenByPid.set(primary.pid, [r]);
+      return false;
+    });
     // Column-sort applies to the root level only; descendants stay in
     // natural tree order under their root so the hierarchy reads
     // coherently. With no active column sort, fall back to the prior
@@ -352,11 +386,19 @@ export function ProcessesPanel({
     } else {
       roots = roots.slice().sort((a, b) => b.uptime_s - a.uptime_s);
     }
+    // A nested row whose displayed title would just repeat its parent's
+    // (both attributed to the same session) shows its actual command
+    // instead — a deep tree of a dozen identical titles says nothing.
+    const titleOf = (r: Row) => (r.session_id ? allPanels.get(r.session_id)?.title ?? null : null);
     display = flattenTree(roots, childrenByPid, expandedRoots).map(n => ({
       row: n.row,
       depth: n.depth,
       hasChildren: n.hasChildren,
       isRoot: n.depth === 0,
+      preferCommand:
+        n.parent !== null &&
+        titleOf(n.row) !== null &&
+        titleOf(n.row) === titleOf(n.parent),
     }));
   } else {
     // Network: flat list of port-binders, with Show-all gating for
@@ -422,6 +464,7 @@ export function ProcessesPanel({
           </label>
         </div>
       </header>
+      <div className="processes-scroll">
       {rows.length > 0 && (
         // Widths live on the <th> inline so the browser's `resize:
         // horizontal` on each <th> actually drives column width. With
@@ -459,11 +502,12 @@ export function ProcessesPanel({
               <th aria-label="actions" style={{ width: '40px' }} />
             </tr>
           </thead>
-          <tbody>{rows.map(({ row, depth, hasChildren, isRoot }) => (
+          <tbody>{rows.map(({ row, depth, hasChildren, isRoot, preferCommand }) => (
             <ProcessRow
               key={row.process_id}
               row={row}
               depth={depth}
+              preferCommand={preferCommand}
               viewMode={viewMode}
               showAccount={showAccount}
               panel={row.session_id ? allPanels.get(row.session_id) ?? null : null}
@@ -492,6 +536,7 @@ export function ProcessesPanel({
           Waiting for process data… (the tracker repopulates a moment after the server starts.)
         </p>
       )}
+      </div>
     </section>
   );
 }

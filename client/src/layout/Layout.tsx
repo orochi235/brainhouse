@@ -80,7 +80,18 @@ export function Layout({ slots }: LayoutProps) {
             (parseFloat(cs.borderTopWidth) || 0) +
             (parseFloat(cs.borderBottomWidth) || 0);
           let inner = 0;
-          for (const piece of Array.from(el.children)) inner += (piece as HTMLElement).offsetHeight;
+          for (const piece of Array.from(el.children)) {
+            const p = piece as HTMLElement;
+            // .processes-scroll is flex-stretched to the slot, so its own
+            // box is circular with the fit. Sum its (unstretched) children
+            // instead — inside an overflow container their offsetHeights
+            // are intrinsic content heights.
+            if (p.classList.contains('processes-scroll')) {
+              for (const inner2 of Array.from(p.children)) inner += (inner2 as HTMLElement).offsetHeight;
+            } else {
+              inner += p.offsetHeight;
+            }
+          }
           naturalH += inner + chrome;
         } else {
           naturalH += el.offsetHeight;
@@ -113,7 +124,15 @@ export function Layout({ slots }: LayoutProps) {
       for (const c of Array.from(slot.children)) {
         const el = c as HTMLElement;
         if (el.classList.contains('processes-panel')) {
-          for (const piece of Array.from(el.children)) ro?.observe(piece as Element);
+          for (const piece of Array.from(el.children)) {
+            // Same transparency as measure(): observe the scroll wrapper's
+            // children, not its flex-stretched box.
+            if ((piece as HTMLElement).classList.contains('processes-scroll')) {
+              for (const inner of Array.from(piece.children)) ro?.observe(inner);
+            } else {
+              ro?.observe(piece as Element);
+            }
+          }
         } else {
           ro?.observe(el);
         }
