@@ -40,6 +40,7 @@ export interface ClientPrefs {
     showSessionTime: boolean;
     showTokens: boolean;
     showContext: boolean;
+    showCost: boolean;
     autoTitle: boolean;
   };
   messages: {
@@ -66,7 +67,7 @@ export interface ClientPrefs {
     tickIntervalMs: number;
     layoutIdleSeconds: number;
   };
-  roots: Array<{ path: string; label?: string; color?: string }>;
+  roots: Array<{ path: string; label?: string; color?: string; metered?: boolean }>;
   storage: {
     persistEnabled: boolean;
     eventsIndexRetentionDays: number;
@@ -98,6 +99,7 @@ const DEFAULT_PREFS: ClientPrefs = {
     showSessionTime: true,
     showTokens: true,
     showContext: true,
+    showCost: false,
     autoTitle: true,
   },
   messages: {
@@ -117,7 +119,13 @@ const DEFAULT_PREFS: ClientPrefs = {
     groupByWorktree: false,
     slotCount: 4,
   },
-  timings: { idleSeconds: 60, miniSeconds: 300, removeAfterSeconds: 86400, tickIntervalMs: 5000, layoutIdleSeconds: 3 },
+  timings: {
+    idleSeconds: 60,
+    miniSeconds: 300,
+    removeAfterSeconds: 86400,
+    tickIntervalMs: 5000,
+    layoutIdleSeconds: 3,
+  },
   roots: [],
   storage: { persistEnabled: false, eventsIndexRetentionDays: 30 },
   editor: { urlTemplate: 'cursor://file/{path}:{line}' },

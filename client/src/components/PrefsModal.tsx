@@ -18,7 +18,7 @@ import {
 import { useLightbox } from '../lib/lightboxContext.ts';
 import { trpc } from '../trpc.ts';
 
-type Root = { path: string; label?: string; color?: string };
+type Root = { path: string; label?: string; color?: string; metered?: boolean };
 type SectionKey =
   | 'accounts'
   | 'display'
@@ -44,6 +44,7 @@ interface PrefsDraft {
     showSessionTime: boolean;
     showTokens: boolean;
     showContext: boolean;
+    showCost: boolean;
     autoTitle: boolean;
   };
   messages: {
@@ -176,9 +177,7 @@ export function PrefsModal({ initial, onClose }: { initial: PrefsDraft; onClose:
           {active === 'lifecycle' && <LifecycleSection draft={draft} setDraft={setDraft} />}
           {active === 'workspace' && <WorkspaceSection draft={draft} setDraft={setDraft} />}
           {active === 'editor' && <EditorSection draft={draft} setDraft={setDraft} />}
-          {active === 'notifications' && (
-            <NotificationsSection draft={draft} setDraft={setDraft} />
-          )}
+          {active === 'notifications' && <NotificationsSection draft={draft} setDraft={setDraft} />}
           {active === 'storage' && <StorageSection draft={draft} setDraft={setDraft} />}
           {active === 'debug' && <DebugSection draft={draft} setDraft={setDraft} />}
           {active === 'blacklist' && <BlacklistSection draft={draft} setDraft={setDraft} />}
@@ -254,6 +253,21 @@ function AccountsSection({ draft, setDraft }: SectionProps) {
               setDraft({ ...draft, roots });
             }}
           />
+          <label
+            className="prefs-root-metered"
+            title="Metered — this account bills at API list price. Enables the estimated $ chip for its sessions (when Display → Show estimated cost is on)."
+          >
+            <input
+              type="checkbox"
+              checked={r.metered ?? false}
+              onChange={(e) => {
+                const roots = draft.roots.slice();
+                roots[i] = { ...roots[i], metered: e.target.checked || undefined } as Root;
+                setDraft({ ...draft, roots });
+              }}
+            />
+            <span>metered</span>
+          </label>
           <button
             type="button"
             className="prefs-remove"
@@ -346,6 +360,12 @@ function DisplaySection({ draft, setDraft }: SectionProps) {
         label="Show context-size badge"
         checked={draft.display.showContext}
         onChange={(v) => set({ showContext: v })}
+      />
+      <CheckboxField
+        label="Show estimated cost ($) on chip"
+        hint="Promotes the est. $ from the token tooltip onto the chip. Only shows for accounts marked metered (Accounts tab) — a list-price $ is meaningless for subscription accounts, so those stay tokens-only."
+        checked={draft.display.showCost}
+        onChange={(v) => set({ showCost: v })}
       />
       <CheckboxField
         label="Keep panel titles up to date"
@@ -604,8 +624,7 @@ function NotificationsSection({ draft, setDraft }: SectionProps) {
   // Live read of the OS permission state. We don't subscribe — it only
   // changes via a user gesture we trigger ourselves, so a render at flip
   // time is enough.
-  const permission =
-    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+  const permission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
 
   const handleBrowserToggle = async (v: boolean) => {
     if (v && typeof Notification !== 'undefined' && Notification.permission === 'default') {

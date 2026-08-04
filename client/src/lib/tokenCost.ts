@@ -65,6 +65,24 @@ function pricingFor(model: string | null | undefined): ModelPricing | null {
   return null;
 }
 
+/** Whether a panel's account bills at API list price, so an estimated `$`
+ * is a real number worth showing rather than misleading (a subscription
+ * account's list-price estimate doesn't reflect what's actually paid).
+ *
+ * A root opts in with `metered: true`. Matching is by `account_label` →
+ * root `label`. When the panel carries no label (single-account setups
+ * stamp none), we treat it as metered only if there's exactly one
+ * configured root and it's metered — otherwise attribution is ambiguous
+ * and we stay conservative (not metered). */
+export function isMeteredAccount(
+  roots: Array<{ label?: string; metered?: boolean }>,
+  accountLabel: string | null | undefined,
+): boolean {
+  if (!roots.some((r) => r.metered)) return false;
+  if (accountLabel) return roots.some((r) => r.metered && r.label === accountLabel);
+  return roots.length === 1;
+}
+
 /** Estimated cost in USD. Returns null if the model isn't in our table. */
 export function estimateCostUsd(t: TokenBuckets): number | null {
   const p = pricingFor(t.model);

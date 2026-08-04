@@ -5,7 +5,35 @@ import {
   estimateCostUsd,
   formatUsd,
   inputEquivalentTokens,
+  isMeteredAccount,
 } from './tokenCost.ts';
+
+describe('isMeteredAccount', () => {
+  const roots = [{ label: 'PW', metered: true }, { label: 'MSB' }];
+
+  it('is true for a panel on a metered-flagged, labeled root', () => {
+    expect(isMeteredAccount(roots, 'PW')).toBe(true);
+  });
+
+  it('is false for a panel on a non-metered root', () => {
+    expect(isMeteredAccount(roots, 'MSB')).toBe(false);
+  });
+
+  it('is false when no root is metered', () => {
+    expect(isMeteredAccount([{ label: 'MSB' }], 'MSB')).toBe(false);
+  });
+
+  it('is false for an unknown / unmatched label', () => {
+    expect(isMeteredAccount(roots, 'nope')).toBe(false);
+  });
+
+  it('treats a null label as metered only when the single configured root is metered', () => {
+    expect(isMeteredAccount([{ metered: true }], null)).toBe(true);
+    expect(isMeteredAccount([{}], null)).toBe(false);
+    // Ambiguous: null label but multiple roots — cannot attribute, so not metered.
+    expect(isMeteredAccount(roots, null)).toBe(false);
+  });
+});
 
 describe('inputEquivalentTokens', () => {
   it('weights each bucket by its billing coefficient', () => {
@@ -28,9 +56,7 @@ describe('inputEquivalentTokens', () => {
   });
 
   it('returns 0 for an empty bucket set', () => {
-    expect(
-      inputEquivalentTokens({ input: 0, cache_create: 0, cache_read: 0, output: 0 }),
-    ).toBe(0);
+    expect(inputEquivalentTokens({ input: 0, cache_create: 0, cache_read: 0, output: 0 })).toBe(0);
   });
 });
 
@@ -68,9 +94,7 @@ describe('estimateCostUsd', () => {
 
 describe('cacheHitRate', () => {
   it('returns null when nothing cacheable yet', () => {
-    expect(
-      cacheHitRate({ input: 0, output: 1000, cache_create: 0, cache_read: 0 }),
-    ).toBeNull();
+    expect(cacheHitRate({ input: 0, output: 1000, cache_create: 0, cache_read: 0 })).toBeNull();
   });
 
   it('excludes output from the denominator', () => {
@@ -84,21 +108,19 @@ describe('cacheHitRate', () => {
 describe('cacheHealth', () => {
   it('reports unknown until enough cacheable traffic accumulates', () => {
     // Below 50k cacheable, ratios are too noisy.
-    expect(
-      cacheHealth({ input: 100, output: 0, cache_create: 0, cache_read: 0 }),
-    ).toBe('unknown');
+    expect(cacheHealth({ input: 100, output: 0, cache_create: 0, cache_read: 0 })).toBe('unknown');
   });
 
   it('flags poor when cache hit rate is below 40% at scale', () => {
-    expect(
-      cacheHealth({ input: 80_000, output: 0, cache_create: 0, cache_read: 20_000 }),
-    ).toBe('poor');
+    expect(cacheHealth({ input: 80_000, output: 0, cache_create: 0, cache_read: 20_000 })).toBe(
+      'poor',
+    );
   });
 
   it('reports healthy at typical steady-state ratios', () => {
-    expect(
-      cacheHealth({ input: 5000, output: 5000, cache_create: 5000, cache_read: 90_000 }),
-    ).toBe('healthy');
+    expect(cacheHealth({ input: 5000, output: 5000, cache_create: 5000, cache_read: 90_000 })).toBe(
+      'healthy',
+    );
   });
 
   it('reports mixed in between', () => {

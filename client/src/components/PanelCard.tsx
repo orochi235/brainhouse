@@ -13,7 +13,13 @@ import { type ChecklistItem, preprocessEvents } from '../lib/pipeline.ts';
 import type { SubagentSpawn, ViewItem } from '../lib/pipeline-types.ts';
 import { projectLabel } from '../lib/project.ts';
 import { loadScrollPosition, saveScrollPosition } from '../lib/scrollMemory.ts';
-import { cacheHealth, inputEquivalentTokens } from '../lib/tokenCost.ts';
+import {
+  cacheHealth,
+  estimateCostUsd,
+  formatUsd,
+  inputEquivalentTokens,
+  isMeteredAccount,
+} from '../lib/tokenCost.ts';
 import { usePrefs } from '../lib/usePrefs.tsx';
 import { useScrollBackfill } from '../lib/useScrollBackfill.ts';
 import { deriveWorktree, worktreeColor } from '../lib/worktree.ts';
@@ -521,6 +527,7 @@ function PanelHeader({
   // whole panel + EventList subtree.
   const now = useClock();
   const lightbox = useLightbox();
+  const { prefs } = usePrefs();
   const isLive = panel.status === 'live';
   // See sibling note in PanelCard: mini is a tray-only render mode keyed
   // on placement. `onRestore` is only supplied by the tray renderer, so a
@@ -564,6 +571,13 @@ function PanelHeader({
   // rather than a naive sum — cache_read dominates the raw total at 0.1×
   // actual cost, so an unweighted sum overstates effective usage by ~5×.
   const totalTokens = inputEquivalentTokens(panel.tokens);
+  // Live-$ on the chip: only when the user opted in (display.showCost) AND
+  // this session's account bills at list price (a metered root). For
+  // subscription accounts the estimate would misrepresent real spend, so
+  // it stays tokens-only there. Unknown-model turns yield null → hidden.
+  const costUsd = estimateCostUsd(panel.tokens);
+  const showChipCost =
+    prefs.display.showCost && costUsd != null && isMeteredAccount(prefs.roots, panel.account_label);
 
   // Leading column: status light on top. Mini panels also get a × (and
   // trash for non-tray contexts) below it, separated by a rotated-T
@@ -725,6 +739,11 @@ function PanelHeader({
               content={<TokenTooltip tokens={panel.tokens} />}
             >
               <span aria-label="token usage">{formatTokens(totalTokens)}</span>
+            </HoverPopover>
+          )}
+          {showChipCost && costUsd != null && (
+            <HoverPopover className="panel-cost" content={<TokenTooltip tokens={panel.tokens} />}>
+              <span aria-label="estimated cost">{formatUsd(costUsd)}</span>
             </HoverPopover>
           )}
           {panel.context_size > 0 && (
