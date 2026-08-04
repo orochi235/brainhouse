@@ -891,8 +891,57 @@ Consumers re-read from a persisted byte offset, so coarse/coalesced native
 events are harmless; a 30s reconcile scan (2-min window) backstops any
 dropped FSEvents.
 
-STILL OPEN (low priority): the `MAX_CONCURRENT_SPAWNS=1` gate + retry tuning
+[DONE 2026-08-03] the `MAX_CONCURRENT_SPAWNS=1` gate + retry tuning
 in `processes/spawnQueue.ts` were built on a WRONG diagnosis (EBADF as a
-spawn-vs-spawn race; it was always watcher fd exhaustion). Harmless, but
-consider relaxing the single-permit gate — it can starve the Network view's
-`lsof:ports` sweep — now that the fd pressure is gone.
+spawn-vs-spawn race; it was always watcher fd exhaustion). The predicted
+starvation became real: with a 1s ps tick + per-tick lsof:cwd, the
+`lsof:ports` sweep parked behind an unbounded FIFO forever and the Network
+view sat permanently empty. Gate relaxed to 4 permits; a persistent lsof
+failure now also logs (rate-limited) instead of dying silently.
+
+## Scratchpad dirs: figure out whether/how to detect & support them
+
+Newer Claude Code sessions get a per-session scratchpad temp dir the
+agent is told to use instead of /tmp:
+
+    /private/tmp/claude-<uid>/<project-slug>/<session-uuid>/scratchpad
+
+The path embeds the same project slug as `~/.claude*/projects/` and the
+session UUID matching the JSONL filename, so mapping a scratchpad to a
+panel is pure string ops. Brainhouse currently has no conception of it,
+and it barely appears in watched logs today (2 sessions / 12 mentions,
+mostly tool calls writing files there).
+
+Open question: whether/how to detect and support it at all. Candidate
+angles if we do: abbreviate scratchpad paths in tool-call renders
+(collapse the long prefix), or a panel affordance to peek at a live
+session's scratchpad contents.
+
+## Window-management throttling/debouncing (2026-08-03)
+
+Rapid panel churn (status flips, supersede dims, cold-start floods,
+delta bursts) can drive the layout through many transitions in quick
+succession — each one re-slotting/animating windows. We likely want
+rate-limiting: coalesce bursts so a panel that flips live→done→live
+inside a beat doesn't bounce through the grid, and stagger mass
+transitions.
+
+Where it belongs: **mechanism in windease, policy here.** windease owns
+the per-window FSMs and transition tables — a generic "transition
+rate-limiter / coalescing window" knob (min dwell time per state,
+batched apply) is windowing bookkeeping and benefits any consumer.
+Brainhouse then just configures it (which events coalesce, dwell
+durations) rather than pre-filtering its own delta stream. If a
+windease release is far off, an interim client-side debounce at the
+delta→layout boundary (useDeltaStream → windease adapter) is the
+stopgap, kept thin enough to delete when the real knob lands.
+
+## Dock: prune dead sessions harder + group subtasks (2026-08-03)
+
+- **Aggressive dead-session pruning.** The dock accumulates far too many
+  dead sessions. Tighten the reaping policy for `mini` panels whose
+  session has ended (shorter retention window, or cap the dock to N dead
+  sessions and evict oldest-idle first — pinned/user-kept exempt).
+- **Group subtasks in the dock.** Subagent panels should nest under
+  their parent's dock entry the same way they group inside session
+  windows, instead of appearing as free-floating dock tiles.

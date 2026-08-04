@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { execWithRetry, getSpawnDiagnostics, resetSpawnDiagnostics, listProcesses, listListeningPorts, signalProcess, parsePsOutput, parseLsofOutput } from './native.js';
+import { MAX_CONCURRENT_SPAWNS } from './spawnQueue.js';
 
 function spawnError(code: string): Error {
   const e = new Error(`spawn ${code}`) as Error & { code: string; syscall: string; errno: number };
@@ -94,7 +95,7 @@ describe('execWithRetry diagnostics', () => {
     expect(d.recent.at(-1)).toMatchObject({ label: 'ps', code: 'EBADF', attempts: 3 });
   });
 
-  it('serializes spawns so concurrent callers never overlap (kills the EBADF fd race)', async () => {
+  it('bounds concurrent spawns at MAX_CONCURRENT_SPAWNS', async () => {
     resetSpawnDiagnostics();
     let active = 0;
     let maxActive = 0;
@@ -111,12 +112,16 @@ describe('execWithRetry diagnostics', () => {
           }),
         { label },
       );
-    // Fire all three the way a tick + port sweep would — concurrently.
-    await Promise.all([task('ps'), task('lsof:ports'), task('lsof:cwd')]);
-    // The queue lets only one spawn run at a time, so the fd race never arises.
-    expect(maxActive).toBe(1);
+    // Fire more tasks than permits, the way a tick + port sweep burst would.
+    await Promise.all(
+      ['ps', 'lsof:ports', 'lsof:cwd', 'git:a', 'git:b', 'git:c'].map((l) => task(l)),
+    );
+    // The gate caps overlap at the permit count (relaxed from the original
+    // single permit, which starved the port sweep — see spawnQueue.ts).
+    expect(maxActive).toBeLessThanOrEqual(MAX_CONCURRENT_SPAWNS);
+    expect(maxActive).toBeGreaterThan(1);
     const d = getSpawnDiagnostics();
-    expect(d.peakInFlight).toBe(1);
+    expect(d.peakInFlight).toBeLessThanOrEqual(MAX_CONCURRENT_SPAWNS);
     expect(d.inFlight).toBe(0);
   });
 });

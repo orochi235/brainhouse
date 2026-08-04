@@ -85,7 +85,7 @@ export async function listProcesses(): Promise<PsRow[]> {
     () =>
       execFileAsync(
         'ps', ['-A', '-o', 'pid,ppid,lstart,comm,command'],
-        { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+        { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 },
       ),
     { label: 'ps' },
   );
@@ -98,18 +98,33 @@ export async function listProcesses(): Promise<PsRow[]> {
  * listeners," but a failure means "we don't know" — and the port
  * sweeper must NOT treat the latter as "every port disappeared," or
  * every network row flickers out and back on the next good sample. */
+let lastLsofWarnAt = 0;
+
 export async function listListeningPorts(): Promise<PortRow[] | null> {
   try {
     const { stdout } = await execWithRetry(
       () =>
         execFileAsync(
           'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pPn'],
-          { timeout: 3000, maxBuffer: 8 * 1024 * 1024 },
+          { timeout: 10_000, maxBuffer: 8 * 1024 * 1024 },
         ),
       { label: 'lsof:ports' },
     );
     return parseLsofOutput(stdout);
-  } catch {
+  } catch (e) {
+    // Null keeps the sweeper's cache untouched (see caller), but a
+    // *persistently* failing lsof must not be invisible — it means the
+    // Network view silently never populates. Log at most once a minute.
+    const now = Date.now();
+    if (now - lastLsofWarnAt > 60_000) {
+      lastLsofWarnAt = now;
+      const msg = e instanceof Error ? e.message.split('\n')[0] : String(e);
+      const code = (e as { code?: string | number })?.code;
+      const signal = (e as { signal?: string })?.signal;
+      console.warn(
+        `[processes] lsof:ports failed (${msg}${code !== undefined ? ` code=${code}` : ''}${signal ? ` signal=${signal}` : ''}) — Network view ports may be stale`,
+      );
+    }
     return null;
   }
 }
@@ -144,7 +159,7 @@ export async function listCwds(): Promise<Map<number, string>> {
       () =>
         execFileAsync(
           'lsof', ['-d', 'cwd', '-Fpn'],
-          { timeout: 3000, maxBuffer: 16 * 1024 * 1024 },
+          { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 },
         ),
       { label: 'lsof:cwd' },
     );

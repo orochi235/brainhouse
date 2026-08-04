@@ -36,6 +36,7 @@ async function main() {
     idleSeconds: timings.idleSeconds,
     miniSeconds: timings.miniSeconds,
     removeAfterSeconds: timings.removeAfterSeconds,
+    liveProcessGraceSeconds: timings.liveProcessGraceSeconds,
     tickIntervalMs: timings.tickIntervalMs,
     store,
     eventsIndexRetentionDays: storage.eventsIndexRetentionDays,
@@ -82,6 +83,12 @@ async function main() {
 
   app.get('/health', async () => ({ ok: true }));
 
+  // Plain-JSON counts for the macOS menu bar helper (menubar/main.swift):
+  // it polls this every few seconds and shows `awaiting_input` as the
+  // badge count. Outside the tRPC tree so the Swift URLSession client
+  // stays a one-line JSON fetch.
+  app.get('/api/summary', async () => monitor.store.menubarSummary());
+
   // Plain-JSON read of processes attributed to a Claude session. Lives
   // outside the tRPC tree so brainhouse hook scripts can hit it with a
   // single `fetch()` without speaking the tRPC protocol. Used by the
@@ -95,6 +102,43 @@ async function main() {
       return { session_id: sid, rows };
     },
   );
+
+  // Debug: run the lsof sweep primitive inline and report what it sees from
+  // inside the service environment (env/PATH/exit-code differences vs. a
+  // shell are exactly what this exists to catch).
+  app.get('/procs/sweep-probe', async () => {
+    const { listListeningPorts } = await import('./processes/native.js');
+    const rows = await listListeningPorts();
+    return rows === null
+      ? { result: 'null (lsof failed)' }
+      : { result: `${rows.length} pid rows`, sample: rows.slice(0, 5) };
+  });
+
+  // Debug: force one port sweep synchronously and report the before/after
+  // port-carrying row count — separates "sweep logic broken" from "sweep
+  // never fires".
+  app.get('/procs/sweep-now', async () => {
+    const before = tracker.snapshot().filter((r) => r.ports.length > 0).length;
+    await tracker.maybeSweepPorts();
+    const after = tracker.snapshot().filter((r) => r.ports.length > 0).length;
+    return { before, after };
+  });
+
+  // Debug read of the port sweep: every tracked row that carries ports,
+  // plus counts to tell "sweep never ran" apart from "nothing qualifies".
+  app.get('/procs/ports', async () => {
+    const all = tracker.snapshot();
+    const t = tracker as unknown as { subscribers: number; sweeping: boolean };
+    return {
+      subscribers: t.subscribers,
+      sweeping: t.sweeping,
+      total: all.length,
+      with_ports: all.filter((r) => r.ports.length > 0).length,
+      rows: all
+        .filter((r) => r.ports.length > 0)
+        .map((r) => ({ pid: r.pid, provenance: r.provenance, ports: r.ports, command: r.command.slice(0, 60) })),
+    };
+  });
 
   // Serve the built client when present (production / `npm start`). In dev
   // the Vite server runs on its own port and proxies /trpc back here, so

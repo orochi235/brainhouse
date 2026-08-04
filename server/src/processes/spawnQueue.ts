@@ -86,13 +86,15 @@ export function resetSpawnDiagnostics(): void {
   recentExhaustions = [];
 }
 
-/** Max child_process spawns allowed in flight at once. Serializing to one at a
- * time caps spawn-vs-spawn overlap, but does NOT remove the fd race on its own
- * (it also collides with non-spawn fd churn — see the file header); the retry
- * is what absorbs the remainder. The cost is negligible for sub-second
- * shell-outs (each carries its own timeout). Bump only if a profile shows the
- * queue is a bottleneck. */
-const MAX_CONCURRENT_SPAWNS = 1;
+/** Max child_process spawns allowed in flight at once. The original
+ * single-permit gate was built on a wrong diagnosis (EBADF was watcher fd
+ * exhaustion, not a spawn-vs-spawn race — see TODO.md) and it starved the
+ * port sweep: the 1s ps tick + per-tick lsof:cwd kept the permit busy, and
+ * queue wait is unbounded (the child's timeout only starts once spawned),
+ * so `lsof:ports` could park forever and the Network view never populated.
+ * A few permits keep spawn bursts bounded while letting the sweep breathe;
+ * the retry still absorbs any residual transient failures. */
+export const MAX_CONCURRENT_SPAWNS = 4;
 
 /** FIFO of callers parked because the gate is full; each is resumed by a
  * finishing spawn's `finally`. */
