@@ -33,6 +33,7 @@ export interface MonitorOptions {
   idleSeconds?: number;
   miniSeconds?: number;
   removeAfterSeconds?: number;
+  liveProcessGraceSeconds?: number;
   tickIntervalMs?: number;
   /** Directory the hook dispatcher writes sidecar JSONL into. Defaults to
    * `~/.brainhouse/events`. Set to `null` to disable hook ingestion. */
@@ -115,6 +116,7 @@ export class TranscriptMonitor {
       idleSeconds: opts.idleSeconds,
       miniSeconds: opts.miniSeconds,
       removeAfterSeconds: opts.removeAfterSeconds,
+      liveProcessGraceSeconds: opts.liveProcessGraceSeconds,
       uiWindowSeconds: opts.discovery?.uiWindowSeconds,
       store: opts.store ?? null,
       // Process-aware liveness: don't let a session flip to `done` while its
@@ -306,6 +308,7 @@ export class TranscriptMonitor {
     idleSeconds?: number;
     miniSeconds?: number;
     removeAfterSeconds?: number;
+    liveProcessGraceSeconds?: number;
     tickIntervalMs?: number;
   }): void {
     this.store.setTimings(opts);
@@ -346,6 +349,14 @@ export class TranscriptMonitor {
     if (source === 'clear') {
       for (const d of this.store.armClearTitleSuppression(event.session_id)) {
         this.broadcast(d);
+      }
+      // The fresh post-clear panel is empty until the user types again —
+      // born mini in the dock, promoted back to the grid on first real
+      // input. Same pref gate as the predecessor's forced-mini below.
+      if (this.autoMinimizeOnClear) {
+        for (const d of this.store.armStartMinimized(event.session_id)) {
+          this.broadcast(d);
+        }
       }
     }
     const encodedCwdDir = path.basename(path.dirname(event.transcript_path));

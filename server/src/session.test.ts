@@ -1398,9 +1398,104 @@ describe('cold-start replay status (no live flash for stale events)', () => {
     expect(store.panel('S')?.status).toBe('live');
   });
 
-  it('keeps a stale session live when its process is still alive', () => {
+  it('keeps a recently-quiet session live when its process is still alive', () => {
     const store = new SessionStore({ clock: new FakeClock(NOW).now, isSessionLive: () => true });
-    store.apply(at('u1', '2026-06-20T11:00:00.000Z')); // 1h ago but process alive
+    store.apply(at('u1', '2026-06-20T11:50:00.000Z')); // 10m ago, within grace
     expect(store.panel('S')?.status).toBe('live');
+  });
+
+  it('settles a long-idle session by log age even when its process is alive', () => {
+    // An open-but-untouched window: the process-liveness grace (30m) has
+    // lapsed, so the panel dates from its last log activity instead of
+    // holding a grid slot as if fresh.
+    const store = new SessionStore({ clock: new FakeClock(NOW).now, isSessionLive: () => true });
+    store.apply(at('u1', '2026-06-20T09:00:00.000Z')); // 3h ago but process alive
+    expect(store.panel('S')?.status).toBe('mini');
+  });
+});
+
+describe('process-liveness grace bound', () => {
+  it('tick demotes a live process-alive panel once idle beyond the grace', () => {
+    const clock = new FakeClock(1_000_000);
+    const store = new SessionStore({
+      idleSeconds: 60,
+      miniSeconds: 600,
+      liveProcessGraceSeconds: 1800,
+      clock: clock.now,
+      isSessionLive: () => true,
+    });
+    store.apply({
+      ...ev('user_text', { payload: { text: 'hi' } }),
+      ts: new Date(1_000_000 * 1000).toISOString(),
+    } as Event);
+    expect(store.panel('S')?.status).toBe('live');
+    // Past idleSeconds but within grace: the alive process holds it live.
+    clock.advance(1200);
+    expect(store.tick()).toEqual([]);
+    expect(store.panel('S')?.status).toBe('live');
+    // Past the grace: demotes, back-dated to when it actually went idle.
+    clock.advance(700);
+    const deltas = store.tick();
+    expect(deltas).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
+    expect(store.panel('S')?.status_changed_at).toBe(1_000_000 + 60);
+  });
+
+  it('a fresh event promotes a grace-expired panel straight back to live', () => {
+    const clock = new FakeClock(1_000_000);
+    const store = new SessionStore({
+      idleSeconds: 60,
+      miniSeconds: 600,
+      liveProcessGraceSeconds: 1800,
+      clock: clock.now,
+      isSessionLive: () => true,
+    });
+    store.apply({
+      ...ev('user_text', { payload: { text: 'hi' } }),
+      ts: new Date(1_000_000 * 1000).toISOString(),
+    } as Event);
+    clock.advance(2000);
+    store.tick();
+    expect(store.panel('S')?.status).toBe('done');
+    store.apply({
+      ...ev('user_text', { uuid: 'u2', payload: { text: 'back' } }),
+      ts: new Date(clock.t * 1000).toISOString(),
+    } as Event);
+    expect(store.panel('S')?.status).toBe('live');
+  });
+});
+
+describe('menubarSummary', () => {
+  it('counts live and awaiting-input parent panels', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { session_id: 'A', uuid: 'a1' }));
+    store.apply(ev('user_text', { session_id: 'B', uuid: 'b1' }));
+    // Subagents don't count — the parent already represents the session.
+    store.apply(ev('user_text', { session_id: 'B', agent_id: 'sub1', uuid: 'b2' }));
+    store.setAwaiting('A', true);
+    expect(store.menubarSummary()).toEqual({ live: 2, awaiting_input: 1 });
+  });
+
+  it('excludes non-live and binned panels', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ clock: clock.now });
+    store.apply(ev('user_text', { session_id: 'A', uuid: 'a1' }));
+    store.apply(ev('user_text', { session_id: 'B', uuid: 'b1' }));
+    store.forceStatus('B', 'mini');
+    expect(store.menubarSummary()).toEqual({ live: 1, awaiting_input: 0 });
+  });
+});
+
+describe('menubarSummary surfacing gate', () => {
+  it('ignores awaiting flags on panels too old to surface', () => {
+    const now = 1_000_000;
+    const store = new SessionStore({
+      clock: () => now,
+      isSessionLive: () => false,
+      uiWindowSeconds: 100,
+    });
+    store.apply(textEvent('ancient', new Date((now - 10_000) * 1000).toISOString()));
+    store.setAwaiting('ancient', true);
+    expect(store.menubarSummary()).toEqual({ live: 0, awaiting_input: 0 });
   });
 });

@@ -51,6 +51,11 @@ export const RootSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{3,8}$/)
     .optional(),
+  /** When true, this account bills at API list price, so an estimated
+   * `$` for its sessions is a real number (see `display.showCost`).
+   * Subscription accounts leave this unset — a list-price estimate would
+   * misrepresent what they actually pay. */
+  metered: z.boolean().optional(),
 });
 export type Root = z.infer<typeof RootSchema>;
 
@@ -61,6 +66,14 @@ export type Root = z.infer<typeof RootSchema>;
 export const TimingsSchema = z.object({
   /** A live panel becomes `done` after this many idle seconds. */
   idleSeconds: z.number().int().positive().default(60),
+  /** How long a transcript-quiet session's live `claude` process keeps its
+   * panel `live` past idleSeconds. Beyond this, an open-but-untouched
+   * window ages through done→mini dated from its last log activity. */
+  liveProcessGraceSeconds: z
+    .number()
+    .int()
+    .positive()
+    .default(30 * 60),
   /** A `done` panel demotes to `mini` after this many seconds in `done`. */
   miniSeconds: z
     .number()
@@ -146,6 +159,10 @@ export const DisplaySchema = z.object({
   showSessionTime: z.boolean().default(true),
   showTokens: z.boolean().default(true),
   showContext: z.boolean().default(true),
+  /** Promote the estimated `$` cost onto the panel chip (it otherwise
+   * lives only in the token tooltip). Applies only to sessions on a
+   * `metered` root — see `RootSchema.metered`. Default off. */
+  showCost: z.boolean().default(false),
   /** When true, a Stop hook runs `claude -p` after each assistant turn to
    * propose a panel title, using the user's own Claude CLI auth. The hook
    * decides whether to fire based on turn count + current title; the

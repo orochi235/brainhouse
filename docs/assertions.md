@@ -406,6 +406,26 @@ UI/server is meant to uphold. New entries go at the bottom.
   off to keep cleared sessions visible until the normal lifecycle
   ticks them down.
 
+- The *new* session a manual `/clear` starts is born `mini` (in the dock,
+  not the grid) under the same `autoMinimizeOnClear` gate — an empty
+  post-clear panel shouldn't hold a full-size grid slot. The slash-command
+  artifact trio and meta records do not lift it; the first real event
+  (genuine prompt, assistant text, tool use) promotes it back to `live`.
+  If the JSONL watcher creates the panel before the SessionStart hook
+  lands, the hook demotes it retroactively — unless real activity already
+  arrived, in which case the panel stays live. `/compact` starts are
+  never born-mini (the compacted conversation is mid-work). Not persisted:
+  a brainhouse restart mid-window lets the panel settle normally.
+
+- A live `claude` process extends its parent panel's `live` status past
+  `idleSeconds` only within `prefs.timings.liveProcessGraceSeconds`
+  (default 30 min). Beyond the grace, an open-but-untouched window ages
+  through the normal `done → mini` lifecycle dated from its last log
+  activity — at cold-start settling and in the runtime tick alike — so
+  days-idle open windows land in the dock, correctly aged, instead of
+  holding grid slots. They still surface (process-alive force-surfacing
+  is unchanged), and any new event promotes them straight back to `live`.
+
 - A subagent panel (`kind === 'subagent'` with a `parent_panel_id`) has a
   `↗` pop-out affordance in its tool palette. Clicking it opens
   `?panel=<id>` in a new browser window named `brainhouse-panel-<id>`, so

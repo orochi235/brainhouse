@@ -927,4 +927,89 @@ describe('TranscriptMonitor', () => {
 
   // setRoots is an integration with chokidar; not unit-testable without a
   // real watch path. Covered indirectly by the watcher tests.
+
+  describe('post-/clear panel starts minimized', () => {
+    const PROJECTS = '/Users/x/.claude/projects';
+    const CWD = '/Users/x/work/foo';
+    const ENCODED_DIR = '-Users-x-work-foo';
+    const newTranscript = `${PROJECTS}/${ENCODED_DIR}/NEW.jsonl`;
+    const recentTs = Date.now() / 1000;
+    const freshIso = () => new Date().toISOString();
+
+    function clearHook(monitor: TranscriptMonitor, source = 'clear'): void {
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source,
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+    }
+
+    function artifactEvent(uuid: string, text: string): Event {
+      return {
+        ...userTextEvent({ session_id: 'NEW', uuid, cwd: CWD, text }),
+        ts: freshIso(),
+      } as Event;
+    }
+
+    it('creates the new panel mini and holds through the /clear artifact trio', () => {
+      const monitor = newMonitor();
+      clearHook(monitor);
+      monitor.ingest(artifactEvent('a1', '<local-command-caveat>Caveat: …</local-command-caveat>'));
+      expect(monitor.store.panel('NEW')?.status).toBe('mini');
+      monitor.ingest(artifactEvent('a2', '<command-name>/clear</command-name>'));
+      monitor.ingest(artifactEvent('a3', '<local-command-stdout></local-command-stdout>'));
+      expect(monitor.store.panel('NEW')?.status).toBe('mini');
+    });
+
+    it('promotes to live on the first real prompt after the artifacts', () => {
+      const monitor = newMonitor();
+      clearHook(monitor);
+      monitor.ingest(artifactEvent('a1', '<command-name>/clear</command-name>'));
+      expect(monitor.store.panel('NEW')?.status).toBe('mini');
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'NEW', uuid: 'p1', cwd: CWD, text: 'real prompt' }),
+        ts: freshIso(),
+      } as Event);
+      expect(monitor.store.panel('NEW')?.status).toBe('live');
+    });
+
+    it('demotes an already-created panel when the hook arrives late', () => {
+      const monitor = newMonitor();
+      monitor.ingest(artifactEvent('a1', '<command-name>/clear</command-name>'));
+      expect(monitor.store.panel('NEW')?.status).toBe('live');
+      clearHook(monitor);
+      expect(monitor.store.panel('NEW')?.status).toBe('mini');
+    });
+
+    it('leaves the panel live when a real prompt beat the late hook', () => {
+      const monitor = newMonitor();
+      monitor.ingest(artifactEvent('a1', '<command-name>/clear</command-name>'));
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'NEW', uuid: 'p1', cwd: CWD, text: 'real prompt' }),
+        ts: freshIso(),
+      } as Event);
+      clearHook(monitor);
+      expect(monitor.store.panel('NEW')?.status).toBe('live');
+    });
+
+    it('does not minimize when autoMinimizeOnClear is off', () => {
+      const monitor = new TranscriptMonitor({
+        roots: [],
+        hookEventsDir: null,
+        autoMinimizeOnClear: false,
+      });
+      clearHook(monitor);
+      monitor.ingest(artifactEvent('a1', '<command-name>/clear</command-name>'));
+      expect(monitor.store.panel('NEW')?.status).toBe('live');
+    });
+
+    it('does not minimize on /compact', () => {
+      const monitor = newMonitor();
+      clearHook(monitor, 'compact');
+      monitor.ingest(artifactEvent('a1', 'compacted summary'));
+      expect(monitor.store.panel('NEW')?.status).toBe('live');
+    });
+  });
 });

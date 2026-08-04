@@ -171,6 +171,13 @@ export interface Panel {
    * `/rename` to a *different* string is honored immediately and also
    * clears the suppression. */
   clear_title_suppression: { suppressed_title: string | null } | null;
+  /** True while a panel born from a `/clear` should stay `mini` in the
+   * dock. The fresh transcript's slash-command artifact trio and meta
+   * records don't lift it; the first real event (genuine prompt,
+   * assistant text, tool use) clears it and lets the normal live
+   * promotion claim a grid slot. Armed via {@link armStartMinimized},
+   * gated on the `autoMinimizeOnClear` pref in the monitor. */
+  start_minimized: boolean;
   /** True once the user has explicitly set this panel's title via
    * `/rename` (a `custom-title` meta record that wasn't a /clear
    * inheritance echo). Stays true for the panel's lifetime — the auto-
@@ -251,6 +258,14 @@ export interface SessionStoreOptions {
    * "always dead", preserving the pure transcript-idle behavior when no
    * tracker is wired (tests, persistence-only hosts). */
   isSessionLive?: (sessionId: string) => boolean;
+  /** How long a transcript-quiet parent session keeps riding its live
+   * process's coattails as `live`. Beyond this, an open-but-untouched
+   * window ages through the normal done→mini lifecycle dated from its
+   * last log activity (it still surfaces — see `isSurfaceable` — and any
+   * new event promotes it straight back). Generously longer than any
+   * agentic turn's flush gap, far shorter than "left open for days".
+   * Defaults to 30 minutes. */
+  liveProcessGraceSeconds?: number;
   /** Surfacing window for `snapshot()`. A panel whose owning process is not
    * live surfaces to the UI only if it was active within this many seconds.
    * Older panels stay in memory (queryable, lifecycle intact) but are not
@@ -266,6 +281,7 @@ export class SessionStore {
   private readonly panels = new Map<string, Panel>();
   private readonly store: Store | null;
   private readonly isSessionLive: (sessionId: string) => boolean;
+  private liveProcessGraceSeconds: number;
   private readonly uiWindowSeconds: number;
   /** Session ids that started via `/clear` whose panel hasn't been
    * created yet. Drained at `ensurePanel` time to arm
@@ -273,6 +289,11 @@ export class SessionStore {
    * land before the first JSONL record for the new session, so the
    * panel does not yet exist when supersede fires. */
   private readonly pendingClearTitleSuppression = new Set<string>();
+  /** Session ids that started via `/clear` whose panel should be born
+   * `mini` (dock, not grid) until real input arrives. Drained at
+   * `ensurePanel` time, same hook-beats-JSONL timing as
+   * {@link pendingClearTitleSuppression}. */
+  private readonly pendingStartMini = new Set<string>();
   /** session_id → iTerm2 GUID captured by a session_pid hook that arrived
    * before the panel existed. Drained at `ensurePanel` time. The hook
    * typically fires before the first JSONL record for the session, so the
@@ -293,6 +314,7 @@ export class SessionStore {
     this.clock = opts.clock ?? (() => Date.now() / 1000);
     this.store = opts.store ?? null;
     this.isSessionLive = opts.isSessionLive ?? (() => false);
+    this.liveProcessGraceSeconds = opts.liveProcessGraceSeconds ?? 30 * 60;
     this.uiWindowSeconds = opts.uiWindowSeconds ?? 172800;
   }
 
@@ -338,10 +360,18 @@ export class SessionStore {
   /** Hot-swap lifecycle timings. The next `tick()` immediately respects
    * the new values — panels that newly satisfy a transition fire on the
    * next tick rather than retroactively. */
-  setTimings(opts: { idleSeconds?: number; miniSeconds?: number; removeAfterSeconds?: number }) {
+  setTimings(opts: {
+    idleSeconds?: number;
+    miniSeconds?: number;
+    removeAfterSeconds?: number;
+    liveProcessGraceSeconds?: number;
+  }) {
     if (opts.idleSeconds !== undefined) this.idleSeconds = opts.idleSeconds;
     if (opts.miniSeconds !== undefined) this.miniSeconds = opts.miniSeconds;
     if (opts.removeAfterSeconds !== undefined) this.removeAfterSeconds = opts.removeAfterSeconds;
+    if (opts.liveProcessGraceSeconds !== undefined) {
+      this.liveProcessGraceSeconds = opts.liveProcessGraceSeconds;
+    }
   }
 
   apply(event: Event, opts: { accountLabel?: string | null } = {}): Delta[] {
@@ -402,8 +432,15 @@ export class SessionStore {
     // subagent-meta, …), not session activity. Terminal-close flushes a
     // batch of these long after the session went idle; treating them as
     // activity resurrects done/mini panels. Real activity comes through as
-    // user_text/assistant_text/tool_use/etc.
-    if (!panel.ended && !hasTag(event, 'meta')) {
+    // user_text/assistant_text/tool_use/etc. Slash-command artifacts on a
+    // start-minimized post-/clear panel are likewise not real input — they
+    // must not lift the panel out of the dock.
+    if (
+      !panel.ended &&
+      !hasTag(event, 'meta') &&
+      !(panel.start_minimized && isCommandArtifact(event))
+    ) {
+      panel.start_minimized = false;
       if (this.isLiveActivity(panel, ts, now)) {
         if (panel.status !== 'live') {
           panel.status = 'live';
@@ -505,13 +542,15 @@ export class SessionStore {
       // Process-aware liveness: a parent session whose `claude` process is
       // still alive is still working even when the transcript has been quiet
       // past idleSeconds (long agentic turns flush records in bursts). Hold
-      // `live` until the process exits. A subagent has no process of its own
-      // ({@link isOwnerProcessLive} returns false), so it demotes purely on its
-      // own idle gap instead of riding the parent's liveness.
+      // `live` while the process lives — but only within the grace window;
+      // past it, an open-but-untouched window ages out like any other so it
+      // doesn't hold a grid slot for days. A subagent has no process of its
+      // own ({@link isOwnerProcessLive} returns false), so it demotes purely
+      // on its own idle gap instead of riding the parent's liveness.
       if (
         panel.status === 'live' &&
         t - panel.last_event_at >= this.idleSeconds &&
-        !this.isOwnerProcessLive(panel)
+        (!this.isOwnerProcessLive(panel) || t - panel.last_event_at >= this.liveProcessGraceSeconds)
       ) {
         panel.status = 'done';
         // Stamp when the panel *actually* went idle so a bootstrap-replayed
@@ -599,6 +638,25 @@ export class SessionStore {
     return Array.from(this.panels.values())
       .filter((p) => p.binned_at !== null)
       .map((p) => this.toDto(p));
+  }
+
+  /** Counts for the macOS menu bar helper: parent sessions currently
+   * `live`, and parent sessions blocking on user input. Subagents are
+   * excluded (their parent already represents the session); binned
+   * panels too. */
+  menubarSummary(): { live: number; awaiting_input: number } {
+    const cutoff = this.clock() - this.uiWindowSeconds;
+    let live = 0;
+    let awaiting = 0;
+    for (const p of this.panels.values()) {
+      if (p.kind !== 'parent' || p.binned_at !== null) continue;
+      // Same gate as snapshot(): an unsurfaced ancient panel with a stuck
+      // awaiting flag must not inflate the menu bar badge.
+      if (!this.isSurfaceable(p, cutoff)) continue;
+      if (p.status === 'live') live++;
+      if (p.awaiting_input) awaiting++;
+    }
+    return { live, awaiting_input: awaiting };
   }
 
   forceStatus(panelId: string, status: PanelStatus): Delta[] {
@@ -815,7 +873,11 @@ export class SessionStore {
    * subagent) the event must be recent (within `idleSeconds`). `ts` is the
    * event's clamped timestamp. */
   private isLiveActivity(panel: { kind: PanelKind; id: string }, ts: number, now: number): boolean {
-    return this.isOwnerProcessLive(panel) || now - ts < this.idleSeconds;
+    // A live owning process extends liveness only within the grace window —
+    // an open-but-untouched window from days ago should date from its log,
+    // not squat in the grid as if fresh (see liveProcessGraceSeconds).
+    if (this.isOwnerProcessLive(panel) && now - ts < this.liveProcessGraceSeconds) return true;
+    return now - ts < this.idleSeconds;
   }
 
   /** The status + `status_changed_at` a non-live panel should hold given how
@@ -824,7 +886,10 @@ export class SessionStore {
    * have put it, with no transient `live` flash. `changed_at` is back-dated to
    * the moment the panel would have entered that state so the subsequent
    * done→mini / mini→remove tick timing stays correct. */
-  private settledState(lastEventAt: number, now: number): {
+  private settledState(
+    lastEventAt: number,
+    now: number,
+  ): {
     status: 'done' | 'mini';
     changed_at: number;
   } {
@@ -850,6 +915,9 @@ export class SessionStore {
     const settled = this.isLiveActivity({ kind, id }, eventTs, now)
       ? null
       : this.settledState(eventTs, now);
+    // A panel born from a /clear starts in the dock, not the grid — it
+    // holds `mini` until the user's first real prompt (see apply()).
+    const startMini = this.pendingStartMini.delete(id);
     const panel: Panel = {
       id,
       kind,
@@ -872,7 +940,8 @@ export class SessionStore {
       clear_title_suppression: this.pendingClearTitleSuppression.delete(id)
         ? { suppressed_title: null }
         : null,
-      status: settled ? settled.status : 'live',
+      start_minimized: startMini,
+      status: startMini ? 'mini' : settled ? settled.status : 'live',
       // started_at gets the event's ts so a bootstrap-replayed old session
       // reflects its real age, not wall-clock-now-of-restart. The first
       // event we see is typically a SessionStart or the first user_text,
@@ -927,11 +996,8 @@ export class SessionStore {
     // — subsequent custom-title records (auto-emitted or explicit) flow
     // normally. Slash-command artifacts (`<command-name>` etc.) are not
     // real prompts; ignore them here too.
-    if (panel.clear_title_suppression && event.kind === 'user_text') {
-      const t = (event.payload.text ?? '').trim();
-      if (t && !/^<(local-command-(caveat|stdout)|command-(name|message|args))>/.test(t)) {
-        panel.clear_title_suppression = null;
-      }
+    if (panel.clear_title_suppression && event.kind === 'user_text' && !isCommandArtifact(event)) {
+      panel.clear_title_suppression = null;
     }
     let title = panel.title;
     // Explicit /rename — always wins, regardless of panel kind or current title.
@@ -1057,9 +1123,7 @@ export class SessionStore {
     if (!parent) return;
     const task = parent.events.find(
       (e): e is Extract<Event, { kind: 'tool_use' }> =>
-        e.kind === 'tool_use' &&
-        e.payload.name === 'Task' &&
-        e.payload.tool_use_id === toolUseId,
+        e.kind === 'tool_use' && e.payload.name === 'Task' && e.payload.tool_use_id === toolUseId,
     );
     if (!task) return;
     const input = (task.payload.input ?? {}) as { description?: string; subagent_type?: string };
@@ -1176,6 +1240,26 @@ export class SessionStore {
    * that — title differs from the short-id placeholder — and reset it
    * to `initialTitle` so the suppression actually takes effect. Returns
    * a `panel_upsert` delta in that case so clients see the rename. */
+  /** Arm "born minimized" for a session starting via `/clear`: the fresh
+   * panel goes straight to the dock and stays there until real input
+   * arrives (apply() clears the flag on the first non-artifact event).
+   * Same hook-vs-JSONL race as {@link armClearTitleSuppression}: if the
+   * panel doesn't exist yet, stash the id for {@link ensurePanel}; if the
+   * watcher won the race, demote the existing panel — unless something
+   * real already happened on it, in which case the user wins. */
+  armStartMinimized(panelId: string): Delta[] {
+    const panel = this.panels.get(panelId);
+    if (!panel) {
+      this.pendingStartMini.add(panelId);
+      return [];
+    }
+    if (panel.ended) return [];
+    const untouched = panel.events.every((e) => hasTag(e, 'meta') || isCommandArtifact(e));
+    if (!untouched) return [];
+    panel.start_minimized = true;
+    return this.forceStatus(panelId, 'mini');
+  }
+
   armClearTitleSuppression(panelId: string): Delta[] {
     const panel = this.panels.get(panelId);
     if (!panel) {
@@ -1361,6 +1445,15 @@ function parseEventTs(ts: string): number | null {
   return Number.isFinite(ms) ? ms / 1000 : null;
 }
 
+/** Slash-command artifact records (`<command-name>`, `<local-command-stdout>`,
+ * …) that Claude Code writes into the transcript for /clear and friends.
+ * They live in the JSONL as `user_text` but aren't real user input. */
+function isCommandArtifact(event: Event): boolean {
+  if (event.kind !== 'user_text') return false;
+  const t = (event.payload.text ?? '').trim();
+  return !t || /^<(local-command-(caveat|stdout)|command-(name|message|args))>/.test(t);
+}
+
 function panelIdentity(event: Event): {
   id: string;
   kind: PanelKind;
@@ -1463,6 +1556,9 @@ function panelRowToPanel(r: PanelRow): Panel {
     // closes on the user's first post-clear prompt. If brainhouse
     // restarts mid-window we accept the inherited title.
     clear_title_suppression: null,
+    // Not persisted for the same reason — a restart mid-window just
+    // means the empty post-clear panel settles via the normal lifecycle.
+    start_minimized: false,
   };
 }
 
