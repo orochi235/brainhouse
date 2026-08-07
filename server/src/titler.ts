@@ -38,8 +38,10 @@
  *   - 429 / 5xx / network: per-panel cooldown of ~2 minutes; one retry
  *     on transient errors with a 1s delay.
  *
- * Cost metering for titler calls is intentionally deferred (separate
- * bucket from `hook_overhead_tokens`).
+ * Cost metering: every completed call reports its token usage (and,
+ * on the CLI path, the CLI's reported cost) through `recordUsage`,
+ * which the monitor persists to the `titler_usage` table — a separate
+ * bucket from `hook_overhead_tokens`. Rolled up in the Stats view.
  */
 
 import type { Event } from './parser.js';
@@ -87,8 +89,32 @@ export interface TitlerCreateParams {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
+export interface TitlerUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+}
+
 export interface TitlerCreateResponse {
   content: Array<{ type: string; text?: string }>;
+  /** Token usage for the call. The real SDK always populates this; the
+   * CLI fallback fills it from `--output-format json`. Absent → the
+   * call goes unmetered. */
+  usage?: TitlerUsage;
+  /** CLI-reported cost (`total_cost_usd`). Null/absent on the API path
+   * (tokens are the source of truth there). */
+  cost_usd?: number | null;
+}
+
+/** One metered titler call, handed to `TitlerOptions.recordUsage`. */
+export interface TitlerUsageSample {
+  panelId: string;
+  model: string;
+  /** Which auth path served the call. */
+  source: 'api' | 'cli';
+  usage: TitlerUsage;
+  costUsd: number | null;
 }
 
 export interface TitlerOptions {
@@ -106,6 +132,10 @@ export interface TitlerOptions {
    * CLI auth (`claude -p`, see titlerCli.ts). Only consulted when no API
    * key resolved; when absent too, the titler disables as before. */
   cliClientFactory?: () => TitlerAnthropicClient;
+  /** Called once per completed API/CLI call with its token usage. The
+   * monitor persists these to the `titler_usage` table. Optional so
+   * tests and persistence-less hosts can skip it. */
+  recordUsage?: (sample: TitlerUsageSample) => void;
   /** Test seam — defaults to `process.env.ANTHROPIC_API_KEY`. */
   apiKey?: string | null;
   /** Test seam — overrideable for deterministic timing. Returns ms since
@@ -252,6 +282,7 @@ export class Titler {
     if (!this.apiKey) {
       if (this.opts.cliClientFactory) {
         this.client = this.opts.cliClientFactory();
+        this.clientSource = 'cli';
         return this.client;
       }
       this.permanentlyDisabled = true;
@@ -295,6 +326,8 @@ export class Titler {
   }
 
   private clientPromise: Promise<void> | null = null;
+  /** Which auth path `ensureClient` wired up; stamped onto usage samples. */
+  private clientSource: 'api' | 'cli' = 'api';
 
   private async requestProposal(
     client: TitlerAnthropicClient,
@@ -319,6 +352,15 @@ export class Titler {
       } else {
         throw err;
       }
+    }
+    if (response.usage && this.opts.recordUsage) {
+      this.opts.recordUsage({
+        panelId: panel.id,
+        model: params.model,
+        source: this.clientSource,
+        usage: response.usage,
+        costUsd: response.cost_usd ?? null,
+      });
     }
     const text = extractResponseText(response);
     return sanitizeProposal(text);

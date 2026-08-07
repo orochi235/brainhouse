@@ -5,6 +5,7 @@ import {
   type PanelRow,
   type SessionSummaryRow,
   Store,
+  type TitlerUsageRow,
 } from './store.js';
 
 let store: Store;
@@ -244,6 +245,59 @@ describe('Store', () => {
       );
       const rows = store.sessionsForProject('/a', { parentOnly: true });
       expect(rows.map((r) => r.session_id)).toEqual(['p1']);
+    });
+  });
+
+  describe('titler_usage', () => {
+    function usage(overrides: Partial<TitlerUsageRow> = {}): TitlerUsageRow {
+      return {
+        ts: 1_000,
+        panel_id: 'p1',
+        model: 'claude-haiku-4-5',
+        source: 'api',
+        input_tokens: 500,
+        output_tokens: 20,
+        cache_creation_input_tokens: 300,
+        cache_read_input_tokens: 0,
+        cost_usd: null,
+        ...overrides,
+      };
+    }
+
+    it('returns an empty rollup with no rows', () => {
+      expect(store.getTitlerUsageStats()).toEqual([]);
+    });
+
+    it('groups by (model, source) and sums token buckets', () => {
+      store.recordTitlerUsage(usage({ ts: 1_000, input_tokens: 500, output_tokens: 20 }));
+      store.recordTitlerUsage(
+        usage({ ts: 2_000, input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 300 }),
+      );
+      store.recordTitlerUsage(usage({ ts: 3_000, source: 'cli', cost_usd: 0.01 }));
+      const stats = store.getTitlerUsageStats();
+      expect(stats).toHaveLength(2);
+      const api = stats.find((s) => s.source === 'api');
+      expect(api).toMatchObject({
+        model: 'claude-haiku-4-5',
+        calls: 2,
+        input_tokens: 600,
+        output_tokens: 30,
+        cache_creation_input_tokens: 600,
+        cache_read_input_tokens: 300,
+        cost_usd: 0,
+        last_call: 2_000,
+      });
+      const cli = stats.find((s) => s.source === 'cli');
+      expect(cli).toMatchObject({ calls: 1, cost_usd: 0.01, last_call: 3_000 });
+    });
+
+    it('sums cost_usd ignoring null-cost rows', () => {
+      store.recordTitlerUsage(usage({ source: 'cli', cost_usd: 0.004 }));
+      store.recordTitlerUsage(usage({ source: 'cli', cost_usd: null }));
+      store.recordTitlerUsage(usage({ source: 'cli', cost_usd: 0.006 }));
+      const [row] = store.getTitlerUsageStats();
+      expect(row?.calls).toBe(3);
+      expect(row?.cost_usd).toBeCloseTo(0.01);
     });
   });
 

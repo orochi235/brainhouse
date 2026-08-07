@@ -14,6 +14,7 @@ import {
   type TitlerAnthropicClient,
   type TitlerCreateParams,
   type TitlerCreateResponse,
+  type TitlerUsageSample,
 } from './titler.js';
 
 function ev(kind: Event['kind'], text: string, uuid = `u-${Math.random()}`): Event {
@@ -102,7 +103,11 @@ class FakeTimers {
 interface FakeClient extends TitlerAnthropicClient {
   calls: TitlerCreateParams[];
   /** Resolve / reject deferreds in arrival order. */
-  next(): { resolve: (text: string) => void; reject: (err: unknown) => void };
+  next(): {
+    resolve: (text: string) => void;
+    resolveResponse: (response: TitlerCreateResponse) => void;
+    reject: (err: unknown) => void;
+  };
 }
 
 function makeFakeClient(): FakeClient {
@@ -131,6 +136,7 @@ function makeFakeClient(): FakeClient {
       return {
         resolve: (text: string) =>
           slot.resolve({ content: [{ type: 'text', text }] }),
+        resolveResponse: (response) => slot.resolve(response),
         reject: (err) => slot.reject(err),
       };
     },
@@ -438,6 +444,160 @@ describe('Titler', () => {
     expect(timers.pendingCount()).toBe(1);
     titler.dispose(panel.id);
     expect(timers.pendingCount()).toBe(0);
+  });
+
+  it('reports usage via recordUsage on the api path', async () => {
+    const timers = new FakeTimers();
+    const client = makeFakeClient();
+    const panel = makePanel({ events: [ev('user_text', 'a'), ev('user_text', 'b')] });
+    const panels = new Map([[panel.id, panel]]);
+    const samples: TitlerUsageSample[] = [];
+    freshApplied();
+    const titler = new Titler({
+      getPanel: (id) => panels.get(id),
+      isAutoTitleEnabled: () => true,
+      applyAutoTitle: (id, title) => {
+        APPLIED.push({ panelId: id, title });
+      },
+      recordUsage: (s) => samples.push(s),
+      clientFactory: () => client,
+      apiKey: 'sk-test',
+      now: timers.now,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      logger: () => {},
+    });
+    titler.scheduleEvaluation(panel.id, 'stop');
+    await flush();
+    client.next().resolveResponse({
+      content: [{ type: 'text', text: 'A metered title' }],
+      usage: {
+        input_tokens: 500,
+        output_tokens: 12,
+        cache_creation_input_tokens: 300,
+        cache_read_input_tokens: 100,
+      },
+    });
+    await flush();
+    expect(samples).toEqual([
+      {
+        panelId: panel.id,
+        model: 'claude-haiku-4-5',
+        source: 'api',
+        usage: {
+          input_tokens: 500,
+          output_tokens: 12,
+          cache_creation_input_tokens: 300,
+          cache_read_input_tokens: 100,
+        },
+        costUsd: null,
+      },
+    ]);
+    expect(APPLIED[0]?.title).toBe('A metered title');
+  });
+
+  it('stamps source=cli and carries cost_usd on the CLI fallback path', async () => {
+    const timers = new FakeTimers();
+    const client = makeFakeClient();
+    const panel = makePanel({ events: [ev('user_text', 'a'), ev('user_text', 'b')] });
+    const panels = new Map([[panel.id, panel]]);
+    const samples: TitlerUsageSample[] = [];
+    freshApplied();
+    const titler = new Titler({
+      getPanel: (id) => panels.get(id),
+      isAutoTitleEnabled: () => true,
+      applyAutoTitle: () => {},
+      recordUsage: (s) => samples.push(s),
+      cliClientFactory: () => client,
+      apiKey: null,
+      now: timers.now,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      logger: () => {},
+    });
+    titler.scheduleEvaluation(panel.id, 'stop');
+    await flush();
+    client.next().resolveResponse({
+      content: [{ type: 'text', text: 'CLI title' }],
+      usage: {
+        input_tokens: 400,
+        output_tokens: 10,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      cost_usd: 0.0031,
+    });
+    await flush();
+    expect(samples[0]?.source).toBe('cli');
+    expect(samples[0]?.costUsd).toBe(0.0031);
+  });
+
+  it('records usage even when the model replies KEEP', async () => {
+    const timers = new FakeTimers();
+    const client = makeFakeClient();
+    const events: Event[] = [];
+    for (let i = 0; i < 20; i++) events.push(ev('user_text', `msg ${i}`));
+    const panel = makePanel({ title: 'Wire titler', events });
+    const panels = new Map([[panel.id, panel]]);
+    const samples: TitlerUsageSample[] = [];
+    freshApplied();
+    const titler = new Titler({
+      getPanel: (id) => panels.get(id),
+      isAutoTitleEnabled: () => true,
+      applyAutoTitle: (id, title) => {
+        APPLIED.push({ panelId: id, title });
+      },
+      recordUsage: (s) => samples.push(s),
+      clientFactory: () => client,
+      apiKey: 'sk-test',
+      now: timers.now,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      logger: () => {},
+    });
+    titler.scheduleEvaluation(panel.id, 'stop');
+    await flush();
+    client.next().resolveResponse({
+      content: [{ type: 'text', text: 'KEEP' }],
+      usage: {
+        input_tokens: 700,
+        output_tokens: 2,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 600,
+      },
+    });
+    await flush();
+    expect(samples).toHaveLength(1);
+    expect(APPLIED).toHaveLength(0);
+  });
+
+  it('skips recordUsage when the response carries no usage', async () => {
+    const timers = new FakeTimers();
+    const client = makeFakeClient();
+    const panel = makePanel({ events: [ev('user_text', 'a'), ev('user_text', 'b')] });
+    const panels = new Map([[panel.id, panel]]);
+    const samples: TitlerUsageSample[] = [];
+    freshApplied();
+    const titler = new Titler({
+      getPanel: (id) => panels.get(id),
+      isAutoTitleEnabled: () => true,
+      applyAutoTitle: (id, title) => {
+        APPLIED.push({ panelId: id, title });
+      },
+      recordUsage: (s) => samples.push(s),
+      clientFactory: () => client,
+      apiKey: 'sk-test',
+      now: timers.now,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      logger: () => {},
+    });
+    titler.scheduleEvaluation(panel.id, 'stop');
+    await flush();
+    client.next().resolve('An unmetered title');
+    await flush();
+    expect(samples).toHaveLength(0);
+    expect(APPLIED[0]?.title).toBe('An unmetered title');
   });
 
   it('drops malformed KEEP echo without firing applyAutoTitle', async () => {

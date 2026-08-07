@@ -165,6 +165,35 @@ export interface SessionSummaryRow {
   rolled_up_at: number;
 }
 
+export interface TitlerUsageRow {
+  /** Epoch seconds. */
+  ts: number;
+  panel_id: string;
+  model: string;
+  /** Which auth path served the call. */
+  source: 'api' | 'cli';
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  /** CLI-reported cost; null on the API path (compute from tokens). */
+  cost_usd: number | null;
+}
+
+export interface TitlerUsageStatsRow {
+  model: string;
+  source: 'api' | 'cli';
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  /** Sum over rows that carried a reported cost. */
+  cost_usd: number;
+  /** Epoch seconds of the most recent call in the group. */
+  last_call: number;
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS schema_version (
   version INTEGER PRIMARY KEY
@@ -268,6 +297,25 @@ CREATE TABLE IF NOT EXISTS event_stats (
   last_seen REAL NOT NULL,
   PRIMARY KEY (kind, subkey)
 );
+
+-- One row per out-of-band titler call (see titler.ts). A separate bucket
+-- from hook_overhead_tokens: those tokens ride the user's own sessions,
+-- these are brainhouse-initiated Haiku calls. cost_usd is only populated
+-- on the CLI path (the CLI reports total_cost_usd); API-path cost is
+-- derived from tokens at display time.
+CREATE TABLE IF NOT EXISTS titler_usage (
+  ts                          REAL NOT NULL,
+  panel_id                    TEXT NOT NULL,
+  model                       TEXT NOT NULL,
+  source                      TEXT NOT NULL,
+  input_tokens                INTEGER NOT NULL DEFAULT 0,
+  output_tokens               INTEGER NOT NULL DEFAULT 0,
+  cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_input_tokens     INTEGER NOT NULL DEFAULT 0,
+  cost_usd                    REAL
+);
+CREATE INDEX IF NOT EXISTS titler_usage_ts    ON titler_usage (ts);
+CREATE INDEX IF NOT EXISTS titler_usage_panel ON titler_usage (panel_id);
 `;
 
 function defaultDbPath(): string {
@@ -517,6 +565,48 @@ export class Store {
         'SELECT kind, subkey, count, last_seen FROM event_stats ORDER BY count DESC, kind ASC',
       )
       .all() as EventStatsRow[];
+  }
+
+  // ---- titler_usage (per-call cost metering) ----
+
+  recordTitlerUsage(row: TitlerUsageRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO titler_usage
+           (ts, panel_id, model, source, input_tokens, output_tokens,
+            cache_creation_input_tokens, cache_read_input_tokens, cost_usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        row.ts,
+        row.panel_id,
+        row.model,
+        row.source,
+        row.input_tokens,
+        row.output_tokens,
+        row.cache_creation_input_tokens,
+        row.cache_read_input_tokens,
+        row.cost_usd,
+      );
+  }
+
+  /** Rollup grouped by (model, source), highest call count first. */
+  getTitlerUsageStats(): TitlerUsageStatsRow[] {
+    return this.db
+      .prepare(
+        `SELECT model, source,
+                COUNT(*)                              AS calls,
+                SUM(input_tokens)                     AS input_tokens,
+                SUM(output_tokens)                    AS output_tokens,
+                SUM(cache_creation_input_tokens)      AS cache_creation_input_tokens,
+                SUM(cache_read_input_tokens)          AS cache_read_input_tokens,
+                COALESCE(SUM(cost_usd), 0)            AS cost_usd,
+                MAX(ts)                               AS last_call
+         FROM titler_usage
+         GROUP BY model, source
+         ORDER BY calls DESC, model ASC`,
+      )
+      .all() as TitlerUsageStatsRow[];
   }
 
   /** Every row newer than `sinceTs`, ordered by panel then ts. Used by

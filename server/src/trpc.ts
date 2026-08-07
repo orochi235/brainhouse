@@ -334,6 +334,11 @@ export const appRouter = t.router({
    * seeing in the wild." */
   eventStats: t.procedure.query(({ ctx }) => ctx.store?.getEventStats() ?? []),
 
+  /** Out-of-band titler spend, grouped by (model, source). Fed by
+   * `Store.recordTitlerUsage` on every completed titler call; rendered
+   * as the cost-rollup section of the StatsModal. */
+  titlerUsage: t.procedure.query(({ ctx }) => ctx.store?.getTitlerUsageStats() ?? []),
+
   /** Cross-session "flows" sankey: bucket events by ordinal position in
    * their session, then count consecutive (K,X) → (K+1,Y) transitions
    * over the last `days` (default 30). Returns nodes + links shaped for

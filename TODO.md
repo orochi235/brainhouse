@@ -412,7 +412,9 @@ Replace the auto-fill grid with a tiling layout: drag panels into slots, resize 
 Per-session usage is wired (tokens + context_size on PanelDto, capsule
 in the header, tooltip breakdown). Hook instrumentation overhead is also
 tracked separately (`hook_overhead_tokens`, via the side-channel records
-each brainhouse hook writes through `hooks/lib/overhead.mjs`).
+each brainhouse hook writes through `hooks/lib/overhead.mjs`). Titler
+spend is metered in its own bucket too (`titler_usage` table, rollup in
+the Stats view).
 
 Still open:
 - Rate-per-minute while live + per-project rollup ("~3M tokens in

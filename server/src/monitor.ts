@@ -176,6 +176,19 @@ export class TranscriptMonitor {
       cliClientFactory: cliFallback
         ? () => makeCliTitlerClient({ configDir: cliFallback.configDir })
         : undefined,
+      recordUsage: (sample) => {
+        this.persistStore?.recordTitlerUsage({
+          ts: Date.now() / 1000,
+          panel_id: sample.panelId,
+          model: sample.model,
+          source: sample.source,
+          input_tokens: sample.usage.input_tokens,
+          output_tokens: sample.usage.output_tokens,
+          cache_creation_input_tokens: sample.usage.cache_creation_input_tokens,
+          cache_read_input_tokens: sample.usage.cache_read_input_tokens,
+          cost_usd: sample.costUsd,
+        });
+      },
     });
     const getNotificationPrefs =
       opts.getNotificationPrefs ??

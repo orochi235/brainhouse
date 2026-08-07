@@ -20,10 +20,43 @@ interface StatRow {
   last_seen: number;
 }
 
+interface TitlerUsageRow {
+  model: string;
+  source: 'api' | 'cli';
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  cost_usd: number;
+  last_call: number;
+}
+
+// Anthropic API list prices per MTok (haiku-4-5 tier), used to estimate
+// api-path spend from tokens; the CLI path reports its own cost. If the
+// titler's model changes, update these alongside titler.ts.
+const PRICE_PER_MTOK: Record<string, { in: number; out: number; cacheWrite: number; cacheRead: number }> = {
+  'claude-haiku-4-5': { in: 1, out: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+};
+
+function estimateCostUsd(r: TitlerUsageRow): number | null {
+  if (r.source === 'cli') return r.cost_usd;
+  const p = PRICE_PER_MTOK[r.model];
+  if (!p) return null;
+  return (
+    (r.input_tokens * p.in +
+      r.output_tokens * p.out +
+      r.cache_creation_input_tokens * p.cacheWrite +
+      r.cache_read_input_tokens * p.cacheRead) /
+    1_000_000
+  );
+}
+
 type SortKey = 'count' | 'kind' | 'last_seen';
 
 export function StatsModal() {
   const [rows, setRows] = useState<StatRow[] | null>(null);
+  const [titlerRows, setTitlerRows] = useState<TitlerUsageRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('count');
 
@@ -36,6 +69,15 @@ export function StatsModal() {
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    trpc.titlerUsage
+      .query()
+      .then((data) => {
+        if (!cancelled) setTitlerRows(data as TitlerUsageRow[]);
+      })
+      .catch(() => {
+        // Titler rollup is best-effort; the event table is the modal's core.
+        if (!cancelled) setTitlerRows([]);
       });
     return () => {
       cancelled = true;
@@ -109,6 +151,51 @@ export function StatsModal() {
                   <td className="stats-last-seen">{formatLastSeen(r.last_seen)}</td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {titlerRows && titlerRows.length > 0 && (
+        <>
+          <h3 className="lightbox-title">Titler usage</h3>
+          <p className="transforms-intro">
+            Out-of-band auto-titler spend, one row per (model, auth path). Cost is reported by the
+            CLI where available; api-path cost is estimated from tokens at Haiku list prices. From
+            the persistent <code>titler_usage</code> table.
+          </p>
+          <table className="stats-table">
+            <thead>
+              <tr>
+                <th>model</th>
+                <th>source</th>
+                <th>calls</th>
+                <th>in</th>
+                <th>out</th>
+                <th>cache w</th>
+                <th>cache r</th>
+                <th>est. cost</th>
+                <th>last call</th>
+              </tr>
+            </thead>
+            <tbody>
+              {titlerRows.map((r) => {
+                const cost = estimateCostUsd(r);
+                return (
+                  <tr key={`${r.model}/${r.source}`}>
+                    <td>{r.model}</td>
+                    <td className="stats-subkey">{r.source}</td>
+                    <td className="stats-count">{r.calls.toLocaleString()}</td>
+                    <td className="stats-count">{r.input_tokens.toLocaleString()}</td>
+                    <td className="stats-count">{r.output_tokens.toLocaleString()}</td>
+                    <td className="stats-count">{r.cache_creation_input_tokens.toLocaleString()}</td>
+                    <td className="stats-count">{r.cache_read_input_tokens.toLocaleString()}</td>
+                    <td className="stats-count">
+                      {cost === null ? <span className="muted">—</span> : `$${cost.toFixed(4)}`}
+                    </td>
+                    <td className="stats-last-seen">{formatLastSeen(r.last_call)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </>

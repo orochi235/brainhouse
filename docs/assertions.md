@@ -663,3 +663,14 @@ UI/server is meant to uphold. New entries go at the bottom.
   always focuses. Requires an Accessibility grant for the server process;
   when missing, osascript errors, the call resolves `false`, and the pane
   is still selected inside iTerm.
+- **Every titler call is cost-metered into its own bucket.** Each
+  completed auto-titler request — API key path or `claude -p` CLI
+  fallback — records one `titler_usage` row (tokens per bucket, source,
+  CLI-reported cost) via `Titler.recordUsage` → `Store.recordTitlerUsage`.
+  This is a separate bucket from `hook_overhead_tokens`: those tokens
+  ride the user's own sessions, titler calls are brainhouse-initiated.
+  The CLI path passes `--output-format json` so usage comes back parsed;
+  non-JSON stdout still titles but goes unmetered. Rollup grouped by
+  (model, source) is served by `trpc.titlerUsage` and rendered in the
+  Stats view, with api-path cost estimated from tokens at Haiku list
+  prices and cli-path cost summed from the CLI's `total_cost_usd`.
