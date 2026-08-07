@@ -3,6 +3,20 @@
 Always-loaded index of where things live. When a task touches one of
 these areas, read the linked file before searching.
 
+## Single-user project — deploy immediately
+
+This project has exactly one user: its author, running the production
+service on this machine. There is no other tester, so a change that
+isn't deployed is a change nobody is exercising. Treat deployment as
+part of every change, not a follow-up: after landing server/client
+work, build and restart the service (`npm run build`, then
+`launchctl kickstart -k gui/$(id -u)/com.brainhouse`); after touching
+`menubar/` or its install script, rerun `npm run menubar:install`;
+after touching `hooks/`, remember running Claude Code sessions keep
+their hook snapshot — only new sessions pick changes up. Leaving work
+built-but-not-deployed (or worse, uncommitted) means it silently rots
+untested.
+
 ## Terminology
 
 Use these terms precisely — they map to specific components/concepts.
