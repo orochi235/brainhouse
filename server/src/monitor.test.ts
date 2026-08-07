@@ -122,12 +122,42 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.panel('S')?.awaiting_input).toBe(true);
   });
 
-  it('applyHookEvent notification enqueues an alert only after the grace window', () => {
-    const monitor = newMonitor();
+  it('applyHookEvent notification enqueues an alert for a fresh event (grace 0)', () => {
+    const monitor = new TranscriptMonitor({
+      roots: [],
+      hookEventsDir: null,
+      getNotificationPrefs: () => ({
+        muteAll: false,
+        macNative: true,
+        macNativeTurnComplete: false,
+        graceSeconds: 0,
+      }),
+    });
     monitor.ingest(userTextEvent({ ts: new Date().toISOString() }));
-    monitor.applyHookEvent({ session_id: 'S', kind: 'notification' });
-    // Default graceSeconds is 30 — the wiring must schedule, not enqueue.
-    expect(monitor.alertQueue.list(-1)).toHaveLength(0);
+    monitor.applyHookEvent({ session_id: 'S', kind: 'notification', ts: Date.now() / 1000 });
+    expect(monitor.alertQueue.list(-1)).toHaveLength(1);
+  });
+
+  it('applyHookEvent notification never alerts for a stale (replayed) event', () => {
+    const monitor = new TranscriptMonitor({
+      roots: [],
+      hookEventsDir: null,
+      getNotificationPrefs: () => ({
+        muteAll: false,
+        macNative: true,
+        macNativeTurnComplete: false,
+        graceSeconds: 0,
+      }),
+    });
+    monitor.ingest(userTextEvent({ ts: new Date().toISOString() }));
+    // A restart replays old sidecar lines with their original ts.
+    monitor.applyHookEvent({
+      session_id: 'S',
+      kind: 'notification',
+      ts: Date.now() / 1000 - 3600,
+    });
+    expect(monitor.store.panel('S')?.awaiting_input).toBe(true); // flag still set
+    expect(monitor.alertQueue.list(-1)).toHaveLength(0); // but no alert
   });
 
   it('applyHookEvent subagent_stop demotes all live subagents of the parent', () => {

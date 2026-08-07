@@ -89,6 +89,18 @@ const SUPERSEDE_MIN_IDLE_SECONDS = 2;
  * fires after this delay unless the panel is pinned at fire time. */
 const SUPERSEDE_MINI_DELAY_MS = 5_000;
 
+/** Only hook events this recent may trigger a native alert. The hook
+ * watcher replays unread sidecar lines on server restart, and dozens of
+ * old `notification` records for long-stuck awaiting panels would
+ * otherwise enqueue together and arrive as a banner flood ~grace seconds
+ * after boot (the helper's cursor-seed only shields alerts that already
+ * exist at its first poll, not ones that fire shortly after). */
+const ALERT_FRESHNESS_SECONDS = 120;
+
+function isFreshHookEvent(event: { ts: number }): boolean {
+  return Math.abs(Date.now() / 1000 - event.ts) < ALERT_FRESHNESS_SECONDS;
+}
+
 export class TranscriptMonitor {
   readonly store: SessionStore;
   /** The current watcher. Mutable so we can hot-swap when prefs.roots
@@ -470,7 +482,7 @@ export class TranscriptMonitor {
       // Stop is the strongest "turn complete" signal; bypass the debounce
       // so the titler fires immediately (if eligibility gates pass).
       this.titler.scheduleEvaluation(sid, 'stop');
-      this.alertQueue.onStop(sid);
+      if (isFreshHookEvent(event)) this.alertQueue.onStop(sid);
       return;
     }
     if (event.kind === 'subagent_stop') {
@@ -495,7 +507,7 @@ export class TranscriptMonitor {
     }
     if (event.kind === 'notification') {
       for (const d of this.store.setAwaiting(sid, true)) this.broadcast(d);
-      this.alertQueue.onAwaiting(sid, true);
+      if (isFreshHookEvent(event)) this.alertQueue.onAwaiting(sid, true);
       return;
     }
     if (event.kind === 'session_start') {
