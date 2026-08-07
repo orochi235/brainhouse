@@ -2,12 +2,15 @@
 // Polls the local server for health + awaiting-input count; Start/Stop/Restart
 // drive the com.brainhouse LaunchAgent (never dev servers).
 import AppKit
+import UserNotifications
 import WebKit
 
 let port = Int(ProcessInfo.processInfo.environment["PORT"] ?? "") ?? 8765
 let dashboardURL = URL(string: "http://localhost:\(port)/")!
 let healthURL = URL(string: "http://localhost:\(port)/health")!
 let summaryURL = URL(string: "http://localhost:\(port)/api/summary")!
+let revealURL = URL(string: "http://localhost:\(port)/api/reveal")!
+let notificationsToggleURL = URL(string: "http://localhost:\(port)/api/notifications")!
 let serviceLabel = "com.brainhouse"
 // Open Dashboard opens a Chrome tab (falling back to the default browser)
 // instead of the embedded WebKit window. The WebKit path is disabled, not
@@ -53,12 +56,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var dashboardLoadFailed = false
     private var dashboardKeyMonitor: Any?
 
+    // Alert delivery state. The cursor is seeded silently from the first
+    // poll so a helper restart never replays banners the server still
+    // holds; the server owns every other decision (grace, dedupe, expiry).
+    private var alertCursor: Int = -1
+    private var alertCursorSeeded = false
+    private var notificationsEnabled = true
+    private var notificationsAuthDenied = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
         render()
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            DispatchQueue.main.async { self?.notificationsAuthDenied = !granted }
+        }
         let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.poll() }
         timer.fire()
     }
@@ -91,7 +107,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
                 .flatMap { $0["awaiting_input"] as? Int } ?? 0
             self?.setState(.running(awaitingInput: count))
+            self?.fetchAlerts()
         }.resume()
+    }
+
+    // MARK: - Alert delivery
+
+    private func fetchAlerts() {
+        var request = URLRequest(url: URL(string: "http://localhost:\(port)/api/alerts?after=\(alertCursor)")!)
+        request.timeoutInterval = 3
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+            guard let self,
+                  let data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            DispatchQueue.main.async {
+                self.notificationsEnabled = obj["enabled"] as? Bool ?? true
+                let alerts = obj["alerts"] as? [[String: Any]] ?? []
+                let maxId = alerts.compactMap { $0["id"] as? Int }.max() ?? self.alertCursor
+                if !self.alertCursorSeeded {
+                    self.alertCursorSeeded = true
+                    self.alertCursor = maxId
+                    return
+                }
+                for alert in alerts { self.post(alert: alert) }
+                self.alertCursor = max(self.alertCursor, maxId)
+            }
+        }.resume()
+    }
+
+    private func post(alert: [String: Any]) {
+        let content = UNMutableNotificationContent()
+        content.title = alert["title"] as? String ?? "brainhouse session"
+        if let project = alert["project"] as? String { content.subtitle = project }
+        let reason = alert["reason"] as? String ?? "awaiting"
+        content.body = reason == "turn_complete"
+            ? "Turn finished — ready for your next prompt"
+            : "Waiting for your input"
+        content.sound = .default
+        if let guid = alert["iterm_session_id"] as? String { content.userInfo = ["guid": guid] }
+        let id = "brainhouse-alert-\(alert["id"] as? Int ?? 0)"
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: id, content: content, trigger: nil))
     }
 
     private func setState(_ new: ServerState) {
@@ -161,6 +217,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(infoItem(serviceLine(service)))
         menu.addItem(.separator())
         menu.addItem(makeItem("Open Dashboard", #selector(openDashboard)))
+        // Master notifications toggle — flips `notifications.muteAll` on the
+        // server, so it silences every channel (this helper AND the web
+        // client) and stays in lockstep with the dashboard prefs modal.
+        let notifItem = makeItem("Notifications", #selector(toggleNotifications))
+        notifItem.state = notificationsEnabled ? .on : .off
+        menu.addItem(notifItem)
+        if notificationsAuthDenied {
+            menu.addItem(infoItem("Notifications blocked in System Settings"))
+        }
 
         switch service {
         case .notInstalled:
@@ -272,6 +337,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func toggleNotifications() {
+        var request = URLRequest(url: notificationsToggleURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["enabled": !notificationsEnabled])
+        URLSession.shared.dataTask(with: request) { [weak self] _, _, _ in
+            DispatchQueue.main.async { self?.poll() }
+        }.resume()
+    }
+
     @objc private func openLogs() { NSWorkspace.shared.open(URL(fileURLWithPath: logsDir, isDirectory: true)) }
     // Stop boots the agent out, so Start has to be able to bootstrap it back
     // in — kickstart alone fails on an agent launchd no longer knows about,
@@ -300,6 +375,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.poll()
             }
         }
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    // Click → reveal. `focus` is omitted so the server applies the
+    // `notifications.clickFocus` pref (default: raise without stealing
+    // keyboard focus). The helper stays pref-ignorant.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        defer { completionHandler() }
+        guard let guid = response.notification.request.content.userInfo["guid"] as? String else { return }
+        var request = URLRequest(url: revealURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["iterm_session_id": guid])
+        URLSession.shared.dataTask(with: request).resume()
+    }
+
+    // Post banners even while the helper counts as foreground (accessory
+    // apps do, for their own notifications).
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }
 

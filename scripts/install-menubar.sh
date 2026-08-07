@@ -11,7 +11,8 @@ cd "$(dirname "$0")/.."
 LABEL="com.brainhouse.menubar"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 APP_DIR="$HOME/Library/Application Support/brainhouse"
-BIN="$APP_DIR/BrainhouseMenuBar"
+APP_BUNDLE="$APP_DIR/BrainhouseMenuBar.app"
+BIN="$APP_BUNDLE/Contents/MacOS/BrainhouseMenuBar"
 PORT="${PORT:-8765}"
 
 if ! command -v swiftc >/dev/null; then
@@ -19,8 +20,28 @@ if ! command -v swiftc >/dev/null; then
   exit 1
 fi
 
-mkdir -p "$APP_DIR" "$HOME/Library/LaunchAgents"
+mkdir -p "$APP_BUNDLE/Contents/MacOS" "$HOME/Library/LaunchAgents"
 swiftc -O -o "$BIN" menubar/main.swift
+
+# UNUserNotificationCenter refuses to run without a real bundle identity —
+# a bare binary crashes on first use. LSUIElement keeps it out of the Dock.
+cat > "$APP_BUNDLE/Contents/Info.plist" <<INFOPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>$LABEL</string>
+  <key>CFBundleName</key><string>brainhouse</string>
+  <key>CFBundleExecutable</key><string>BrainhouseMenuBar</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSUIElement</key><true/>
+</dict>
+</plist>
+INFOPLIST
+
+# Migrate away from the old bare-binary install.
+rm -f "$APP_DIR/BrainhouseMenuBar"
 
 # KeepAlive on crash only: quitting from the menu (exit 0) stays quit.
 cat > "$PLIST" <<EOF
