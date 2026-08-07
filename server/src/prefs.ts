@@ -168,6 +168,11 @@ export const DisplaySchema = z.object({
    * decides whether to fire based on turn count + current title; the
    * server applies the new title only if it differs. */
   autoTitle: z.boolean().default(true),
+  /** CLAUDE_CONFIG_DIR for the titler's `claude -p` fallback (used only
+   * when no ANTHROPIC_API_KEY resolves). Must point at a logged-in
+   * Claude Code config dir; null inherits the CLI default, which under
+   * launchd is usually unauthenticated. */
+  titlerCliConfigDir: z.string().nullable().default(null),
 });
 export type Display = z.infer<typeof DisplaySchema>;
 

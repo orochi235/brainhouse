@@ -34,7 +34,9 @@ mkdir -p "$LOG_DIR" "$HOME/Library/LaunchAgents"
 
 # /usr/sbin matters: the process tracker shells out to `lsof` (ports + cwd
 # sweeps), which lives there. Without it the Network view silently empties.
-SERVICE_PATH="$(dirname "$NODE_BIN"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# ~/.local/bin: claude CLI (titler fallback). /usr/sbin: lsof (process
+# sweeps). Dropping either silently kills its feature under launchd.
+SERVICE_PATH="$(dirname "$NODE_BIN"):$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

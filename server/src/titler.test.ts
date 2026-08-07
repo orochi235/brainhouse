@@ -238,6 +238,61 @@ describe('Titler', () => {
     expect(APPLIED.length).toBe(0);
   });
 
+  it('falls back to the CLI client when no API key but a cliClientFactory exists', async () => {
+    const timers = new FakeTimers();
+    const client = makeFakeClient();
+    const panel = makePanel({ events: [ev('user_text', 'a'), ev('user_text', 'b')] });
+    const panels = new Map([[panel.id, panel]]);
+    freshApplied();
+    const titler = new Titler({
+      getPanel: (id) => panels.get(id),
+      isAutoTitleEnabled: () => true,
+      applyAutoTitle: (id, title) => {
+        APPLIED.push({ panelId: id, title });
+      },
+      cliClientFactory: () => client,
+      apiKey: null,
+      now: timers.now,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      logger: () => {},
+    });
+    expect(titler.enabled).toBe(true);
+    titler.scheduleEvaluation(panel.id, 'stop');
+    await flush();
+    expect(client.calls.length).toBe(1);
+    client.next().resolve('CLI-proposed title');
+    await flush();
+    expect(APPLIED[0]?.title).toBe('CLI-proposed title');
+  });
+
+  it('ENOENT from the CLI client disables the titler permanently', async () => {
+    const timers = new FakeTimers();
+    const client = makeFakeClient();
+    const panel = makePanel({ events: [ev('user_text', 'a'), ev('user_text', 'b')] });
+    const panels = new Map([[panel.id, panel]]);
+    freshApplied();
+    const titler = new Titler({
+      getPanel: (id) => panels.get(id),
+      isAutoTitleEnabled: () => true,
+      applyAutoTitle: (id, title) => {
+        APPLIED.push({ panelId: id, title });
+      },
+      cliClientFactory: () => client,
+      apiKey: null,
+      now: timers.now,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      logger: () => {},
+    });
+    titler.scheduleEvaluation(panel.id, 'stop');
+    await flush();
+    client.next().reject(Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' }));
+    await flush();
+    expect(titler.enabled).toBe(false);
+    expect(APPLIED).toHaveLength(0);
+  });
+
   it('debounces user_text bursts into one request', async () => {
     const timers = new FakeTimers();
     const client = makeFakeClient();

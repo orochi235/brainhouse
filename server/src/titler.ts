@@ -102,6 +102,10 @@ export interface TitlerOptions {
   /** Test seam — when missing, the titler lazy-builds a real Anthropic
    * client from `ANTHROPIC_API_KEY`. */
   clientFactory?: (apiKey: string) => TitlerAnthropicClient;
+  /** Keyless fallback: builds a client that rides the user's Claude Code
+   * CLI auth (`claude -p`, see titlerCli.ts). Only consulted when no API
+   * key resolved; when absent too, the titler disables as before. */
+  cliClientFactory?: () => TitlerAnthropicClient;
   /** Test seam — defaults to `process.env.ANTHROPIC_API_KEY`. */
   apiKey?: string | null;
   /** Test seam — overrideable for deterministic timing. Returns ms since
@@ -155,8 +159,12 @@ export class Titler {
     this.now = opts.now ?? (() => Date.now());
     this.logger = opts.logger ?? ((msg) => console.warn(msg));
     if (!this.apiKey) {
-      this.permanentlyDisabled = true;
-      this.logger('[titler] disabled: ANTHROPIC_API_KEY not set');
+      if (opts.cliClientFactory) {
+        this.logger('[titler] no ANTHROPIC_API_KEY — using claude -p CLI fallback');
+      } else {
+        this.permanentlyDisabled = true;
+        this.logger('[titler] disabled: ANTHROPIC_API_KEY not set');
+      }
     }
   }
 
@@ -242,6 +250,10 @@ export class Titler {
     if (this.clientInitialized) return this.client;
     this.clientInitialized = true;
     if (!this.apiKey) {
+      if (this.opts.cliClientFactory) {
+        this.client = this.opts.cliClientFactory();
+        return this.client;
+      }
       this.permanentlyDisabled = true;
       return null;
     }
@@ -313,6 +325,13 @@ export class Titler {
   }
 
   private handleError(panelId: string, err: unknown): void {
+    if ((err as { code?: string })?.code === 'ENOENT') {
+      // CLI fallback with no `claude` binary reachable — retrying can't help.
+      this.permanentlyDisabled = true;
+      this.client = null;
+      this.logger('[titler] disabled: claude CLI not found');
+      return;
+    }
     const status = (err as { status?: number; statusCode?: number })?.status
       ?? (err as { statusCode?: number })?.statusCode;
     if (status === 401) {

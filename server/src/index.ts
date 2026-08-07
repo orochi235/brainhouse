@@ -53,6 +53,7 @@ async function main() {
     autoMinimizeOnClear: workspace.autoMinimizeOnClear,
     tracker,
     isAutoTitleEnabled: () => prefs.get().display.autoTitle,
+    titlerCliFallback: { configDir: prefs.get().display.titlerCliConfigDir },
     getNotificationPrefs: () => {
       const n = prefs.get().notifications;
       return {

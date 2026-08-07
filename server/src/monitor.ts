@@ -23,6 +23,7 @@ import type { Store } from './store.js';
 import { type PanelTheme, readPanelTheme } from './theme.js';
 import { type AlertNotificationPrefs, AlertQueue } from './alertQueue.js';
 import { isRealUserText, isSubstantiveAssistantText, Titler } from './titler.js';
+import { makeCliTitlerClient } from './titlerCli.js';
 import { TranscriptWatcher } from './watcher.js';
 
 export interface MonitorOptions {
@@ -59,6 +60,10 @@ export interface MonitorOptions {
    * evaluation so a runtime prefs flip takes effect without a restart.
    * Defaults to `() => true` when omitted. */
   isAutoTitleEnabled?: () => boolean;
+  /** When set, the titler falls back to `claude -p` (riding CLI auth)
+   * whenever no ANTHROPIC_API_KEY resolves. Absent in tests so unit runs
+   * can never spawn a real CLI. */
+  titlerCliFallback?: { configDir: string | null };
   /** Fresh read of the notification prefs the AlertQueue gates on. Falls
    * back to schema defaults when absent (tests). */
   getNotificationPrefs?: () => AlertNotificationPrefs;
@@ -161,12 +166,16 @@ export class TranscriptMonitor {
     this.autoMinimizeOnClear = opts.autoMinimizeOnClear ?? true;
     this.tracker = opts.tracker ?? null;
     const isAutoTitleEnabled = opts.isAutoTitleEnabled ?? (() => true);
+    const cliFallback = opts.titlerCliFallback;
     this.titler = new Titler({
       getPanel: (panelId) => this.store.panel(panelId),
       isAutoTitleEnabled,
       applyAutoTitle: (panelId, proposed) => {
         for (const d of this.store.applyAutoTitle(panelId, proposed)) this.broadcast(d);
       },
+      cliClientFactory: cliFallback
+        ? () => makeCliTitlerClient({ configDir: cliFallback.configDir })
+        : undefined,
     });
     const getNotificationPrefs =
       opts.getNotificationPrefs ??
