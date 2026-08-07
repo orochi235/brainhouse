@@ -959,3 +959,15 @@ no-focus variants), and liveness — with iTerm2 as the first adapter, so
 Terminal.app / Ghostty / kitty / WezTerm / tmux can slot in behind the
 same panel fields. Panel schema should carry a generic
 `terminal_ref: { kind, id }` rather than an iTerm-only GUID column.
+
+## [HIGH] Capture "how does this work?" questions into their own area
+
+Listen for questions about how things work and collect them in a
+dedicated area of brainhouse, separate from the panel/session surfaces.
+Start narrow: watch for `/btw` invocations in session transcripts (the
+event watcher already sees every user_text / command artifact) and store
+each captured question with its session id, project, and timestamp.
+Needs: a small server-side store (persist alongside intentions), a
+transform/parser hook to detect the trigger, and a UI surface to browse
+the collected questions. Later: widen detection beyond `/btw` (heuristic
+or model-assisted "this is a how-does-X-work question").
