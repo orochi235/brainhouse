@@ -264,6 +264,17 @@ UI/server is meant to uphold. New entries go at the bottom.
   transient `auto_titled` delta that drives a title-flash animation +
   a 5-second panel-anchored toast. The synthetic meta event renders
   inline as a permanent breadcrumb so the rename is auditable on reload.
+- **A subagent kickoff triggers an immediate title evaluation of the
+  parent panel.** A `PreToolUse` hook on the Task/Agent tool emits a
+  `subagent_start` sidecar record (`hooks/dispatcher.mjs`); the monitor
+  routes it to `titler.scheduleEvaluation(sid, 'subagent_start')`, which
+  bypasses the 30s debounce (like `stop`) and lowers the
+  placeholder-title turn threshold from 2 to 1 — one prompt that fans
+  out into subagents is a long run worth naming *during* the run, not
+  after its Stop lands. All other titler gates hold: manually-renamed
+  panels are never touched, already-titled panels only recheck on the
+  every-20-turns cadence, and single-flight/cooldowns apply — so a
+  burst of Task spawns costs at most one API call.
 - Debug mode (`debug.enabled`, off by default) gates dev affordances in
   the UI:
   - Topbar: `+ mock session`, `+ counter subagent`, Scenarios picker,

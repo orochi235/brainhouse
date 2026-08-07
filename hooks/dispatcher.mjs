@@ -8,7 +8,8 @@
  * exits 0 — silently swallowing any error so Claude Code never blocks on us.
  *
  * Usage: node dispatcher.mjs <kind>
- *   kind ∈ {stop, subagent_stop, notification, session_end, session_start}
+ *   kind ∈ {stop, subagent_stop, subagent_start, notification, session_end,
+ *   session_start}
  *
  * Env:
  *   BRAINHOUSE_EVENTS_DIR  override sidecar directory (default ~/.brainhouse/events)
@@ -21,6 +22,7 @@ import path from 'node:path';
 const VALID_KINDS = new Set([
   'stop',
   'subagent_stop',
+  'subagent_start',
   'notification',
   'session_end',
   'session_start',
@@ -70,6 +72,18 @@ async function main() {
     if (raw) {
       const colon = raw.indexOf(':');
       event.iterm_session_id = colon >= 0 ? raw.slice(colon + 1) : raw;
+    }
+  }
+  // PreToolUse on the subagent-spawn tool. The settings matcher already
+  // filters to Task/Agent, but a misconfigured matcher would otherwise
+  // flood the sidecar with every tool call — guard here too.
+  if (kind === 'subagent_start') {
+    const toolName = payload?.tool_name;
+    if (toolName !== 'Task' && toolName !== 'Agent') return;
+    const input = payload?.tool_input;
+    if (input && typeof input === 'object') {
+      if (typeof input.subagent_type === 'string') event.subagent_type = input.subagent_type;
+      if (typeof input.description === 'string') event.description = input.description;
     }
   }
 

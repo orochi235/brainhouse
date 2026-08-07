@@ -192,6 +192,16 @@ describe('shouldFire', () => {
     expect(shouldFire(p, 1)).toBe(false);
     expect(shouldFire(p, 2)).toBe(true);
   });
+  it('lowers the placeholder threshold to 1 turn on subagent_start', () => {
+    const p = makePanel();
+    expect(shouldFire(p, 1, 'subagent_start')).toBe(true);
+    expect(shouldFire(p, 0, 'subagent_start')).toBe(false);
+  });
+  it('subagent_start keeps the recheck cadence once titled', () => {
+    const p = makePanel({ title: 'A nice title' });
+    expect(shouldFire(p, 7, 'subagent_start')).toBe(false);
+    expect(shouldFire(p, 20, 'subagent_start')).toBe(true);
+  });
   it('rechecks every N turns once titled', () => {
     const p = makePanel({ title: 'A nice title' });
     expect(shouldFire(p, 1)).toBe(false);
@@ -270,6 +280,20 @@ describe('Titler', () => {
     client.next().resolve('Sync stop title');
     await flush();
     expect(APPLIED[0]?.title).toBe('Sync stop title');
+  });
+
+  it('subagent_start bypasses debounce and fires on a single user turn', async () => {
+    const timers = new FakeTimers();
+    const client = makeFakeClient();
+    const panel = makePanel({ events: [ev('user_text', 'kick off the big migration')] });
+    const panels = new Map([[panel.id, panel]]);
+    const titler = build({ panels, client, timers });
+    titler.scheduleEvaluation(panel.id, 'subagent_start');
+    await flush();
+    expect(client.calls.length).toBe(1);
+    client.next().resolve('Big migration fan-out');
+    await flush();
+    expect(APPLIED[0]?.title).toBe('Big migration fan-out');
   });
 
   it('respects the autoTitle pref toggle', () => {

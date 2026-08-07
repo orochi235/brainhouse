@@ -471,6 +471,13 @@ export class TranscriptMonitor {
       }
       return;
     }
+    if (event.kind === 'subagent_start') {
+      // A Task spawn just kicked off a (potentially long) subagent run —
+      // evaluate the parent's title now so the panel is named during the
+      // run, not only after its Stop lands.
+      this.titler.scheduleEvaluation(sid, 'subagent_start');
+      return;
+    }
     if (event.kind === 'notification') {
       for (const d of this.store.setAwaiting(sid, true)) this.broadcast(d);
       return;

@@ -22,6 +22,7 @@ export const HookEventSchema = z.object({
   kind: z.enum([
     'stop',
     'subagent_stop',
+    'subagent_start',
     'notification',
     'session_end',
     'session_start',
@@ -46,6 +47,10 @@ export const HookEventSchema = z.object({
   /** auto_title only. The proposed new panel title. Server validates and
    * applies if it differs from the current title. */
   title: z.string().optional(),
+  /** subagent_start only. The Task tool's `subagent_type` input. */
+  subagent_type: z.string().optional(),
+  /** subagent_start only. The Task tool's short `description` input. */
+  description: z.string().optional(),
   /** hook_overhead only. Which brainhouse hook injected context. */
   hook_name: z.string().optional(),
   /** hook_overhead only. Estimated tokens added to the next turn's

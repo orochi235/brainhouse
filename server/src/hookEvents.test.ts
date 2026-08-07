@@ -21,6 +21,19 @@ describe('HookEventSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  test('accepts subagent_start with task metadata', () => {
+    const raw = {
+      kind: 'subagent_start',
+      session_id: 'S',
+      subagent_type: 'Explore',
+      description: 'Scan the repo for flaky tests',
+      ts: 1700000000,
+    };
+    const result = HookEventSchema.safeParse(raw);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.subagent_type).toBe('Explore');
+  });
+
   test('accepts auto_title with a title payload', () => {
     const raw = {
       kind: 'auto_title',

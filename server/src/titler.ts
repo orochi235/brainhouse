@@ -10,9 +10,10 @@
  * Here the server itself drives title generation from transcript state it
  * already ingests: ingestion sites in `session.ts` call
  * `scheduleEvaluation(panelId, reason)`. A per-panel debounce timer
- * coalesces bursts of `user_text` / `assistant_text` calls; a `stop`
- * reason bypasses the debounce and fires immediately (after gates pass).
- * The single-flight guard prevents overlapping requests per panel.
+ * coalesces bursts of `user_text` / `assistant_text` calls; `stop` and
+ * `subagent_start` reasons bypass the debounce and fire immediately
+ * (after gates pass). The single-flight guard prevents overlapping
+ * requests per panel.
  *
  * Outcomes route through `applyAutoTitle()` — same dedupe, same delta
  * routing, same UI flash/toast — so this module's surface area is
@@ -20,7 +21,9 @@
  *
  * Eligibility mirrors the inline hook:
  *   - pref `display.autoTitle` ON
- *   - turn count >= 2 when no custom title exists
+ *   - turn count >= 2 when no custom title exists (>= 1 for
+ *     `subagent_start` — a first prompt that fans out into subagents is
+ *     worth naming immediately)
  *   - recheck every RECHECK_EVERY_N_TURNS once titled
  *
  * Inputs sent to Haiku: the first user_text + the last two substantive
@@ -61,7 +64,13 @@ const SYSTEM_PROMPT =
   '- Describe the work, not the tool ("Wire auto-titling hook", not "Helping the user with auto-titling").\n' +
   '- Reply with ONLY the title text or KEEP. No preface, no explanation, no formatting.';
 
-export type EvaluationReason = 'user_text' | 'assistant_text' | 'stop';
+export type EvaluationReason = 'user_text' | 'assistant_text' | 'stop' | 'subagent_start';
+
+/** Reasons that bypass the debounce and fire immediately: `stop` is the
+ * strongest "turn complete" signal; `subagent_start` means a potentially
+ * long subagent run just kicked off, and the panel should carry a real
+ * title *during* the run, not only after it ends. */
+const IMMEDIATE_REASONS = new Set<EvaluationReason>(['stop', 'subagent_start']);
 
 /** Minimal shape of the Anthropic SDK surface the titler uses. Lets tests
  * pass in a fake without pulling the real client. */
@@ -158,17 +167,16 @@ export class Titler {
     if (!this.opts.isAutoTitleEnabled()) return;
     const state = this.ensureState(panelId);
     if (state.cooldownUntil > this.now()) return;
-    if (reason === 'stop') {
-      // Strongest "turn complete" signal — bypass debounce.
+    if (IMMEDIATE_REASONS.has(reason)) {
       this.cancelTimer(state);
-      void this.evaluate(panelId);
+      void this.evaluate(panelId, reason);
       return;
     }
     this.cancelTimer(state);
     state.timer = this.setTimer(() => {
       const s = this.states.get(panelId);
       if (s) s.timer = null;
-      void this.evaluate(panelId);
+      void this.evaluate(panelId, reason);
     }, DEBOUNCE_MS);
   }
 
@@ -203,7 +211,7 @@ export class Titler {
 
   /** Run one evaluation pass for a panel. Idempotent across concurrent
    * calls via the inflight flag (drops the second request). */
-  private async evaluate(panelId: string): Promise<void> {
+  private async evaluate(panelId: string, reason?: EvaluationReason): Promise<void> {
     if (this.permanentlyDisabled) return;
     const state = this.states.get(panelId);
     if (state && state.inflight) return;
@@ -212,7 +220,7 @@ export class Titler {
     if (panel.binned_at !== null) return;
     if (!this.opts.isAutoTitleEnabled()) return;
     const turns = extractTurns(panel.events);
-    if (!shouldFire(panel, turns.user.length)) return;
+    if (!shouldFire(panel, turns.user.length, reason)) return;
     const client = this.ensureClient();
     if (!client) return;
 
@@ -376,15 +384,20 @@ export function sanitizeProposal(raw: string): string | null {
 }
 
 /** Eligibility check. Mirrors `auto-title-inline.mjs:shouldFire`. */
-export function shouldFire(panel: Panel, turnCount: number): boolean {
+export function shouldFire(panel: Panel, turnCount: number, reason?: EvaluationReason): boolean {
   // Manually-renamed panels are left alone — once the user authors a
   // title, brainhouse never overwrites it.
   if (panel.manually_renamed) return false;
   // A panel whose title is still the placeholder gates on the
   // first-real-title threshold; once a custom title exists we recheck
-  // periodically.
+  // periodically. A subagent kickoff lowers the threshold to the first
+  // prompt: one prompt that fans out into subagents is already a
+  // long-running session worth naming now.
   const hasCustomTitle = panel.title && panel.title !== initialPlaceholder(panel.id);
-  if (!hasCustomTitle) return turnCount >= PLACEHOLDER_TURN_THRESHOLD;
+  if (!hasCustomTitle) {
+    const threshold = reason === 'subagent_start' ? 1 : PLACEHOLDER_TURN_THRESHOLD;
+    return turnCount >= threshold;
+  }
   return turnCount > 0 && turnCount % RECHECK_EVERY_N_TURNS === 0;
 }
 
