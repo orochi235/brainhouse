@@ -225,6 +225,26 @@ export const NotificationsSchema = z.object({
   /** Play a short synthesized chime on each transition. Off by default;
    * no asset (uses WebAudio so it works in dev with no bundled file). */
   audibleChime: z.boolean().default(false),
+  /** Master mute. Gates every channel — the server-side AlertQueue stops
+   * enqueuing and the client channels (tab flash, browser toast, chime)
+   * skip firing. Flipped from the menubar helper's menu toggle or the
+   * prefs modal. */
+  muteAll: z.boolean().default(false),
+  /** macOS Notification Center channel, delivered by the menu bar
+   * helper. Fires when a session has been awaiting input past
+   * `graceSeconds`. */
+  macNative: z.boolean().default(true),
+  /** Also alert (immediately, no grace) when a session's turn completes
+   * (Stop hook). Off by default — the blocked state is the time sink. */
+  macNativeTurnComplete: z.boolean().default(false),
+  /** Seconds a session must stay awaiting before the native alert
+   * enqueues. 0 = immediate. Waits answered inside the window never
+   * notify. */
+  graceSeconds: z.number().int().min(0).default(30),
+  /** When true, clicking a notification focuses iTerm (activate). When
+   * false (default), the window is raised via AXRaise without taking
+   * keyboard focus. */
+  clickFocus: z.boolean().default(false),
 });
 export type Notifications = z.infer<typeof NotificationsSchema>;
 
