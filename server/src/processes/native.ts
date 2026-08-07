@@ -174,7 +174,7 @@ export async function listCwds(): Promise<Map<number, string>> {
  * and brings iTerm2 to the front. `id of session` equals the GUID portion of
  * $ITERM_SESSION_ID, so this reveals the exact pane a Claude session runs in.
  * Returns "ok" on a hit, "notfound" otherwise. */
-const ITERM_REVEAL_SCRIPT = `on run argv
+export const ITERM_REVEAL_SCRIPT_FOCUS = `on run argv
   set target to item 1 of argv
   tell application "iTerm2"
     repeat with w in windows
@@ -194,17 +194,47 @@ const ITERM_REVEAL_SCRIPT = `on run argv
   return "notfound"
 end run`;
 
+/** No-focus variant: same pane-selection walk, but instead of `activate`
+ * (which steals keyboard focus), System Events raises the now-front iTerm
+ * window to the top of the global z-order via AXRaise. The frontmost app
+ * keeps key focus. Requires an Accessibility grant for the calling
+ * process; when missing, osascript errors and the caller resolves false
+ * (pane still selected inside iTerm — a silent partial success). */
+export const ITERM_REVEAL_SCRIPT_NOFOCUS = `on run argv
+  set target to item 1 of argv
+  tell application "iTerm2"
+    repeat with w in windows
+      repeat with t in tabs of w
+        repeat with s in sessions of t
+          if id of s is target then
+            tell s to select
+            tell t to select
+            select w
+            tell application "System Events" to tell process "iTerm2" to perform action "AXRaise" of window 1
+            return "ok"
+          end if
+        end repeat
+      end repeat
+    end repeat
+  end tell
+  return "notfound"
+end run`;
+
 /** Reveal the iTerm2 pane identified by `guid` (an $ITERM_SESSION_ID GUID).
  * macOS + iTerm2 only; returns false on any other platform, when iTerm2 isn't
  * running, when no live pane has that id, or when osascript errors. The GUID
  * is passed as an execFile argv entry (never a shell string), so it can't be
- * used to inject AppleScript. */
-export async function revealItermSession(guid: string): Promise<boolean> {
+ * used to inject AppleScript. `focus: false` raises the window without
+ * activating iTerm (see ITERM_REVEAL_SCRIPT_NOFOCUS). */
+export async function revealItermSession(
+  guid: string,
+  opts: { focus?: boolean } = {},
+): Promise<boolean> {
   if (process.platform !== 'darwin') return false;
+  const script = (opts.focus ?? true) ? ITERM_REVEAL_SCRIPT_FOCUS : ITERM_REVEAL_SCRIPT_NOFOCUS;
   try {
     const { stdout } = await execWithRetry(
-      () =>
-        execFileAsync('osascript', ['-e', ITERM_REVEAL_SCRIPT, guid], { timeout: 5000 }),
+      () => execFileAsync('osascript', ['-e', script, guid], { timeout: 5000 }),
       { label: 'osascript:iterm-reveal' },
     );
     return stdout.trim() === 'ok';

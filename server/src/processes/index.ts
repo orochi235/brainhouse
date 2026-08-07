@@ -262,9 +262,10 @@ export class ProcessTracker extends EventEmitter {
 
   /** Reveal the iTerm2 pane a session runs in. `guid` is an
    * $ITERM_SESSION_ID GUID (as stamped on a ProcessRow's `iterm_session_id`).
-   * Returns whether a matching live pane was found and focused. */
-  async revealIterm(guid: string): Promise<boolean> {
-    return revealItermSession(guid);
+   * Returns whether a matching live pane was found. `focus: false` raises
+   * the window without activating iTerm. */
+  async revealIterm(guid: string, opts: { focus?: boolean } = {}): Promise<boolean> {
+    return revealItermSession(guid, opts);
   }
 
   async kill(processId: string): Promise<void> {

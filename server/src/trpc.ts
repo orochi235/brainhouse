@@ -171,10 +171,12 @@ export const appRouter = t.router({
      * GUID (stamped on the row as `iterm_session_id`). No-op / `found: false`
      * off macOS, when iTerm2 isn't running, or when the pane has closed. */
     revealInIterm: t.procedure
-      .input(z.object({ iterm_session_id: z.string().min(1) }))
+      .input(z.object({ iterm_session_id: z.string().min(1), focus: z.boolean().optional() }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.tracker) throw new Error('tracker not configured');
-        const found = await ctx.tracker.revealIterm(input.iterm_session_id);
+        const found = await ctx.tracker.revealIterm(input.iterm_session_id, {
+          focus: input.focus ?? true,
+        });
         return { ok: true, found };
       }),
     /** Scan the session's transcript JSONL from the end and return the
