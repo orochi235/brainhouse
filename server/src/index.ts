@@ -98,6 +98,39 @@ async function main() {
   // stays a one-line JSON fetch.
   app.get('/api/summary', async () => monitor.store.menubarSummary());
 
+  // Alert feed for the menu bar helper: cursor-paginated by monotonic id.
+  // `enabled` mirrors the notification prefs so the helper's menu toggle
+  // renders current state without a second endpoint.
+  app.get<{ Querystring: { after?: string } }>('/api/alerts', async (req) => {
+    const parsed = Number(req.query.after ?? -1);
+    const after = Number.isFinite(parsed) ? parsed : -1;
+    const n = prefs.get().notifications;
+    return { enabled: !n.muteAll && n.macNative, alerts: monitor.alertQueue.list(after) };
+  });
+
+  // Notification-click reveal. When the body omits `focus`, the
+  // `notifications.clickFocus` pref decides — default false: raise the
+  // window without stealing keyboard focus. The dashboard's reveal button
+  // goes through tRPC with focus:true (an explicit "take me there").
+  app.post<{ Body: { iterm_session_id?: string; focus?: boolean } }>(
+    '/api/reveal',
+    async (req) => {
+      const guid = req.body?.iterm_session_id;
+      if (!guid) return { ok: false, found: false };
+      const focus = req.body?.focus ?? prefs.get().notifications.clickFocus;
+      const found = await tracker.revealIterm(guid, { focus });
+      return { ok: true, found };
+    },
+  );
+
+  // Menubar master toggle. Writes through the same PrefsStore the
+  // dashboard modal uses, so the two switches never disagree.
+  app.post<{ Body: { enabled?: boolean } }>('/api/notifications', async (req) => {
+    const enabled = req.body?.enabled === true;
+    await prefs.update({ notifications: { ...prefs.get().notifications, muteAll: !enabled } });
+    return { enabled };
+  });
+
   // Plain-JSON read of processes attributed to a Claude session. Lives
   // outside the tRPC tree so brainhouse hook scripts can hit it with a
   // single `fetch()` without speaking the tRPC protocol. Used by the
