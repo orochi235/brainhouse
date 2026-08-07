@@ -673,4 +673,8 @@ UI/server is meant to uphold. New entries go at the bottom.
   non-JSON stdout still titles but goes unmetered. Rollup grouped by
   (model, source) is served by `trpc.titlerUsage` and rendered in the
   Stats view, with api-path cost estimated from tokens at Haiku list
-  prices and cli-path cost summed from the CLI's `total_cost_usd`.
+  prices. cli-path cost (the CLI's `total_cost_usd`) rides subscription
+  auth, so it is never presented as billed spend — the Stats view renders
+  it muted/parenthesized as a list-price reference, matching the
+  `roots[].metered` convention in prefs ("a list-price estimate would
+  misrepresent what they actually pay").

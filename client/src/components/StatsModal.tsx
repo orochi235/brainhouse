@@ -159,9 +159,10 @@ export function StatsModal() {
         <>
           <h3 className="lightbox-title">Titler usage</h3>
           <p className="transforms-intro">
-            Out-of-band auto-titler spend, one row per (model, auth path). Cost is reported by the
-            CLI where available; api-path cost is estimated from tokens at Haiku list prices. From
-            the persistent <code>titler_usage</code> table.
+            Out-of-band auto-titler spend, one row per (model, auth path). api-path cost is
+            estimated from tokens at Haiku list prices and is real billed spend. cli rows ride
+            Claude subscription auth — their cost is the CLI&apos;s list-price equivalent, shown
+            muted for reference, not billed. From the persistent <code>titler_usage</code> table.
           </p>
           <table className="stats-table">
             <thead>
@@ -190,7 +191,15 @@ export function StatsModal() {
                     <td className="stats-count">{r.cache_creation_input_tokens.toLocaleString()}</td>
                     <td className="stats-count">{r.cache_read_input_tokens.toLocaleString()}</td>
                     <td className="stats-count">
-                      {cost === null ? <span className="muted">—</span> : `$${cost.toFixed(4)}`}
+                      {cost === null ? (
+                        <span className="muted">—</span>
+                      ) : r.source === 'cli' ? (
+                        <span className="muted" title="subscription auth — not billed">
+                          (${cost.toFixed(4)})
+                        </span>
+                      ) : (
+                        `$${cost.toFixed(4)}`
+                      )}
                     </td>
                     <td className="stats-last-seen">{formatLastSeen(r.last_call)}</td>
                   </tr>
