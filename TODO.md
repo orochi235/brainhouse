@@ -945,3 +945,17 @@ stopgap, kept thin enough to delete when the real knob lands.
 - **Group subtasks in the dock.** Subagent panels should nest under
   their parent's dock entry the same way they group inside session
   windows, instead of appearing as free-floating dock tiles.
+
+## [HIGH] Abstract the terminal integration (iTerm2 → pluggable)
+
+Everything terminal-facing is currently hardwired to iTerm2:
+`ITERM_SESSION_ID` GUID capture in the hooks (`dispatcher.mjs`,
+`session-start-procs.mjs`), `iterm_session_id` stamping through the
+hook-event schema and panels, pane-GUID supersede matching, and
+`revealItermSession`'s AppleScript in `server/src/processes/native.ts`.
+Extract a terminal-adapter interface — identity capture (a stable
+pane/window id from the hook environment), reveal(id) (focus and
+no-focus variants), and liveness — with iTerm2 as the first adapter, so
+Terminal.app / Ghostty / kitty / WezTerm / tmux can slot in behind the
+same panel fields. Panel schema should carry a generic
+`terminal_ref: { kind, id }` rather than an iTerm-only GUID column.
