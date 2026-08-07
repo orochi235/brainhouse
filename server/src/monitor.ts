@@ -361,13 +361,21 @@ export class TranscriptMonitor {
     }
     const encodedCwdDir = path.basename(path.dirname(event.transcript_path));
     if (!encodedCwdDir) return;
-    const target = this.store.findSupersedablePanel({
-      encodedCwdDir,
-      excludeId: event.session_id,
-      now: event.ts,
-      withinSeconds: SUPERSEDE_WITHIN_SECONDS,
-      minIdleSeconds: SUPERSEDE_MIN_IDLE_SECONDS,
-    });
+    // Exact match first: the SessionStart record carries the terminal
+    // pane's iTerm GUID, and the panel that already owns that GUID is the
+    // predecessor by identity — the pane that hosted it now hosts the new
+    // session. Only when no pane identity is available (not iTerm, GUID
+    // never stamped) fall back to the cwd+recency heuristic.
+    const guid = event.iterm_session_id ?? null;
+    const target =
+      (guid ? this.store.findPanelByItermGuid(guid, event.session_id) : null) ??
+      this.store.findSupersedablePanel({
+        encodedCwdDir,
+        excludeId: event.session_id,
+        now: event.ts,
+        withinSeconds: SUPERSEDE_WITHIN_SECONDS,
+        minIdleSeconds: SUPERSEDE_MIN_IDLE_SECONDS,
+      });
     if (!target) return;
     for (const d of this.store.forceStatus(target.id, 'done')) this.broadcast(d);
     for (const d of this.store.markEnded(target.id, 'hook_session_start_supersede')) {

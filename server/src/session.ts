@@ -415,15 +415,35 @@ export class SessionStore {
     // re-emits on terminal close, etc.); they're not user-visible activity.
     // Treating them as activity bumps last_event_at to wall-clock-now and
     // makes the panel's idle / +X timers read 0 after a server restart.
+    const lastEventBefore = panel.last_event_at;
     if (event.kind !== 'meta') {
       panel.last_event_at = Math.max(panel.last_event_at, ts);
     }
+    // Self-heal a wrong supersede guess. Unlike every other provenance,
+    // hook_session_start_supersede is a heuristic — and a truly-cleared
+    // session never writes its transcript again, so strictly-newer real
+    // activity on this file disproves the guess. Meta records and command
+    // artifacts stay excluded (terminal-close death rattle); replayed
+    // history is never strictly newer than the hydrated last_event_at.
+    if (
+      panel.ended &&
+      panel.ended_provenance === 'hook_session_start_supersede' &&
+      event.kind !== 'meta' &&
+      !hasTag(event, 'meta') &&
+      !isCommandArtifact(event) &&
+      ts > lastEventBefore
+    ) {
+      panel.ended = false;
+      panel.ended_provenance = null;
+      deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+    }
     // Clear awaiting-input on any new activity (it's a transient blocker
-    // flag). Do NOT clear `ended` — terminal close-out flushes, late
-    // tool_result echoes, and other death-rattle writes shouldn't undo
-    // an authoritative end signal (Stop hook, SubagentStop, checklist
-    // completion). Ended panels still get the event appended for audit,
-    // but stay dimmed instead of bouncing back to live.
+    // flag). Do NOT clear `ended` (beyond the supersede self-heal above) —
+    // terminal close-out flushes, late tool_result echoes, and other
+    // death-rattle writes shouldn't undo an authoritative end signal (Stop
+    // hook, SubagentStop, checklist completion). Ended panels still get the
+    // event appended for audit, but stay dimmed instead of bouncing back to
+    // live.
     if (panel.awaiting_input) {
       panel.awaiting_input = false;
       deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
@@ -762,6 +782,30 @@ export class SessionStore {
       if (encodeCwdToProjectDir(p.cwd) !== opts.encodedCwdDir) continue;
       if (p.last_event_at < floor) continue;
       if (p.last_event_at > ceil) continue;
+      // A candidate whose claude process is still attributed live is a
+      // concurrent session in another terminal, not the cleared
+      // predecessor — the predecessor's pid gets re-attributed to the new
+      // session id by its session_pid record. With several sessions
+      // working in one cwd, recency alone routinely picks a sibling.
+      if (this.isSessionLive(p.id)) continue;
+      if (!best || p.last_event_at > best.last_event_at) best = p;
+    }
+    return best;
+  }
+
+  /** Exact supersede predecessor: the non-ended parent panel that lives in
+   * the same iTerm2 pane as the new session (same GUID, different id). Same
+   * pane is definitive — no recency window applies. Ties (multiple
+   * non-ended panels stamped with one pane's GUID) resolve to the most
+   * recent occupant. Null when no panel carries the GUID. */
+  findPanelByItermGuid(guid: string, excludeId: string): Panel | null {
+    let best: Panel | null = null;
+    for (const p of this.panels.values()) {
+      if (p.kind !== 'parent') continue;
+      if (p.ended) continue;
+      if (p.binned_at !== null) continue;
+      if (p.id === excludeId) continue;
+      if (p.iterm_session_id !== guid) continue;
       if (!best || p.last_event_at > best.last_event_at) best = p;
     }
     return best;

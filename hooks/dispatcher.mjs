@@ -61,6 +61,17 @@ async function main() {
   // superseded (clear/compact) vs left alone (startup/resume).
   const source = payload?.source;
   if (typeof source === 'string') event.source = source;
+  // Pane identity for exact supersede matching: the GUID part of
+  // ITERM_SESSION_ID (`w<win>t<tab>p<pane>:<GUID>`), same extraction as
+  // session-start-procs.mjs stamps on session_pid records. The panel
+  // already holding this GUID is the session this SessionStart replaced.
+  if (kind === 'session_start') {
+    const raw = process.env.ITERM_SESSION_ID;
+    if (raw) {
+      const colon = raw.indexOf(':');
+      event.iterm_session_id = colon >= 0 ? raw.slice(colon + 1) : raw;
+    }
+  }
 
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, `${sessionId}.jsonl`);

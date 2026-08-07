@@ -375,6 +375,180 @@ describe('TranscriptMonitor', () => {
       expect(monitor.store.panel('OLD')?.ended_provenance).toBe('hook_session_end');
     });
 
+    it('prefers the exact same-terminal (iTerm GUID) match over the recency heuristic', () => {
+      const monitor = newMonitor();
+      // OLD lives in pane GUID-OLD and emitted 0.1s ago — the min-idle floor
+      // would normally protect it from the heuristic. SIBLING is the
+      // heuristic's ideal candidate (same cwd, comfortably idle).
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'OLD', uuid: 'u1', cwd: CWD }),
+        ts: new Date((recentTs - 0.1) * 1000).toISOString(),
+      } as Event);
+      monitor.applyHookEvent({
+        session_id: 'OLD',
+        kind: 'session_pid',
+        iterm_session_id: 'GUID-OLD',
+        ts: recentTs - 60,
+      });
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'SIBLING', uuid: 'u2', cwd: CWD }),
+        ts: oldActivityIso,
+      } as Event);
+      monitor.applyHookEvent({
+        session_id: 'SIBLING',
+        kind: 'session_pid',
+        iterm_session_id: 'GUID-SIB',
+        ts: recentTs - 60,
+      });
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        iterm_session_id: 'GUID-OLD',
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('OLD')?.ended).toBe(true);
+      expect(monitor.store.panel('OLD')?.ended_provenance).toBe('hook_session_start_supersede');
+      expect(monitor.store.panel('SIBLING')?.ended).toBe(false);
+    });
+
+    it('exact iTerm match supersedes a predecessor idle beyond the recency window', () => {
+      const monitor = newMonitor();
+      // Idle 1 hour — far outside SUPERSEDE_WITHIN_SECONDS. Same pane is
+      // definitive: the terminal that hosted OLD now hosts NEW.
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'OLD', uuid: 'u1', cwd: CWD }),
+        ts: new Date((recentTs - 3600) * 1000).toISOString(),
+      } as Event);
+      monitor.applyHookEvent({
+        session_id: 'OLD',
+        kind: 'session_pid',
+        iterm_session_id: 'GUID-OLD',
+        ts: recentTs - 3600,
+      });
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        iterm_session_id: 'GUID-OLD',
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('OLD')?.ended).toBe(true);
+    });
+
+    it('heuristic skips candidates whose claude process is still live', () => {
+      // Three concurrent sessions in one cwd: a /clear must not end a
+      // sibling whose own process is alive. The cleared predecessor's pid
+      // gets re-attributed to the new session, so it is NOT process-live.
+      const tracker = {
+        liveSessionIds: () => new Set(['SIBLING']),
+        handleHookRecord: () => {},
+        tickOnce: async () => {},
+      } as unknown as import('./processes/index.js').ProcessTracker;
+      const monitor = new TranscriptMonitor({ roots: [], hookEventsDir: null, tracker });
+      // SIBLING is more recently active than OLD — the pre-guard heuristic
+      // would have picked it.
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'SIBLING', uuid: 'u1', cwd: CWD }),
+        ts: new Date((recentTs - 5) * 1000).toISOString(),
+      } as Event);
+      seedOld(monitor);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('SIBLING')?.ended).toBe(false);
+      expect(monitor.store.panel('OLD')?.ended).toBe(true);
+    });
+
+    it('supersedes nothing when every same-cwd candidate is process-live', () => {
+      const tracker = {
+        liveSessionIds: () => new Set(['SIBLING']),
+        handleHookRecord: () => {},
+        tickOnce: async () => {},
+      } as unknown as import('./processes/index.js').ProcessTracker;
+      const monitor = new TranscriptMonitor({ roots: [], hookEventsDir: null, tracker });
+      monitor.ingest({
+        ...userTextEvent({ session_id: 'SIBLING', uuid: 'u1', cwd: CWD }),
+        ts: oldActivityIso,
+      } as Event);
+      monitor.applyHookEvent({
+        session_id: 'NEW',
+        kind: 'session_start',
+        source: 'clear',
+        transcript_path: newTranscript,
+        ts: recentTs,
+      });
+      expect(monitor.store.panel('SIBLING')?.ended).toBe(false);
+    });
+
+    describe('supersede self-heal', () => {
+      function supersedeOld(monitor: TranscriptMonitor): void {
+        seedOld(monitor);
+        monitor.applyHookEvent({
+          session_id: 'NEW',
+          kind: 'session_start',
+          source: 'clear',
+          transcript_path: newTranscript,
+          ts: recentTs,
+        });
+        expect(monitor.store.panel('OLD')?.ended).toBe(true);
+      }
+
+      it('un-ends a superseded panel when strictly-newer real activity arrives', () => {
+        const monitor = newMonitor();
+        supersedeOld(monitor);
+        // A truly-cleared session never writes again; a new event on this
+        // transcript proves the supersede guessed wrong.
+        monitor.ingest({
+          ...userTextEvent({ session_id: 'OLD', uuid: 'u9', cwd: CWD }),
+          ts: new Date((recentTs + 5) * 1000).toISOString(),
+        } as Event);
+        const old = monitor.store.panel('OLD');
+        expect(old?.ended).toBe(false);
+        expect(old?.ended_provenance).toBeNull();
+        expect(old?.status).toBe('live');
+      });
+
+      it('meta records do NOT resurrect (terminal-close death rattle)', () => {
+        const monitor = newMonitor();
+        supersedeOld(monitor);
+        monitor.ingest({
+          ...userTextEvent({ session_id: 'OLD', uuid: 'u9', cwd: CWD }),
+          ts: new Date((recentTs + 5) * 1000).toISOString(),
+          kind: 'meta',
+          payload: {},
+        } as Event);
+        expect(monitor.store.panel('OLD')?.ended).toBe(true);
+      });
+
+      it('stale replayed events do NOT resurrect (bootstrap re-read)', () => {
+        const monitor = newMonitor();
+        supersedeOld(monitor);
+        monitor.ingest({
+          ...userTextEvent({ session_id: 'OLD', uuid: 'u9', cwd: CWD }),
+          ts: new Date((oldActivityTs - 100) * 1000).toISOString(),
+        } as Event);
+        expect(monitor.store.panel('OLD')?.ended).toBe(true);
+      });
+
+      it('authoritative ends (session_end) are never undone by activity', () => {
+        const monitor = newMonitor();
+        seedOld(monitor);
+        monitor.applyHookEvent({ session_id: 'OLD', kind: 'session_end', ts: recentTs });
+        monitor.ingest({
+          ...userTextEvent({ session_id: 'OLD', uuid: 'u9', cwd: CWD }),
+          ts: new Date((recentTs + 5) * 1000).toISOString(),
+        } as Event);
+        expect(monitor.store.panel('OLD')?.ended).toBe(true);
+      });
+    });
+
     it('demotes live subagents under the superseded parent', () => {
       const monitor = newMonitor();
       seedOld(monitor);

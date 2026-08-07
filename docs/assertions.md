@@ -390,15 +390,35 @@ UI/server is meant to uphold. New entries go at the bottom.
 ## Lifecycle
 
 - A `SessionStart` hook with `source ∈ {clear, compact}` retires the prior
-  live panel in the same project directory. "Same project directory" is
-  determined by encoding each candidate panel's `cwd` (`/` and `.` → `-`)
-  and matching against the basename of the new session's `transcript_path`
+  live panel in the same terminal pane when pane identity is available:
+  the dispatcher stamps the SessionStart record with the iTerm2 GUID from
+  `ITERM_SESSION_ID`, and the non-ended parent panel already holding that
+  GUID (stamped via its own `session_pid` record) is the predecessor *by
+  identity* — no recency window applies, and ties (multiple non-ended
+  panels on one GUID) resolve to the most recent occupant. Only when no
+  pane match exists (not iTerm, GUID never stamped) does the cwd+recency
+  heuristic run: encode each candidate panel's `cwd` (`/` and `.` → `-`)
+  and match against the basename of the new session's `transcript_path`
   dirname. The candidate must additionally be non-ended, kind=parent,
-  not the new session itself, and have last activity within the last 5
-  minutes. The most recently active match is ended with provenance
-  `hook_session_start_supersede`; its live subagents are demoted and
-  marked ended with the same provenance. `source ∈ {startup, resume}`
-  never supersedes. After the dim, the panel (and any demoted subagents)
+  not the new session itself, have last activity within the last 5
+  minutes, and — because several concurrent sessions routinely share one
+  cwd — must NOT be process-live per the tracker (the true predecessor's
+  pid re-attributes to the new session id; a candidate still attributed
+  live is a sibling in another terminal). The most recently active match
+  is ended with provenance `hook_session_start_supersede`; its live
+  subagents are demoted and marked ended with the same provenance.
+  `source ∈ {startup, resume}` never supersedes.
+
+- A supersede is the only *heuristic* end, so it is the only one that
+  self-heals: a truly-cleared session never writes its transcript again,
+  so a real event (not meta, not a slash-command artifact) with `ts`
+  strictly newer than the panel's `last_event_at` arriving on a panel
+  ended with `hook_session_start_supersede` clears `ended` and its
+  provenance, letting normal status promotion resurrect the panel.
+  Replayed history is never strictly newer than the hydrated
+  `last_event_at`, so bootstrap re-reads cannot resurrect; authoritative
+  ends (`hook_session_end`, `hook_subagent_stop`, `progress_complete`)
+  are never undone by activity. After the dim, the panel (and any demoted subagents)
   are forced to `mini` 5 seconds later — bypassing the usual
   `done → mini` wait — *unless* the panel is pinned at fire time, in
   which case it stays dimmed in the grid. The auto-minimize step is
