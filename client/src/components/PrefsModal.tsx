@@ -82,6 +82,11 @@ interface PrefsDraft {
     tabTitleFlash: boolean;
     browserNotification: boolean;
     audibleChime: boolean;
+    muteAll: boolean;
+    macNative: boolean;
+    macNativeTurnComplete: boolean;
+    graceSeconds: number;
+    clickFocus: boolean;
   };
   debug: {
     enabled: boolean;
@@ -667,6 +672,37 @@ function NotificationsSection({ draft, setDraft }: SectionProps) {
         hint="Short two-tone ping on each transition. Synthesized — no asset, but autoplay policies may suppress it until you've interacted with the page."
         checked={draft.notifications.audibleChime}
         onChange={(v) => set({ audibleChime: v })}
+      />
+      <CheckboxField
+        label="Mute all notifications"
+        hint="Master switch — silences every channel here, including the menu bar helper's macOS notifications. Mirrors the toggle in the menu bar menu."
+        checked={draft.notifications.muteAll}
+        onChange={(v) => set({ muteAll: v })}
+      />
+      <CheckboxField
+        label="macOS notifications (menu bar helper)"
+        hint="Native Notification Center banner when a session has been waiting for input past the grace period. Delivered by the brainhouse menu bar helper; click raises the session's iTerm window."
+        checked={draft.notifications.macNative}
+        onChange={(v) => set({ macNative: v })}
+      />
+      <CheckboxField
+        label="Also notify when a turn completes"
+        hint="Immediate banner on each Stop — session finished, ready for your next prompt. Noisier; off by default."
+        checked={draft.notifications.macNativeTurnComplete}
+        onChange={(v) => set({ macNativeTurnComplete: v })}
+      />
+      <NumberField
+        label="Grace period (seconds)"
+        hint="Only notify if the session is still waiting after this long. Prompts you answer immediately never notify. 0 = notify instantly."
+        value={draft.notifications.graceSeconds}
+        min={0}
+        onChange={(v) => set({ graceSeconds: v })}
+      />
+      <CheckboxField
+        label="Clicking a notification focuses iTerm"
+        hint="Default off: the iTerm window is raised to the front of the window stack but keyboard focus stays where you are."
+        checked={draft.notifications.clickFocus}
+        onChange={(v) => set({ clickFocus: v })}
       />
     </Section>
   );

@@ -28,6 +28,9 @@ interface NotificationPrefs {
   tabTitleFlash: boolean;
   browserNotification: boolean;
   audibleChime: boolean;
+  /** Master mute — silences every client channel here (the server-side
+   * AlertQueue honors it independently). */
+  muteAll: boolean;
 }
 
 const TITLE_FLASH_PREFIX = '● ';
@@ -57,15 +60,16 @@ export function useAwaitingNotifications(
     }
 
     if (transitions.length === 0) return;
+    if (prefs.muteAll) return; // transitions still recorded above, just not surfaced
     if (prefs.browserNotification) {
       for (const p of transitions) fireBrowserNotification(p);
     }
     if (prefs.audibleChime) playChime();
-  }, [panels, prefs.browserNotification, prefs.audibleChime]);
+  }, [panels, prefs.browserNotification, prefs.audibleChime, prefs.muteAll]);
 
   // Channel: tab-title flash. Driven by current state + tab visibility.
   useEffect(() => {
-    if (!prefs.tabTitleFlash) return;
+    if (!prefs.tabTitleFlash || prefs.muteAll) return;
 
     const update = () => {
       let anyAwaiting = false;
@@ -94,7 +98,7 @@ export function useAwaitingNotifications(
         document.title = document.title.slice(TITLE_FLASH_PREFIX.length);
       }
     };
-  }, [panels, prefs.tabTitleFlash]);
+  }, [panels, prefs.tabTitleFlash, prefs.muteAll]);
 }
 
 function fireBrowserNotification(panel: PanelState): void {

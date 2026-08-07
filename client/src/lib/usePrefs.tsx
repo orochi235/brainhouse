@@ -79,6 +79,11 @@ export interface ClientPrefs {
     tabTitleFlash: boolean;
     browserNotification: boolean;
     audibleChime: boolean;
+    muteAll: boolean;
+    macNative: boolean;
+    macNativeTurnComplete: boolean;
+    graceSeconds: number;
+    clickFocus: boolean;
   };
   debug: {
     enabled: boolean;
@@ -133,6 +138,11 @@ const DEFAULT_PREFS: ClientPrefs = {
     tabTitleFlash: true,
     browserNotification: false,
     audibleChime: false,
+    muteAll: false,
+    macNative: true,
+    macNativeTurnComplete: false,
+    graceSeconds: 30,
+    clickFocus: false,
   },
   debug: { enabled: false },
   blacklist: { sessionIds: [] },
