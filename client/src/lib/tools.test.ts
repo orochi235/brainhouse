@@ -62,9 +62,21 @@ describe('parseBashCommandHead', () => {
 });
 
 describe('salientBashCommand', () => {
-  it('passes a plain command through untouched (args kept)', () => {
-    expect(salientBashCommand('ls -la')).toBe('ls -la');
+  it('passes a plain command through untouched (positional args kept)', () => {
     expect(salientBashCommand('git status')).toBe('git status');
+    expect(salientBashCommand('npm run build')).toBe('npm run build');
+  });
+
+  it('drops flag words but keeps their separate value words', () => {
+    expect(salientBashCommand('ls -la')).toBe('ls');
+    expect(salientBashCommand('grep -rn "pattern" src')).toBe('grep "pattern" src');
+    expect(salientBashCommand('tail -20 out.log')).toBe('tail out.log');
+    expect(salientBashCommand('grep --include="*.ts" foo .')).toBe('grep foo .');
+    expect(salientBashCommand('git checkout -- file.txt')).toBe('git checkout file.txt');
+  });
+
+  it('does not treat a quoted flag-looking argument as a flag', () => {
+    expect(salientBashCommand('echo "-n" x')).toBe('echo "-n" x');
   });
 
   it('drops a leading cd setup segment', () => {
@@ -89,15 +101,15 @@ describe('salientBashCommand', () => {
   });
 
   it('does not drop a command merely prefixed by an export-like word', () => {
-    expect(salientBashCommand('exportify --all')).toBe('exportify --all');
+    expect(salientBashCommand('exportify --all')).toBe('exportify');
   });
 
   it('joins multiple real segments with their operators', () => {
     expect(salientBashCommand('git add -A && git commit -m "x"')).toBe(
-      'git add -A && git commit -m "x"',
+      'git add && git commit "x"',
     );
     expect(salientBashCommand('npm run a; npm run b')).toBe('npm run a; npm run b');
-    expect(salientBashCommand('test -f x || echo missing')).toBe('test -f x || echo missing');
+    expect(salientBashCommand('test -f x || echo missing')).toBe('test x || echo missing');
   });
 
   it('keeps a pipeline intact (does not split on |)', () => {
@@ -107,7 +119,7 @@ describe('salientBashCommand', () => {
 
   it('does not split on operators inside quotes', () => {
     expect(salientBashCommand('git commit -m "fix && cleanup"')).toBe(
-      'git commit -m "fix && cleanup"',
+      'git commit "fix && cleanup"',
     );
     expect(salientBashCommand("echo 'a; b; c'")).toBe("echo 'a; b; c'");
   });
@@ -129,12 +141,17 @@ describe('salientBashCommand', () => {
     expect(salientBashCommand('TITLE="feat: redesign login" npm run build')).toBe('npm run build');
   });
 
-  it('trims trailing output redirections', () => {
+  it('trims output redirections', () => {
     expect(salientBashCommand('npm test 2>&1')).toBe('npm test');
     expect(salientBashCommand('npm run build > out.log')).toBe('npm run build');
     expect(salientBashCommand('serve 2>/dev/null')).toBe('serve');
     expect(salientBashCommand('serve >/dev/null 2>&1')).toBe('serve');
     expect(salientBashCommand('serve 2> err.log >> out.log')).toBe('serve');
+  });
+
+  it('trims a redirection mid-pipeline, not just trailing', () => {
+    expect(salientBashCommand('npm test 2>&1 | tail -20')).toBe('npm test | tail');
+    expect(salientBashCommand('make 2> err.log | grep error')).toBe('make | grep error');
   });
 
   it('does not strip a quoted redirection-looking argument', () => {

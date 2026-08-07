@@ -620,10 +620,15 @@ UI/server is meant to uphold. New entries go at the bottom.
   leading lines are assignments + `cd` resolves to its real command
   (`M=…\ncd "$M"\nPORT=1 bash run.sh` → `bash run.sh`). Splitting and
   env-prefix stripping are quote-aware (`T="a b" cmd` → `cmd`; a quoted
-  `&&`/`;` never splits) and a pipeline (`|`) is never broken. Trailing
-  redirections are dropped as plumbing noise (`bash run.sh 2>&1` →
-  `bash run.sh`; `cmd > out.log`, `cmd 2>/dev/null` likewise), but a quoted
-  redirection-looking arg (`grep ">" f`) is preserved. Wrappers
+  `&&`/`;` never splits) and a pipeline (`|`) is never broken.
+  Redirections anywhere in a segment are dropped as plumbing noise
+  (`bash run.sh 2>&1` → `bash run.sh`; `npm test 2>&1 | tail -20` →
+  `npm test | tail`), and so are flag words (`grep -rn "p" src` →
+  `grep "p" src`; `ls -la` → `ls`) — a flag's *separate* value word
+  survives (`git commit -m "x"` → `git commit "x"`), since dropping it
+  would need per-CLI knowledge and the value is often the salient part.
+  A quoted redirection- or flag-looking arg (`grep ">" f`, `echo "-n"`)
+  is preserved. Wrappers
   like `sudo` stay visible — only the icon's `parseBashCommandHead` looks
   past them, and the icon now resolves off the salient command so a
   leading `cd` no longer masks the real CLI. `summarizeTool` is the
