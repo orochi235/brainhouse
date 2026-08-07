@@ -10,6 +10,7 @@ import { PrefsStore } from './prefs.js';
 import { ProcessTracker } from './processes/index.js';
 import { runStartupDiscovery } from './processes/discovery.js';
 import { resolveRoots } from './roots.js';
+import { resolveAnthropicApiKey } from './secrets.js';
 import { Store } from './store.js';
 import { appRouter } from './trpc.js';
 
@@ -23,6 +24,15 @@ const HOST = process.env.HOST ?? '::';
 const PORT = Number(process.env.PORT ?? 8765);
 
 async function main() {
+  // Before the monitor constructs (its Titler snapshots the key): under
+  // launchd there is no shell profile, so fall back to the login
+  // Keychain and surface the key through the env var the titler reads.
+  const { key: anthropicKey, source: anthropicKeySource } = await resolveAnthropicApiKey();
+  if (anthropicKey && !process.env.ANTHROPIC_API_KEY) {
+    process.env.ANTHROPIC_API_KEY = anthropicKey;
+  }
+  if (anthropicKeySource) console.warn(`[secrets] ANTHROPIC_API_KEY from ${anthropicKeySource}`);
+
   const prefs = new PrefsStore();
   await prefs.load();
   const roots = resolveRoots(prefs.get());
