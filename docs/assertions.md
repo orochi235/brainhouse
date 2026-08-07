@@ -634,3 +634,32 @@ UI/server is meant to uphold. New entries go at the bottom.
   leading `cd` no longer masks the real CLI. `summarizeTool` is the
   single chokepoint, so every capsule host (transcript, expanded,
   broken-out) inherits this.
+- **A session waiting past the grace window posts a macOS notification.**
+  The server-side `AlertQueue` (`server/src/alertQueue.ts`) owns every
+  decision: `notification` hook → grace timer (`notifications.graceSeconds`,
+  default 30s; waits answered inside the window never alert), optional
+  immediate `turn_complete` alerts on Stop (`macNativeTurnComplete`, off
+  by default), one alert per wait-episode, 10-minute expiry, and
+  read-time revalidation (an alert for a no-longer-awaiting panel is
+  never delivered). Only *fresh* hook events (≤120s old) may trigger
+  alerts — the hook watcher replays unread sidecar lines on restart, and
+  old notification records for long-stuck awaiting panels must not
+  enqueue as a post-boot banner flood. The menu bar helper is a dumb
+  delivery arm: it polls `GET /api/alerts?after=<cursor>` on its existing
+  5s cadence, seeds the cursor silently on its first poll (helper
+  restarts never replay), and posts via `UNUserNotificationCenter`
+  (which requires the helper's `.app` bundle identity — see
+  `scripts/install-menubar.sh`). `notifications.muteAll` gates every
+  channel — server queue and client channels alike — and is flippable
+  from both the prefs modal and the helper's menu toggle
+  (`POST /api/notifications`), which share the prefs file and therefore
+  never disagree.
+- **Notification clicks raise the iTerm window without stealing focus.**
+  Click → `POST /api/reveal` → `revealItermSession(guid, {focus:false})`:
+  the same window/tab/pane `select` walk as the focusing variant, then a
+  System Events `AXRaise` instead of `activate` — the window tops the
+  global z-order while keyboard focus stays put. `notifications.clickFocus`
+  flips clicks to the focusing variant; the dashboard's reveal button
+  always focuses. Requires an Accessibility grant for the server process;
+  when missing, osascript errors, the call resolves `false`, and the pane
+  is still selected inside iTerm.
