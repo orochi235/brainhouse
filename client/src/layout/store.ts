@@ -41,7 +41,10 @@ export type SlotId =
   | typeof SIDEBAR_SLOT_ID;
 
 function buildStore(): Store {
-  const store = new Store();
+  // notifyMs coalesces ratio-write bursts (fit loop, resize, gutter drag)
+  // into one flush per frame. No dwell: every lifecycle transition on this
+  // store is a direct user action, where debounce latency only hurts.
+  const store = new Store({ throttle: { notifyMs: 16 } });
 
   // Root: vertical split. Small initial ratio so the topbar starts
   // close to its natural ~50px height. minSize on the top slot keeps a
@@ -137,13 +140,16 @@ export function setSplitRatio(id: NodeId, ratio: number): void {
 export const layoutStore = buildStore();
 
 export function setSlotVisible(id: NodeId, visible: boolean): void {
-  const state = layoutStore.getNode(id)?.lifecycle.state;
+  // Truth reads, not getNode: under a throttle policy the published view
+  // lags, and deciding an FSM transition off a stale state silently
+  // drops or doubles the transition.
+  const state = layoutStore.getNodeTruth(id)?.lifecycle.state;
   if (visible) {
     if (state !== 'visible') layoutStore.showNode(id);
     return;
   }
   if (state === 'mounted') layoutStore.showNode(id);
-  if (layoutStore.getNode(id)?.lifecycle.state === 'visible') {
+  if (layoutStore.getNodeTruth(id)?.lifecycle.state === 'visible') {
     layoutStore.hideNode(id);
   }
 }

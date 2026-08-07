@@ -619,6 +619,13 @@ body.loading-quiet .panel {
   background: color-mix(in srgb, var(--accent, #4a9eff) 16%, var(--panel-bg));
   border-color: color-mix(in srgb, var(--accent, #4a9eff) 45%, var(--panel-border));
 }
+/* The terminal-window glyph needs a touch more than the button's 1em
+ * (0.72rem font) or its 1.5px strokes alias into mush. */
+.panel-reveal-iterm .svg-glyph,
+.process-reveal-iterm .svg-glyph {
+  width: 0.85rem;
+  height: 0.85rem;
+}
 .panel-subagent.nested {
   max-width: none;
   justify-self: stretch;

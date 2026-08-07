@@ -1,6 +1,7 @@
 import type { Event } from '@server/parser.ts';
 import classNames from 'classnames';
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import terminalWindowIcon from '../assets/icons/terminal-window.svg?raw';
 import trashIcon from '../assets/icons/trash.svg?raw';
 import { getActiveDrag, setActiveDrag } from '../lib/activeDrag.ts';
 import { CloseGlyph } from '../lib/CloseGlyph.tsx';
@@ -718,7 +719,7 @@ function PanelHeader({
             void trpc.processes.revealInIterm.mutate({ iterm_session_id: itermGuid });
           }}
         >
-          ↗
+          <SvgGlyph svg={terminalWindowIcon} className="svg-glyph" />
         </button>
       )}
       {!renderMini && !onRestore && (

@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useState } from 'react';
+import terminalWindowIcon from '../assets/icons/terminal-window.svg?raw';
 import { useClock } from '../lib/clock.ts';
 import { CopyableId } from '../lib/CopyableId.tsx';
 import { formatDurationTwoUnits } from '../lib/format.ts';
@@ -376,7 +377,7 @@ export function ProcessRow({
               className="process-reveal-iterm"
               aria-label="Reveal this session's iTerm2 tab"
               title="Reveal this session's iTerm2 tab"
-            >↗</button>
+            ><SvgGlyph svg={terminalWindowIcon} className="svg-glyph" /></button>
           )}
           {/* Tail-stdout toggle (▾) is hidden until the logs UX is
            * redesigned — inline <pre> below the row was too disruptive.
