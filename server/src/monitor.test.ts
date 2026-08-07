@@ -122,6 +122,14 @@ describe('TranscriptMonitor', () => {
     expect(monitor.store.panel('S')?.awaiting_input).toBe(true);
   });
 
+  it('applyHookEvent notification enqueues an alert only after the grace window', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({ ts: new Date().toISOString() }));
+    monitor.applyHookEvent({ session_id: 'S', kind: 'notification' });
+    // Default graceSeconds is 30 — the wiring must schedule, not enqueue.
+    expect(monitor.alertQueue.list(-1)).toHaveLength(0);
+  });
+
   it('applyHookEvent subagent_stop demotes all live subagents of the parent', () => {
     const monitor = newMonitor();
     const ts = new Date().toISOString();

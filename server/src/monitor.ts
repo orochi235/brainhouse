@@ -21,6 +21,7 @@ import { deriveAccountLabel } from './roots.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
 import { type PanelTheme, readPanelTheme } from './theme.js';
+import { type AlertNotificationPrefs, AlertQueue } from './alertQueue.js';
 import { isRealUserText, isSubstantiveAssistantText, Titler } from './titler.js';
 import { TranscriptWatcher } from './watcher.js';
 
@@ -58,6 +59,9 @@ export interface MonitorOptions {
    * evaluation so a runtime prefs flip takes effect without a restart.
    * Defaults to `() => true` when omitted. */
   isAutoTitleEnabled?: () => boolean;
+  /** Fresh read of the notification prefs the AlertQueue gates on. Falls
+   * back to schema defaults when absent (tests). */
+  getNotificationPrefs?: () => AlertNotificationPrefs;
   /** Cold-start discovery bounds. The store's `uiWindowSeconds` snapshot
    * gate and the watcher's bootstrap live-ingest window are both derived
    * from this group so they agree on the recency window. */
@@ -99,6 +103,9 @@ export class TranscriptMonitor {
   private autoMinimizeOnClear: boolean;
   private tracker: ProcessTracker | null = null;
   private readonly titler: Titler;
+  /** Alert decisions for the macOS notification channel; read by the
+   * `/api/alerts` route. */
+  readonly alertQueue: AlertQueue;
   /** rootPath → label. Used to translate watcher "sourceRoot" into a
    * human-readable account name on each ingest. */
   private readonly accountLabels: Map<string, string>;
@@ -148,6 +155,13 @@ export class TranscriptMonitor {
       applyAutoTitle: (panelId, proposed) => {
         for (const d of this.store.applyAutoTitle(panelId, proposed)) this.broadcast(d);
       },
+    });
+    const getNotificationPrefs =
+      opts.getNotificationPrefs ??
+      (() => ({ muteAll: false, macNative: true, macNativeTurnComplete: false, graceSeconds: 30 }));
+    this.alertQueue = new AlertQueue({
+      getPanel: (panelId) => this.store.panel(panelId),
+      getNotificationPrefs,
     });
     const dir = opts.hookEventsDir === undefined ? defaultEventsDir() : opts.hookEventsDir;
     if (dir) {
@@ -456,6 +470,7 @@ export class TranscriptMonitor {
       // Stop is the strongest "turn complete" signal; bypass the debounce
       // so the titler fires immediately (if eligibility gates pass).
       this.titler.scheduleEvaluation(sid, 'stop');
+      this.alertQueue.onStop(sid);
       return;
     }
     if (event.kind === 'subagent_stop') {
@@ -480,6 +495,7 @@ export class TranscriptMonitor {
     }
     if (event.kind === 'notification') {
       for (const d of this.store.setAwaiting(sid, true)) this.broadcast(d);
+      this.alertQueue.onAwaiting(sid, true);
       return;
     }
     if (event.kind === 'session_start') {
@@ -782,9 +798,10 @@ export class TranscriptMonitor {
     if (delta.op === 'panel_upsert' && delta.panel.cwd && !delta.panel.theme) {
       void this.loadThemeFor(delta.panel.id, delta.panel.cwd);
     }
-    // Drop any pending titler timer when a panel is reaped.
+    // Drop any pending titler timer + alert state when a panel is reaped.
     if (delta.op === 'panel_remove') {
       this.titler.dispose(delta.panel_id);
+      this.alertQueue.dispose(delta.panel_id);
     }
   }
 

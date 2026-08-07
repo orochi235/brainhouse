@@ -43,6 +43,15 @@ async function main() {
     autoMinimizeOnClear: workspace.autoMinimizeOnClear,
     tracker,
     isAutoTitleEnabled: () => prefs.get().display.autoTitle,
+    getNotificationPrefs: () => {
+      const n = prefs.get().notifications;
+      return {
+        muteAll: n.muteAll,
+        macNative: n.macNative,
+        macNativeTurnComplete: n.macNativeTurnComplete,
+        graceSeconds: n.graceSeconds,
+      };
+    },
     discovery,
   });
   // Hydrate persisted panels synchronously, but DON'T start the slow
