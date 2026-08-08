@@ -678,3 +678,15 @@ UI/server is meant to uphold. New entries go at the bottom.
   it muted/parenthesized as a list-price reference, matching the
   `roots[].metered` convention in prefs ("a list-price estimate would
   misrepresent what they actually pay").
+- **Claude Code's built-in `ai-title` records are adopted, and preempt
+  our own titler.** CC writes `{"type":"ai-title","aiTitle":...}` into
+  the transcript after the first real turn and keeps it current;
+  `session.ts:maybeProposeAutoTitle` adopts each one through the normal
+  `applyAutoTitle` path (same dedupe/flash/toast). Manual renames always
+  win, and while post-/clear title suppression is armed the record is
+  dropped — CC replays the prior session's ai-title into the fresh
+  transcript, same hazard as inherited `custom-title`. Once a panel's
+  events carry an ai-title record, `titler.ts:shouldFire` never issues a
+  brainhouse-initiated titler call for it; subagent transcripts have no
+  ai-title records, so subagent panels remain the out-of-band titler's
+  job.

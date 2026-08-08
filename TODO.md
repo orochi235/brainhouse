@@ -174,7 +174,14 @@ Still on the table (no urgency):
   into view and pulse it — useful even with brainhouse in the
   foreground. Currently we only do this on toast click.
 
-## [HIGH] Auto-title marker is a visible seam in non-markdown renderers
+## [IMPLEMENTED] Auto-title marker is a visible seam in non-markdown renderers
+
+Resolved in two stages: option 3 shipped as the out-of-band
+server-side titler (`server/src/titler.ts`, replacing the inline
+marker hook), then Claude Code's own built-in `ai-title` transcript
+records were adopted as free proposals with the out-of-band titler
+skipping any panel that has one — parent sessions now title with
+zero marker and near-zero spend; our titler covers subagent panels.
 
 The inline `<!-- bh-title: ... -->` marker the auto-title hook asks
 the model to emit is invisible in browser/markdown contexts (its
