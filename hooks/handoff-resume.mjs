@@ -4,7 +4,7 @@
  * handoff written by the previous session before it cleared.
  *
  * Convention: the outgoing session writes
- *   ~/.claude-pw/handoff/<cwd-slug>.json
+ *   $CLAUDE_CONFIG_DIR/handoff/<cwd-slug>.json   (~/.claude when unset)
  * with shape { initialUserMessage?: string, additionalContext?: string }.
  * cwd-slug is the cwd with `/` replaced by `-` (matches the projects/
  * directory naming).
@@ -33,7 +33,8 @@ async function main() {
     payload = JSON.parse((await readStdin()) || '{}');
   } catch {}
   const cwd = payload.cwd || process.cwd();
-  const file = path.join(homedir(), '.claude-pw', 'handoff', `${cwdSlug(cwd)}.json`);
+  const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude');
+  const file = path.join(configDir, 'handoff', `${cwdSlug(cwd)}.json`);
 
   let raw;
   try {
