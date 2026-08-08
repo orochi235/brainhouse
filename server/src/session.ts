@@ -1197,14 +1197,30 @@ export class SessionStore {
    *
    *   - Any panel + `meta` with `record_type === 'session-title'`: an
    *     explicit agent-emitted retitle. `raw.title` is the proposal.
+   *   - `meta` with `record_type === 'ai-title'`: Claude Code's own
+   *     built-in titler. Adopted as a proposal; `titler.ts:shouldFire`
+   *     then skips panels that have one, so the out-of-band titler
+   *     spends nothing on sessions CC already keeps titled.
    *
    * Returned strings are pre-truncated to the 80-char display cap; the
    * caller routes the proposal through `applyAutoTitle` so the title
    * change comes with the flash/toast cue. */
-  private maybeProposeAutoTitle(_panel: Panel, event: Event, _titleBefore: string): string | null {
+  private maybeProposeAutoTitle(panel: Panel, event: Event, _titleBefore: string): string | null {
     if (event.kind === 'meta' && event.payload.record_type === 'session-title') {
       const raw = (event.payload.raw ?? {}) as { title?: string };
       const proposed = (raw.title ?? '').trim();
+      if (!proposed) return null;
+      return proposed.length > 80 ? `${proposed.slice(0, 79)}…` : proposed;
+    }
+    if (event.kind === 'meta' && event.payload.record_type === 'ai-title') {
+      if (panel.manually_renamed) return null;
+      // Post-/clear the transcript can replay the prior session's
+      // ai-title before the user types anything; suppression (cleared by
+      // the first real prompt in maybeUpdateTitle) drops those the same
+      // way it drops inherited custom-title records.
+      if (panel.clear_title_suppression) return null;
+      const raw = (event.payload.raw ?? {}) as { aiTitle?: string };
+      const proposed = (raw.aiTitle ?? '').trim();
       if (!proposed) return null;
       return proposed.length > 80 ? `${proposed.slice(0, 79)}…` : proposed;
     }

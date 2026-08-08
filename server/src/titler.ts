@@ -182,8 +182,7 @@ export class Titler {
 
   constructor(opts: TitlerOptions) {
     this.opts = opts;
-    this.apiKey =
-      opts.apiKey !== undefined ? opts.apiKey : (process.env.ANTHROPIC_API_KEY ?? null);
+    this.apiKey = opts.apiKey !== undefined ? opts.apiKey : (process.env.ANTHROPIC_API_KEY ?? null);
     this.setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     this.clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
     this.now = opts.now ?? (() => Date.now());
@@ -374,8 +373,9 @@ export class Titler {
       this.logger('[titler] disabled: claude CLI not found');
       return;
     }
-    const status = (err as { status?: number; statusCode?: number })?.status
-      ?? (err as { statusCode?: number })?.statusCode;
+    const status =
+      (err as { status?: number; statusCode?: number })?.status ??
+      (err as { statusCode?: number })?.statusCode;
     if (status === 401) {
       this.permanentlyDisabled = true;
       this.client = null;
@@ -449,6 +449,12 @@ export function shouldFire(panel: Panel, turnCount: number, reason?: EvaluationR
   // Manually-renamed panels are left alone — once the user authors a
   // title, brainhouse never overwrites it.
   if (panel.manually_renamed) return false;
+  // Claude Code's built-in titler already names this session (`ai-title`
+  // transcript records, adopted by session.ts:maybeProposeAutoTitle) and
+  // keeps regenerating as the conversation moves — don't spend our own
+  // calls duplicating it. Subagent panels never carry ai-title records,
+  // so they still fall through to the gates below.
+  if (hasBuiltInTitle(panel)) return false;
   // A panel whose title is still the placeholder gates on the
   // first-real-title threshold; once a custom title exists we recheck
   // periodically. A subagent kickoff lowers the threshold to the first
@@ -466,6 +472,12 @@ export function shouldFire(panel: Panel, turnCount: number, reason?: EvaluationR
  * avoid a circular import — the Titler is owned by SessionStore. */
 function initialPlaceholder(panelId: string): string {
   return panelId.slice(0, 8);
+}
+
+/** True when the panel's transcript carries a Claude Code built-in
+ * `ai-title` record. */
+export function hasBuiltInTitle(panel: Panel): boolean {
+  return panel.events.some((ev) => ev.kind === 'meta' && ev.payload.record_type === 'ai-title');
 }
 
 interface Turns {

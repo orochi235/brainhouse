@@ -134,8 +134,7 @@ function makeFakeClient(): FakeClient {
       const slot = pending.shift();
       if (!slot) throw new Error('no pending call');
       return {
-        resolve: (text: string) =>
-          slot.resolve({ content: [{ type: 'text', text }] }),
+        resolve: (text: string) => slot.resolve({ content: [{ type: 'text', text }] }),
         resolveResponse: (response) => slot.resolve(response),
         reject: (err) => slot.reject(err),
       };
@@ -182,7 +181,8 @@ describe('sanitizeProposal', () => {
     expect(sanitizeProposal('keep')).toBeNull();
   });
   it('caps to 14 words', () => {
-    const long = 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen';
+    const long =
+      'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen';
     const result = sanitizeProposal(long);
     expect(result?.split(' ').length).toBe(14);
   });
@@ -218,6 +218,16 @@ describe('shouldFire', () => {
   it('never fires on manually-renamed panels', () => {
     const p = makePanel({ title: 'User name', manually_renamed: true });
     expect(shouldFire(p, 20)).toBe(false);
+  });
+  it('never fires once the transcript carries a built-in ai-title record', () => {
+    const aiTitle = {
+      ...ev('meta', ''),
+      payload: { record_type: 'ai-title', raw: { aiTitle: 'CC title' } },
+    } as Event;
+    const p = makePanel({ title: 'CC title', events: [aiTitle] });
+    expect(shouldFire(p, 2)).toBe(false);
+    expect(shouldFire(p, 20)).toBe(false);
+    expect(shouldFire(p, 1, 'subagent_start')).toBe(false);
   });
 });
 
@@ -303,10 +313,7 @@ describe('Titler', () => {
     const timers = new FakeTimers();
     const client = makeFakeClient();
     const panel = makePanel({
-      events: [
-        ev('user_text', 'first message'),
-        ev('user_text', 'second message'),
-      ],
+      events: [ev('user_text', 'first message'), ev('user_text', 'second message')],
     });
     const panels = new Map([[panel.id, panel]]);
     const titler = build({ panels, client, timers });
@@ -327,10 +334,7 @@ describe('Titler', () => {
     const timers = new FakeTimers();
     const client = makeFakeClient();
     const panel = makePanel({
-      events: [
-        ev('user_text', 'first'),
-        ev('user_text', 'second'),
-      ],
+      events: [ev('user_text', 'first'), ev('user_text', 'second')],
     });
     const panels = new Map([[panel.id, panel]]);
     const titler = build({ panels, client, timers });

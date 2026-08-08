@@ -370,7 +370,12 @@ describe('SessionStore', () => {
     });
     store.apply(ev('user_text', { session_id: 'S', payload: { text: 'hi' } }));
     store.apply(
-      ev('assistant_text', { session_id: 'S', agent_id: 'A', uuid: 'a1', payload: { text: 'sub' } }),
+      ev('assistant_text', {
+        session_id: 'S',
+        agent_id: 'A',
+        uuid: 'a1',
+        payload: { text: 'sub' },
+      }),
     );
     clock.advance(120);
     // The parent session stays live — its claude process is alive, and long
@@ -396,7 +401,12 @@ describe('SessionStore', () => {
     });
     store.apply(ev('user_text', { session_id: 'S', payload: { text: 'hi' } }));
     store.apply(
-      ev('assistant_text', { session_id: 'S', agent_id: 'A', uuid: 'a1', payload: { text: 'sub' } }),
+      ev('assistant_text', {
+        session_id: 'S',
+        agent_id: 'A',
+        uuid: 'a1',
+        payload: { text: 'sub' },
+      }),
     );
     clock.advance(2000); // subagent A's last event is now well outside the window
     const ids = store.snapshot().map((p) => p.id);
@@ -528,9 +538,7 @@ describe('SessionStore', () => {
       clock: clock.now,
     });
     store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'parent' } }));
-    store.apply(
-      ev('user_text', { agent_id: 'sub-a', uuid: 'u2', payload: { text: 'child' } }),
-    );
+    store.apply(ev('user_text', { agent_id: 'sub-a', uuid: 'u2', payload: { text: 'child' } }));
     // The parent has ended (Stop hook fired). The subagent has NOT — its
     // work outlasts the parent's own activity. Under the lifecycle rules,
     // only ended panels are reap-eligible at all, and the parent is
@@ -546,9 +554,7 @@ describe('SessionStore', () => {
     // Now end the subagent. On the next tick the gate opens and the parent reaps.
     store.markEnded('sub-a', 'hook_subagent_stop');
     const finalDeltas = store.tick();
-    expect(
-      finalDeltas.some((d) => d.op === 'panel_remove' && d.panel_id === 'S'),
-    ).toBe(true);
+    expect(finalDeltas.some((d) => d.op === 'panel_remove' && d.panel_id === 'S')).toBe(true);
     expect(store.panel('S')).toBeUndefined();
   });
 
@@ -1202,6 +1208,62 @@ describe('SessionStore', () => {
       expect(store.snapshot()[0]?.title).toBe('now: rewriting the parser');
     });
 
+    it("adopts Claude Code's built-in ai-title meta via the auto-title path", () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'first prompt' } }));
+      const deltas = store.apply(
+        ev('meta', {
+          uuid: 'u2',
+          payload: { record_type: 'ai-title', raw: { aiTitle: 'Wire the adopt path' } },
+        }),
+      );
+      expect(deltas.some((d) => d.op === 'auto_titled')).toBe(true);
+      expect(store.snapshot()[0]?.title).toBe('Wire the adopt path');
+    });
+
+    it('ai-title never overrides a manual rename', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'first prompt' } }));
+      store.apply(
+        ev('meta', {
+          uuid: 'u2',
+          payload: { record_type: 'custom-title', raw: { customTitle: 'my name' } },
+        }),
+      );
+      const deltas = store.apply(
+        ev('meta', {
+          uuid: 'u3',
+          payload: { record_type: 'ai-title', raw: { aiTitle: 'CC name' } },
+        }),
+      );
+      expect(deltas.some((d) => d.op === 'auto_titled')).toBe(false);
+      expect(store.snapshot()[0]?.title).toBe('my name');
+    });
+
+    it('ai-title is dropped while clear-title suppression is armed, adopted after the first real prompt', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      store.armClearTitleSuppression('S');
+      store.apply(
+        ev('meta', {
+          uuid: 'u1',
+          payload: { record_type: 'ai-title', raw: { aiTitle: 'stale pre-clear title' } },
+        }),
+      );
+      expect(store.snapshot()[0]?.title).not.toBe('stale pre-clear title');
+      store.apply(ev('user_text', { uuid: 'u2', payload: { text: 'fresh prompt' } }));
+      const deltas = store.apply(
+        ev('meta', {
+          uuid: 'u3',
+          payload: { record_type: 'ai-title', raw: { aiTitle: 'fresh CC title' } },
+        }),
+      );
+      expect(deltas.some((d) => d.op === 'auto_titled')).toBe(true);
+      expect(store.snapshot()[0]?.title).toBe('fresh CC title');
+    });
+
     it('later user_text events do NOT retitle on their own', () => {
       const clock = new FakeClock();
       const store = new SessionStore({ clock: clock.now });
@@ -1361,8 +1423,15 @@ describe('summarizeOffline', () => {
   it('produces a summary row from events without creating a surfaced panel', () => {
     const store = new SessionStore({ clock: () => 2_000_000, isSessionLive: () => false });
     const ev = (ts: string): Event => ({
-      session_id: 'sx', agent_id: null, uuid: `sx:${ts}`, parent_uuid: null,
-      ts, cwd: '/tmp/p', kind: 'user_text', tags: [], payload: { text: 'hi' },
+      session_id: 'sx',
+      agent_id: null,
+      uuid: `sx:${ts}`,
+      parent_uuid: null,
+      ts,
+      cwd: '/tmp/p',
+      kind: 'user_text',
+      tags: [],
+      payload: { text: 'hi' },
     });
     const row = store.summarizeOffline([ev('2020-01-01T00:00:00.000Z')]);
     expect(row).not.toBeNull();
