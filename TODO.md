@@ -58,6 +58,16 @@ First prod run (`node server/dist/index.js`, not dev) surfaced three issues:
   restore UI yet — a dismissed widget stays hidden until its `hidden_at`
   row is cleared. Add a `show` affordance if that proves annoying.
 
+- **Scanner should know its remaining work, not fire blind.** The startup
+  scan currently emits updates as it stumbles across files, so the UI
+  churns through a mess of partial state until the flood subsides. If
+  feasible, have the scanner enumerate what it has yet to scan up front
+  (a work queue with a known size), so it can (a) report progress
+  ("142/600 sessions indexed"), (b) batch/suppress deltas until a
+  session's backlog is fully ingested, and (c) let the UI distinguish
+  "still catching up" from "live". Turns the cold-start experience from
+  a firehose into a progress bar.
+
 ## Memory-leak hunt — remaining items
 
 The two dominant renderer leaks are fixed: unbounded per-panel `Event[]`
