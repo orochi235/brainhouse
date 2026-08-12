@@ -62,6 +62,72 @@ describe('LightboxProvider / useLightbox', () => {
     act(() => result.open(<p>x</p>, { variant: 'text' }));
     expect(container.querySelector('dialog')?.className).toContain('lightbox-text');
   });
+
+  it('open() while open pushes: back button appears and pops to the prior view', () => {
+    const { result, container } = renderInProviderWithDialogRef();
+    act(() => result.open(<p>outer view</p>));
+    expect(container.querySelector('.lightbox-back')).toBeNull();
+    act(() => result.open(<p>inner view</p>));
+    expect(screen.getByText('inner view')).toBeInTheDocument();
+    expect(screen.queryByText('outer view')).toBeNull();
+    const backBtn = container.querySelector<HTMLButtonElement>('.lightbox-back');
+    if (!backBtn) throw new Error('back button missing');
+    act(() => backBtn.click());
+    expect(screen.getByText('outer view')).toBeInTheDocument();
+    expect(container.querySelector('.lightbox-back')).toBeNull();
+    // Dialog stayed open throughout — back never closes from a stacked view.
+    expect(container.querySelector('dialog')?.open).toBe(true);
+  });
+
+  it('popping restores the prior entry theme and variant', () => {
+    const { result, container } = renderInProviderWithDialogRef();
+    act(() =>
+      result.open(<p>themed root</p>, {
+        theme: { background: '#320053', foreground: '#fff' },
+      }),
+    );
+    act(() => result.open(<p>plain detail</p>, { variant: 'text' }));
+    const dialog = container.querySelector('dialog');
+    if (!dialog) throw new Error('dialog missing');
+    expect(dialog.classList.contains('has-theme')).toBe(false);
+    expect(dialog.className).toContain('lightbox-text');
+    const backBtn = container.querySelector<HTMLButtonElement>('.lightbox-back');
+    if (!backBtn) throw new Error('back button missing');
+    act(() => backBtn.click());
+    expect(dialog.classList.contains('has-theme')).toBe(true);
+    expect(dialog.style.getPropertyValue('--panel-theme-bg')).toBe('#320053');
+    expect(dialog.className).toContain('lightbox-rich');
+  });
+
+  it('closing drops the stack — reopening starts fresh with no back button', () => {
+    const { result, container } = renderInProviderWithDialogRef();
+    act(() => result.open(<p>outer</p>));
+    act(() => result.open(<p>inner</p>));
+    act(() => result.close());
+    act(() => result.open(<p>fresh</p>));
+    expect(screen.getByText('fresh')).toBeInTheDocument();
+    expect(container.querySelector('.lightbox-back')).toBeNull();
+  });
+
+  it('Esc (cancel event) pops instead of closing while stacked', () => {
+    const { result, container } = renderInProviderWithDialogRef();
+    act(() => result.open(<p>outer</p>));
+    act(() => result.open(<p>inner</p>));
+    const dialog = container.querySelector('dialog');
+    if (!dialog) throw new Error('dialog missing');
+    const cancelEvent = new Event('cancel', { cancelable: true });
+    act(() => {
+      dialog.dispatchEvent(cancelEvent);
+    });
+    expect(cancelEvent.defaultPrevented).toBe(true);
+    expect(screen.getByText('outer')).toBeInTheDocument();
+    // At the root, cancel is allowed through (native close proceeds).
+    const rootCancel = new Event('cancel', { cancelable: true });
+    act(() => {
+      dialog.dispatchEvent(rootCancel);
+    });
+    expect(rootCancel.defaultPrevented).toBe(false);
+  });
 });
 
 // Render the provider and return both the hook result and the rendered

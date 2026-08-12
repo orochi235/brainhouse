@@ -3744,7 +3744,8 @@ body.view-conversation
     0 0 0 1px color-mix(in srgb, var(--panel-theme-bg) 35%, transparent),
     0 16px 60px -10px color-mix(in srgb, var(--panel-theme-bg) 50%, transparent);
 }
-.lightbox.has-theme .lightbox-close:hover {
+.lightbox.has-theme .lightbox-close:hover,
+.lightbox.has-theme .lightbox-back:hover {
   color: var(--panel-theme-bg);
 }
 .lightbox.has-theme .lightbox-title {
@@ -3778,6 +3779,23 @@ body.view-conversation
   cursor: pointer;
   line-height: 1;
   padding: 0.2rem 0.5rem;
+}
+/* Zoom-out affordance — present only when the lightbox has a view
+ * underneath the current one (drill-in navigation). */
+.lightbox-back {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.5rem;
+  background: transparent;
+  color: var(--fg);
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  line-height: 1.15;
+  padding: 0.2rem 0.5rem;
+}
+.lightbox-back:hover {
+  color: var(--accent, #8b5cf6);
 }
 .lightbox-inner {
   padding: 2.5rem 1.5rem 1.5rem;

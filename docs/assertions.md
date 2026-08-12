@@ -30,6 +30,14 @@ UI/server is meant to uphold. New entries go at the bottom.
     later. An `interrupt-divider` view item is emitted ("user
     interrupted" centered between two rules), and the follow-up renders
     as its own user bubble.
+- The lightbox is a navigation stack, not a single view. Opening a
+  lightbox while one is already up pushes (the prior view stays
+  underneath); a ← button appears whenever there is a view to return
+  to. Esc zooms out one level — it only closes the lightbox from the
+  root view. ✕ and backdrop click always close fully. Popping restores
+  the underlying view's theme and variant; any close drops the whole
+  stack, so reopening starts fresh. A close guard (e.g. unsaved prefs)
+  gates leaving its view by pop as well as by close.
 - In the lightbox, a terminal command is broken onto a new line after
   each top-level `;` (quote-, escape-, and paren-aware; `;;` stays
   together) so chained one-liners read as a script. The same command in
