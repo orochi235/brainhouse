@@ -12,7 +12,11 @@ export function TerminalCard({ item, startedAt }: Props) {
     <CapsuleRow kind="terminal" ts={item.ts} startedAt={startedAt}>
       <div className="terminal-card">
         {item.entries.map((entry, i) => (
-          <div className="terminal-entry" data-source={entry.source} key={`${entry.event.uuid}-${i}`}>
+          <div
+            className="terminal-entry"
+            data-source={entry.source}
+            key={`${entry.event.uuid}-${i}`}
+          >
             {entry.input !== null && (
               <div className="terminal-cmd">
                 <span className="terminal-prompt" aria-hidden="true">
