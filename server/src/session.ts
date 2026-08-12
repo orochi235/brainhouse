@@ -66,6 +66,16 @@ export type PanelStatus = 'live' | 'done' | 'mini';
 export const MAX_EVENTS_PER_PANEL = 10_000;
 const EVICT_FRACTION = 0.1;
 
+/** Max events per panel in the bootstrap snapshot. Shipping full backlogs
+ * measured ~53 MB / ~12 s LCP on a normal day — nearly all of it for docked
+ * minis that render as a title strip. Grid panels get this recent tail
+ * (scroll-back backfills older events from the JSONL via `panelHistory`);
+ * mini panels get none and are reseeded on restore (see forceStatus). */
+export const SNAPSHOT_EVENTS_CAP = 300;
+/** Events carried on a reseed upsert (dock-restore / unbin). Matches the
+ * client's LIVE_WINDOW cap — anything more is discarded on arrival. */
+export const RESEED_EVENTS_CAP = 1_500;
+
 /** How far back a persisted panel's last activity can be and still hydrate into
  * the live model on boot. Sessions older than this stay in the DB (project
  * widgets / timeline) but don't reload as live panels. Pinned / user-kept
@@ -639,7 +649,13 @@ export class SessionStore {
     // from `snapshot()`, so any client that connected during the binned
     // window has zero events for it. Without this the restored panel
     // renders as an empty div.
-    return [{ op: 'panel_upsert', panel: this.toDto(panel), events: panel.events.slice() }];
+    return [
+      {
+        op: 'panel_upsert',
+        panel: this.toDto(panel),
+        events: panel.events.slice(-RESEED_EVENTS_CAP),
+      },
+    ];
   }
 
   /** Permanent removal. Used by the trash-bin "purge" button or the
@@ -682,11 +698,27 @@ export class SessionStore {
   forceStatus(panelId: string, status: PanelStatus): Delta[] {
     const panel = this.panels.get(panelId);
     if (!panel || panel.status === status) return [];
+    const wasMini = panel.status === 'mini';
     const now = this.clock();
     panel.status = status;
     panel.status_changed_at = now;
     if (status === 'live') panel.last_event_at = now;
     this.persistPanel(panel);
+    // Promoting out of mini reseeds events: the snapshot withholds mini
+    // panels' backlogs, so a client restoring one from the dock may hold
+    // zero events and would otherwise render an empty panel. When memory
+    // holds none (hydrated panel whose file never replayed), omit the field
+    // entirely — `events: []` would wipe whatever copy the client has.
+    if (wasMini) {
+      const events = panel.events.slice(-RESEED_EVENTS_CAP);
+      return [
+        {
+          op: 'panel_upsert',
+          panel: this.toDto(panel),
+          ...(events.length > 0 ? { events } : {}),
+        },
+      ];
+    }
     return [{ op: 'panel_status', panel_id: panelId, status }];
   }
 
@@ -818,7 +850,7 @@ export class SessionStore {
       .filter((p) => p.binned_at === null && this.isSurfaceable(p, cutoff))
       .map((p) => ({
         ...this.toDto(p),
-        events: p.events.slice(),
+        events: p.status === 'mini' ? [] : p.events.slice(-SNAPSHOT_EVENTS_CAP),
       }));
   }
 

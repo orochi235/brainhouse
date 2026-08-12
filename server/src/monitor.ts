@@ -11,6 +11,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { type AlertNotificationPrefs, AlertQueue } from './alertQueue.js';
 import { findDirByInode } from './findRenamed.js';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
 import { BackgroundIndexer } from './indexer.js';
@@ -21,7 +22,6 @@ import { deriveAccountLabel } from './roots.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
 import { type PanelTheme, readPanelTheme } from './theme.js';
-import { type AlertNotificationPrefs, AlertQueue } from './alertQueue.js';
 import { isRealUserText, isSubstantiveAssistantText, Titler } from './titler.js';
 import { makeCliTitlerClient } from './titlerCli.js';
 import { TranscriptWatcher } from './watcher.js';
@@ -94,12 +94,12 @@ const SUPERSEDE_MIN_IDLE_SECONDS = 2;
  * fires after this delay unless the panel is pinned at fire time. */
 const SUPERSEDE_MINI_DELAY_MS = 5_000;
 
-/** Only hook events this recent may trigger a native alert. The hook
- * watcher replays unread sidecar lines on server restart, and dozens of
- * old `notification` records for long-stuck awaiting panels would
- * otherwise enqueue together and arrive as a banner flood ~grace seconds
- * after boot (the helper's cursor-seed only shields alerts that already
- * exist at its first poll, not ones that fire shortly after). */
+/** Only hook events this recent may trigger a native alert or a lifecycle
+ * status flip. The hook watcher replays every sidecar file on server
+ * restart (offsets are in-memory), so without this gate dozens of old
+ * `notification` records would flood the banner queue and old
+ * `stop`/`session_end` records would yank every settled mini panel back
+ * to `done` on each boot. */
 const ALERT_FRESHNESS_SECONDS = 120;
 
 function isFreshHookEvent(event: { ts: number }): boolean {
@@ -496,7 +496,15 @@ export class TranscriptMonitor {
       }
     }
     if (event.kind === 'stop') {
-      for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
+      // Fresh stops only: the hook watcher replays every sidecar file on
+      // boot (offsets are in-memory), and forceStatus stamps
+      // status_changed_at=now — a stale replay would yank every settled
+      // mini panel back to `done` for a full miniSeconds after each
+      // restart. The lifecycle tick already settles stale panels from
+      // their real last activity.
+      if (isFreshHookEvent(event)) {
+        for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
+      }
       // Materialize a session_summary with hook_stop provenance, but do
       // NOT flip `ended` — a parent session can take another prompt later
       // and shouldn't visually dim on Stop alone.
@@ -513,7 +521,11 @@ export class TranscriptMonitor {
       // `ended` flag flipped so the parent's subagent-row pin list shows
       // the ✓ glyph instead of the spinning ◐.
       for (const sub of this.store.unendedSubagentsOf(sid)) {
-        for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
+        // Status flip is fresh-only (see the stop handler); `ended` is a
+        // durable fact and applies even on a boot replay.
+        if (isFreshHookEvent(event)) {
+          for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
+        }
         // Subagents finish for real — we trust SubagentStop as an explicit
         // end signal. Dimming flips on via `ended`.
         for (const d of this.store.markEnded(sub.id)) this.broadcast(d);
@@ -552,11 +564,13 @@ export class TranscriptMonitor {
       // Authoritative terminate signal — Claude Code is shutting down this
       // session for real. Mark the parent panel ended and demote any live
       // subagents under it. Stop hooks only end the assistant turn;
-      // session_end is the whole-session terminator.
-      for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
+      // session_end is the whole-session terminator. Status flips are
+      // fresh-only (see the stop handler); `ended` applies even on replay.
+      const fresh = isFreshHookEvent(event);
+      if (fresh) for (const d of this.store.forceStatus(sid, 'done')) this.broadcast(d);
       for (const d of this.store.markEnded(sid, 'hook_session_end')) this.broadcast(d);
       for (const sub of this.store.unendedSubagentsOf(sid)) {
-        for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
+        if (fresh) for (const d of this.store.forceStatus(sub.id, 'done')) this.broadcast(d);
         for (const d of this.store.markEnded(sub.id, 'hook_session_end')) this.broadcast(d);
       }
       return;
@@ -623,14 +637,42 @@ export class TranscriptMonitor {
    * Returns false if the session isn't known or its file is gone. */
   async reopenSession(sessionId: string): Promise<boolean> {
     if (this.store.snapshotHas(sessionId)) return true; // already live
+    if (!(await this.ingestTranscriptFromDisk(sessionId))) return false;
+    // Persist the reopen so it survives a reload: mark the owner kept (the
+    // in-memory surfacing gate) and stamp `user_kept` in intentions (the
+    // durable seed re-read on the next hydrate). Without this the surfacing
+    // gate re-hides the (out-of-window) session on the next snapshot.
+    this.store.setForceSurfaced(sessionId, true);
+    this.persistKept(sessionId, true);
+    return true;
+  }
+
+  /** Dock-restore: promote a panel out of mini. When the panel's in-memory
+   * event list is empty (hydrated after a restart — the boot walk only
+   * replays files touched within the bootstrap window), reload its transcript
+   * from disk first so the promoting upsert has content to reseed clients
+   * with. Returns the number of lifecycle deltas broadcast. */
+  async restorePanel(panelId: string): Promise<number> {
+    const panel = this.store.panel(panelId);
+    if (panel?.kind === 'parent' && panel.events.length === 0) {
+      await this.ingestTranscriptFromDisk(panelId);
+    }
+    const deltas = this.store.forceStatus(panelId, 'done');
+    for (const d of deltas) this.broadcast(d);
+    return deltas.length;
+  }
+
+  /** Parse `sessionId`'s transcript from disk and feed it through ingest so
+   * its panel (re)populates and deltas reach subscribers. Also replays the
+   * session's subagent sidecars — meta first so each subagent panel surfaces
+   * with its real title before its content lands. False when no transcript
+   * can be resolved under any root. */
+  private async ingestTranscriptFromDisk(sessionId: string): Promise<boolean> {
     const resolved = await this.resolveReopenTranscript(sessionId);
     if (!resolved) return false;
     const { file, root } = resolved;
     const events = await this.watcher.parseFile(file);
     for (const event of events) this.ingest(event, root);
-    // Restore the session's subagents too — otherwise reopen brings back a
-    // parent panel with an empty nested tray. Meta sidecars first so each
-    // subagent panel surfaces with its real title before its content lands.
     const subFiles = await this.watcher.subagentFilesFor(file);
     for (const metaPath of subFiles.meta) {
       for (const event of await this.watcher.parseMetaFile(metaPath)) this.ingest(event, root);
@@ -638,12 +680,6 @@ export class TranscriptMonitor {
     for (const subPath of subFiles.jsonl) {
       for (const event of await this.watcher.parseFile(subPath)) this.ingest(event, root);
     }
-    // Persist the reopen so it survives a reload: mark the owner kept (the
-    // in-memory surfacing gate) and stamp `user_kept` in intentions (the
-    // durable seed re-read on the next hydrate). Without this the surfacing
-    // gate re-hides the (out-of-window) session on the next snapshot.
-    this.store.setForceSurfaced(sessionId, true);
-    this.persistKept(sessionId, true);
     return true;
   }
 

@@ -22,7 +22,7 @@ import { aggregateFlows } from './flows.js';
 import { sliceHistory } from './history.js';
 import type { TranscriptMonitor } from './monitor.js';
 import { PrefsSchema, type PrefsStore } from './prefs.js';
-import type { ProcessTracker, ProcessRow } from './processes/index.js';
+import type { ProcessRow, ProcessTracker } from './processes/index.js';
 import {
   isReplayPathAllowed,
   loadJsonlAsPanel,
@@ -81,10 +81,9 @@ export const appRouter = t.router({
       return { ok: true, deltas: deltas.length };
     }),
 
-  restore: t.procedure.input(z.object({ panelId: z.string() })).mutation(({ ctx, input }) => {
-    const deltas = ctx.monitor.store.forceStatus(input.panelId, 'done');
-    for (const d of deltas) ctx.monitor.emitter.emit('delta', d);
-    return { ok: true, deltas: deltas.length };
+  restore: t.procedure.input(z.object({ panelId: z.string() })).mutation(async ({ ctx, input }) => {
+    const deltas = await ctx.monitor.restorePanel(input.panelId);
+    return { ok: true, deltas };
   }),
 
   /** Soft-delete: move panel to the trash bin (reversible via bin.restore). */
@@ -404,15 +403,13 @@ export const appRouter = t.router({
      * PanelDto + parsed events. The path must live under one of the
      * configured roots or under `~/.claude/projects`. Read-only: never
      * touches the store or broadcaster. Used by the replay debug view. */
-    replayJsonl: t.procedure
-      .input(z.object({ path: z.string() }))
-      .query(async ({ ctx, input }) => {
-        const allowed = replayAllowedRoots(ctx.prefs.get());
-        if (!isReplayPathAllowed(input.path, allowed)) {
-          throw new Error(`Path not in replay allowlist: ${input.path}`);
-        }
-        return loadJsonlAsPanel(input.path);
-      }),
+    replayJsonl: t.procedure.input(z.object({ path: z.string() })).query(async ({ ctx, input }) => {
+      const allowed = replayAllowedRoots(ctx.prefs.get());
+      if (!isReplayPathAllowed(input.path, allowed)) {
+        throw new Error(`Path not in replay allowlist: ${input.path}`);
+      }
+      return loadJsonlAsPanel(input.path);
+    }),
     /** Same as `replayJsonl` but takes the JSONL contents inline. Used
      * by drag-and-drop in the browser, where the absolute path isn't
      * exposed to the page. No allowlist gate — the contents are

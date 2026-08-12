@@ -703,3 +703,23 @@ UI/server is meant to uphold. New entries go at the bottom.
   brainhouse-initiated titler call for it; subagent transcripts have no
   ai-title records, so subagent panels remain the out-of-band titler's
   job.
+- **The bootstrap snapshot ships a capped event window, never full
+  backlogs.** `snapshot()` sends no events for mini panels (they render
+  as title strips) and only the trailing `SNAPSHOT_EVENTS_CAP` events
+  for live/done panels; scroll-back backfills older events from the
+  JSONL via `panelHistory`. Promoting a panel out of mini reseeds its
+  events on the `panel_upsert` (capped at `RESEED_EVENTS_CAP`, matching
+  the client's `LIVE_WINDOW`); when the server holds no events for it —
+  hydrated after a restart, file outside the bootstrap window —
+  `restorePanel` reloads the transcript from disk before promoting, and
+  a reseed never carries `events: []` (that would wipe the client's
+  copy; the field is omitted instead).
+- **Replayed hook records never flip panel status.** The hook watcher
+  re-reads every sidecar file on boot (its offsets are in-memory), so
+  `stop` / `session_end` / `subagent_stop` only forceStatus a panel when
+  the record is fresh (`ALERT_FRESHNESS_SECONDS`); stale replays would
+  otherwise stamp `status_changed_at = now` and yank every settled mini
+  panel back to `done` for a full `miniSeconds` after every restart.
+  Durable facts on stale records still apply (`ended`, summaries) — only
+  the lifecycle flip is gated. The tick settles stale panels from their
+  real last activity.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Event, EventKind, Tag } from './parser.js';
-import { HYDRATE_WINDOW_SECONDS, SessionStore } from './session.js';
+import { HYDRATE_WINDOW_SECONDS, SessionStore, SNAPSHOT_EVENTS_CAP } from './session.js';
 import { Store } from './store.js';
 
 class FakeClock {
@@ -605,6 +605,65 @@ describe('SessionStore', () => {
     const store = new SessionStore({ clock: clock.now });
     store.apply(ev('user_text', { payload: { text: 'hi' } }));
     expect(store.forceStatus('S', 'live')).toEqual([]);
+  });
+
+  describe('snapshot payload caps', () => {
+    function storeWithEvents(n: number) {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      for (let i = 0; i < n; i++) {
+        store.apply(ev('assistant_text', { uuid: `u${i}`, payload: { text: `m${i}` } }));
+      }
+      return { clock, store };
+    }
+
+    it('ships only the recent event window for non-mini panels', () => {
+      const { store } = storeWithEvents(SNAPSHOT_EVENTS_CAP + 50);
+      const [panel] = store.snapshot();
+      expect(panel?.events).toHaveLength(SNAPSHOT_EVENTS_CAP);
+      // The window is the TAIL: newest event present, oldest dropped.
+      expect(panel?.events.at(-1)?.uuid).toBe(`u${SNAPSHOT_EVENTS_CAP + 49}`);
+      expect(panel?.events[0]?.uuid).toBe('u50');
+    });
+
+    it('ships no events for mini panels', () => {
+      const { store } = storeWithEvents(10);
+      store.forceStatus('S', 'mini');
+      const [panel] = store.snapshot();
+      expect(panel?.status).toBe('mini');
+      expect(panel?.events).toEqual([]);
+    });
+
+    it('forceStatus out of mini reseeds events via panel_upsert', () => {
+      const { store } = storeWithEvents(10);
+      store.forceStatus('S', 'mini');
+      const deltas = store.forceStatus('S', 'done');
+      expect(deltas).toHaveLength(1);
+      const d = deltas[0];
+      if (d?.op !== 'panel_upsert') throw new Error(`expected panel_upsert, got ${d?.op}`);
+      expect(d.panel.status).toBe('done');
+      expect(d.events?.map((e) => e.uuid)).toEqual(Array.from({ length: 10 }, (_, i) => `u${i}`));
+    });
+
+    it('forceStatus between non-mini statuses stays a light panel_status', () => {
+      const { store } = storeWithEvents(3);
+      expect(store.forceStatus('S', 'done')).toEqual([
+        { op: 'panel_status', panel_id: 'S', status: 'done' },
+      ]);
+    });
+
+    it('forceStatus out of mini omits the events field when memory holds none', () => {
+      const { store } = storeWithEvents(3);
+      store.forceStatus('S', 'mini');
+      // Hydrated-after-restart shape: panel exists but its events never
+      // replayed. A reseed carrying `events: []` would wipe a client's copy.
+      store.panel('S')?.events.splice(0);
+      const deltas = store.forceStatus('S', 'done');
+      expect(deltas).toHaveLength(1);
+      const d = deltas[0];
+      if (d?.op !== 'panel_upsert') throw new Error(`expected panel_upsert, got ${d?.op}`);
+      expect(d.events).toBeUndefined();
+    });
   });
 
   it('setAwaiting toggles the flag and emits panel_upsert', () => {

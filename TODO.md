@@ -1,24 +1,18 @@
 # brainhouse — project todos
 
-## [HIGH] Page load is painfully slow
+## Page load — residual polish (bulk fixed 2026-08-12)
 
-Initial page load takes far too long before the workspace is usable.
-Needs a proper diagnosis before picking a fix — likely suspects, in no
-particular order:
+The bootstrap payload was the whole story: 52.8 MB of docked-mini event
+backlogs → snapshot now caps events (mini = none, reseeded on restore;
+live/done = trailing window). First panel paint went ~12 s → ~0.6 s.
+Remaining smaller items, none currently painful:
 
-- **Bootstrap payload**: the initial snapshot ships every surfaced
-  panel's full event backlog at once (~437 panels within the 48h
-  window). Measure its size; consider shipping headers first and
-  hydrating panel bodies lazily/on-visibility.
-- **Client bundle**: build already warns about >500 kB chunks — no
-  code-splitting today.
-- **Render storm**: everything mounts at once; grid could virtualize or
-  stagger below-the-fold panels.
-- Related: the scanner-should-know-its-backlog item under Cold-start —
-  a progress-aware startup would at least make the wait legible.
-
-First step: profile (Performance tab / server timing on the snapshot
-route) and attribute the time before touching anything.
+- **Client bundle**: build warns about >500 kB chunks — no
+  code-splitting today (1.14 MB entry chunk; mermaid already split).
+- **Render storm**: everything still mounts at once; grid could
+  virtualize or stagger below-the-fold panels if panel counts grow.
+- `intentions.all` response is ~550 kB (rows for every panel ever?) —
+  worth a look at retention/pruning.
 
 ## Cold-start + lifecycle work (surfaced 2026-06-16 first prod run)
 

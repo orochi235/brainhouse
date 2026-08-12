@@ -111,8 +111,46 @@ describe('TranscriptMonitor', () => {
     const monitor = newMonitor();
     monitor.ingest(userTextEvent({ ts: new Date().toISOString() }));
     expect(monitor.store.panel('S')?.status).toBe('live');
-    monitor.applyHookEvent({ session_id: 'S', kind: 'stop' });
+    monitor.applyHookEvent({ session_id: 'S', kind: 'stop', ts: Date.now() / 1000 });
     expect(monitor.store.panel('S')?.status).toBe('done');
+  });
+
+  it('a stale (replayed) stop leaves a settled panel alone', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({ ts: new Date().toISOString() }));
+    monitor.store.forceStatus('S', 'mini');
+    // Boot replay: the hook watcher re-reads every sidecar file, so a stop
+    // from hours ago arrives again. It must not yank the panel back to done.
+    monitor.applyHookEvent({ session_id: 'S', kind: 'stop', ts: Date.now() / 1000 - 3600 });
+    expect(monitor.store.panel('S')?.status).toBe('mini');
+  });
+
+  it('a stale session_end still marks ended but does not flip status', () => {
+    const monitor = newMonitor();
+    monitor.ingest(userTextEvent({ ts: new Date().toISOString() }));
+    monitor.store.forceStatus('S', 'mini');
+    monitor.applyHookEvent({
+      session_id: 'S',
+      kind: 'session_end',
+      ts: Date.now() / 1000 - 3600,
+    });
+    expect(monitor.store.panel('S')?.status).toBe('mini');
+    expect(monitor.store.panel('S')?.ended).toBe(true);
+  });
+
+  it('a stale subagent_stop still marks subagents ended but does not flip status', () => {
+    const monitor = newMonitor();
+    const ts = new Date().toISOString();
+    monitor.ingest(userTextEvent({ ts }));
+    monitor.ingest(userTextEvent({ agent_id: 'sub1', uuid: 'u2', ts }));
+    monitor.store.forceStatus('sub1', 'mini');
+    monitor.applyHookEvent({
+      session_id: 'S',
+      kind: 'subagent_stop',
+      ts: Date.now() / 1000 - 3600,
+    });
+    expect(monitor.store.panel('sub1')?.status).toBe('mini');
+    expect(monitor.store.panel('sub1')?.ended).toBe(true);
   });
 
   it('applyHookEvent notification flags awaiting_input', () => {
@@ -166,7 +204,7 @@ describe('TranscriptMonitor', () => {
     monitor.ingest(userTextEvent({ ts }));
     monitor.ingest(userTextEvent({ agent_id: 'sub1', uuid: 'u2', text: 'sub-a', ts }));
     monitor.ingest(userTextEvent({ agent_id: 'sub2', uuid: 'u3', text: 'sub-b', ts }));
-    monitor.applyHookEvent({ session_id: 'S', kind: 'subagent_stop' });
+    monitor.applyHookEvent({ session_id: 'S', kind: 'subagent_stop', ts: Date.now() / 1000 });
     expect(monitor.store.panel('sub1')?.status).toBe('done');
     expect(monitor.store.panel('sub2')?.status).toBe('done');
     // Parent itself untouched by subagent_stop.
@@ -251,7 +289,7 @@ describe('TranscriptMonitor', () => {
   it('plain Stop on the parent does NOT mark it ended (only idle)', () => {
     const monitor = newMonitor();
     monitor.ingest(userTextEvent({}));
-    monitor.applyHookEvent({ session_id: 'S', kind: 'stop' });
+    monitor.applyHookEvent({ session_id: 'S', kind: 'stop', ts: Date.now() / 1000 });
     expect(monitor.store.panel('S')?.status).toBe('done');
     expect(monitor.store.panel('S')?.ended).toBe(false);
   });
@@ -261,7 +299,7 @@ describe('TranscriptMonitor', () => {
     monitor.ingest(userTextEvent({}));
     monitor.ingest(userTextEvent({ agent_id: 'sub1', uuid: 'u2' }));
     monitor.ingest(userTextEvent({ agent_id: 'sub2', uuid: 'u3' }));
-    monitor.applyHookEvent({ session_id: 'S', kind: 'session_end' });
+    monitor.applyHookEvent({ session_id: 'S', kind: 'session_end', ts: Date.now() / 1000 });
     expect(monitor.store.panel('S')?.status).toBe('done');
     expect(monitor.store.panel('S')?.ended).toBe(true);
     expect(monitor.store.panel('S')?.ended_provenance).toBe('hook_session_end');
@@ -781,6 +819,63 @@ describe('TranscriptMonitor', () => {
     expect(store.eventsForPanel('S').map((e) => e.event_uuid)).toEqual(['one']);
     await monitor.stop();
     store.close();
+  });
+
+  describe('restorePanel', () => {
+    it('reloads an event-less hydrated panel from its transcript before promoting', async () => {
+      const { Store } = await import('./store.js');
+      const store = Store.open(':memory:');
+      const root = await mkdtemp(path.join(tmpdir(), 'brainhouse-restore-'));
+      try {
+        const sessionId = 'hydrated-1';
+        const cwd = '/Users/test/src/proj';
+        // Stale-but-hydratable: hours old, inside the 48h hydrate window.
+        // Replayed events must NOT flash the panel live (they're stale), so
+        // the promote goes mini→done and carries the reseed.
+        const staleTs = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+        const projDir = path.join(root, encodeCwdToProjectDir(cwd));
+        mkdirSync(projDir, { recursive: true });
+        const line = JSON.stringify({
+          type: 'assistant',
+          uuid: 'a1',
+          sessionId,
+          timestamp: staleTs,
+          cwd,
+          message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] },
+        });
+        writeFileSync(path.join(projDir, `${sessionId}.jsonl`), `${line}\n`);
+
+        // First run persists the panel; a second monitor hydrates it back
+        // WITHOUT events (the boot walk only replays recently-touched files).
+        const first = new TranscriptMonitor({ roots: [root], hookEventsDir: null, store });
+        first.ingest(userTextEvent({ session_id: sessionId, cwd, ts: staleTs }));
+        const monitor = new TranscriptMonitor({ roots: [root], hookEventsDir: null, store });
+        monitor.hydrate();
+        expect(monitor.store.panel(sessionId)?.events).toHaveLength(0);
+        monitor.store.forceStatus(sessionId, 'mini');
+
+        const reseeds: number[] = [];
+        monitor.emitter.on('delta', (d) => {
+          if (d.op === 'panel_upsert' && d.panel.id === sessionId && d.events)
+            reseeds.push(d.events.length);
+        });
+        await monitor.restorePanel(sessionId);
+        expect(monitor.store.panel(sessionId)?.status).toBe('done');
+        expect(monitor.store.panel(sessionId)?.events.length).toBeGreaterThan(0);
+        expect(reseeds.some((n) => n > 0)).toBe(true);
+      } finally {
+        store.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it('promotes without a disk read when events are already in memory', async () => {
+      const monitor = newMonitor();
+      monitor.ingest(userTextEvent({ ts: new Date().toISOString() }));
+      monitor.store.forceStatus('S', 'mini');
+      await monitor.restorePanel('S');
+      expect(monitor.store.panel('S')?.status).toBe('done');
+    });
   });
 
   describe('reopenSession', () => {
