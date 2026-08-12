@@ -6615,6 +6615,11 @@ body.hide-thinking .event-thought-agent {
 .terminal-cmd-text {
   flex: 1;
 }
+/* In the lightbox, chained commands break after each top-level `;` so a
+ * long one-liner reads as a script. Panel view keeps segments inline. */
+.lightbox .terminal-cmd-seg {
+  display: block;
+}
 .terminal-stdout,
 .terminal-stderr,
 .terminal-extra {

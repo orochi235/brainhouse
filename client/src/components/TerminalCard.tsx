@@ -1,3 +1,4 @@
+import { splitCommandSegments } from '../lib/commandSegments.ts';
 import type { TerminalItem } from '../lib/pipeline.ts';
 import { CapsuleRow } from './CapsuleRow.tsx';
 
@@ -17,7 +18,13 @@ export function TerminalCard({ item, startedAt }: Props) {
                 <span className="terminal-prompt" aria-hidden="true">
                   $
                 </span>
-                <span className="terminal-cmd-text">{entry.input}</span>
+                <span className="terminal-cmd-text">
+                  {splitCommandSegments(entry.input).map((seg, j, arr) => (
+                    <span className="terminal-cmd-seg" key={`${entry.event.uuid}-seg-${j}`}>
+                      {j < arr.length - 1 ? `${seg} ` : seg}
+                    </span>
+                  ))}
+                </span>
               </div>
             )}
             {entry.stdout && <pre className="terminal-stdout">{entry.stdout}</pre>}

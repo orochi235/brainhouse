@@ -30,6 +30,11 @@ UI/server is meant to uphold. New entries go at the bottom.
     later. An `interrupt-divider` view item is emitted ("user
     interrupted" centered between two rules), and the follow-up renders
     as its own user bubble.
+- In the lightbox, a terminal command is broken onto a new line after
+  each top-level `;` (quote-, escape-, and paren-aware; `;;` stays
+  together) so chained one-liners read as a script. The same command in
+  a panel body stays inline, with whitespace after each `;` normalized
+  to a single space.
 - On reload, panels whose `last_event_at` is more than 30 seconds old are
   routed straight to the dock instead of the main grid.
 - On reload, if the grid lands empty but the dock holds at least one
