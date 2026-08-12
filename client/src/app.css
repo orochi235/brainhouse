@@ -5825,6 +5825,27 @@ body.hide-thinking .event-thought-agent {
   background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
 
+/* Live subprocess sweep: same 20px accent band + 1.8s cadence as the
+ * pending shell-command capsule (.tool-capsule.pending::before), but as an
+ * animated row background — a <tr> can't reliably clip an absolutely
+ * positioned pseudo-element, while a background-image band is clipped to
+ * the row for free and background-position animates paint-only. */
+.process-row.subprocess-active {
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--panel-accent, #fbbf24) 32%, transparent) 50%,
+    transparent
+  );
+  background-size: 20px 100%;
+  background-repeat: no-repeat;
+  animation: subprocess-live-sweep 1.8s linear infinite;
+}
+@keyframes subprocess-live-sweep {
+  from { background-position: -20px 0; }
+  to   { background-position: calc(100% + 20px) 0; }
+}
+
 .process-row a {
   color: var(--accent, #a78bfa);
   text-decoration: none;

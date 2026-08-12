@@ -107,6 +107,26 @@ describe('ProcessesPanel', () => {
     expect(screen.getByText('301')).toBeInTheDocument();
   });
 
+  it('marks subprocess rows (not the claude root) with the live-sweep class in Sessions view', async () => {
+    const root: ProcessRow = {
+      ...FIXTURE_ROW, process_id: 'c1', pid: 400, ppid: 1,
+      command: 'claude', runtime: 'claude',
+      framework: null, framework_version: null, ports: [], original_ancestors: [],
+    };
+    const child: ProcessRow = {
+      ...root, process_id: 'c2', pid: 401, ppid: 400,
+      command: 'node server.js', runtime: 'node', original_ancestors: [400],
+    };
+    mock.rows = [root, child];
+    const { container } = render(<ProcessesPanel allPanels={new Map()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /sessions/i }));
+    await user.click(screen.getByRole('button', { name: 'expand' }));
+    const sweeping = container.querySelectorAll('tr.subprocess-active');
+    expect(sweeping).toHaveLength(1);
+    expect(sweeping[0]?.textContent).toContain('401');
+  });
+
   it('stays mounted with an empty state when there is no process data (restart window)', () => {
     // Regression: an open panel used to return null when the tracker had no
     // rows yet (e.g. right after a server restart), leaving the topbar toggle

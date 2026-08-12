@@ -161,9 +161,14 @@ export function ProcessRow({
     ? (row.framework_version ? `${row.framework} ${row.framework_version}` : row.framework)
     : '—';
 
+  // Sessions-view subprocess rows (depth > 0, still running) carry the
+  // same accent sweep as pending shell-command capsules — live background
+  // work reads with one shared visual grammar.
+  const sweeping = viewMode === 'sessions' && depth > 0 && row.ended_ts === null;
+
   return (
     <>
-      <tr className="process-row">
+      <tr className={sweeping ? 'process-row subprocess-active' : 'process-row'}>
         <td className="process-status-cell">
           {/* On expandable tree roots the status light doubles as the
             * expand/collapse affordance. Clicking it triggers the same
