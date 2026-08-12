@@ -1,5 +1,25 @@
 # brainhouse — project todos
 
+## [HIGH] Page load is painfully slow
+
+Initial page load takes far too long before the workspace is usable.
+Needs a proper diagnosis before picking a fix — likely suspects, in no
+particular order:
+
+- **Bootstrap payload**: the initial snapshot ships every surfaced
+  panel's full event backlog at once (~437 panels within the 48h
+  window). Measure its size; consider shipping headers first and
+  hydrating panel bodies lazily/on-visibility.
+- **Client bundle**: build already warns about >500 kB chunks — no
+  code-splitting today.
+- **Render storm**: everything mounts at once; grid could virtualize or
+  stagger below-the-fold panels.
+- Related: the scanner-should-know-its-backlog item under Cold-start —
+  a progress-aware startup would at least make the wait legible.
+
+First step: profile (Performance tab / server timing on the snapshot
+route) and attribute the time before touching anything.
+
 ## Cold-start + lifecycle work (surfaced 2026-06-16 first prod run)
 
 First prod run (`node server/dist/index.js`, not dev) surfaced three issues:
