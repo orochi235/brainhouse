@@ -50,6 +50,28 @@ describe('useScrollBackfill', () => {
     });
   });
 
+  it('onScroll does not fetch when the view is already at the bottom', () => {
+    // A live window shorter than the viewport is near-top AND at-bottom at
+    // once; fetching there feeds the fetch→snap→drop strobe loop.
+    queryMock.mockResolvedValue({ events: [ev('old1')], hasMore: true });
+    const shortBody = { current: { scrollTop: 0, scrollHeight: 200, clientHeight: 200 } } as never;
+    const { result } = renderHook(() =>
+      useScrollBackfill({ bodyRef: shortBody, panelId: 'S', liveEvents: [ev('live1')], hasMore: true }),
+    );
+    act(() => result.current.onScroll());
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('onScroll fetches when scrolled near the top of a scrollable body', () => {
+    queryMock.mockResolvedValue({ events: [ev('old1')], hasMore: true });
+    const tallBody = { current: { scrollTop: 50, scrollHeight: 2000, clientHeight: 300 } } as never;
+    const { result } = renderHook(() =>
+      useScrollBackfill({ bodyRef: tallBody, panelId: 'S', liveEvents: [ev('live1')], hasMore: true }),
+    );
+    act(() => result.current.onScroll());
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
   it('clears the backfill buffer when reset() is called (return-to-tail)', async () => {
     queryMock.mockResolvedValue({ events: [ev('old1')], hasMore: false });
     const { result } = renderHook(() =>

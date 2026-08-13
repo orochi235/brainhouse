@@ -723,3 +723,12 @@ UI/server is meant to uphold. New entries go at the bottom.
   Durable facts on stale records still apply (`ended`, summaries) — only
   the lifecycle flip is gated. The tick settles stale panels from their
   real last activity.
+- **Scroll-back never fetches while the view is at the bottom.** A live
+  window shorter than the panel body is "near top" and "at bottom" at
+  once (a fresh `/clear` on a long session); fetching there loops:
+  prepend 500 events → stick-to-bottom snap → return-to-tail drops the
+  buffer → shrink clamps `scrollTop` to 0 → scroll event → refetch, a
+  ~10Hz panel strobe plus a `panelHistory` query per flash. The hook's
+  `onScroll` requires `scrollTop <= TOP_TRIGGER_PX` *and* more than
+  `BOTTOM_SLACK_PX` of content below the viewport before calling
+  `loadOlder`.

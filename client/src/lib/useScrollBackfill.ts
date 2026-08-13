@@ -5,6 +5,8 @@ import { trpc } from '../trpc.ts';
 const HISTORY_PAGE = 500;
 /** Fire backfill when the scroll container is within this many px of top. */
 const TOP_TRIGGER_PX = 200;
+/** Same "at bottom" slack PanelCard uses for stick-to-bottom. */
+const BOTTOM_SLACK_PX = 32;
 
 interface Args {
   bodyRef: RefObject<HTMLElement | null>;
@@ -84,7 +86,12 @@ export function useScrollBackfill({ bodyRef, panelId, liveEvents, hasMore }: Arg
   const onScroll = useCallback(() => {
     const el = bodyRef.current;
     if (!el) return;
-    if (el.scrollTop <= TOP_TRIGGER_PX) void loadOlder();
+    // Never fetch while the view is at the bottom. When the live window is
+    // shorter than the viewport, "near top" and "at bottom" hold at once, and
+    // fetching there loops: prepend → snap-to-bottom drops the buffer →
+    // shrink clamps scrollTop to 0 → scroll event → fetch again (~10Hz).
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_SLACK_PX;
+    if (el.scrollTop <= TOP_TRIGGER_PX && !atBottom) void loadOlder();
   }, [bodyRef, loadOlder]);
 
   return { mergedEvents, loadOlder, reset, onScroll };
