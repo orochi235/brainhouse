@@ -1,15 +1,15 @@
 import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import terminalWindowIcon from '../assets/icons/terminal-window.svg?raw';
-import { useClock } from '../lib/clock.ts';
 import { CopyableId } from '../lib/CopyableId.tsx';
+import { useClock } from '../lib/clock.ts';
 import { formatDurationTwoUnits } from '../lib/format.ts';
-import { CLI_ICONS } from '../lib/tools.ts';
 import { isPlaceholderTitle } from '../lib/sessionTitle.ts';
+import { CLI_ICONS } from '../lib/tools.ts';
 import { badgeColor, deriveWorktree, worktreeColor } from '../lib/worktree.ts';
+import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
-import { trpc } from '../trpc.ts';
 import { HoverPopover } from './HoverPopover.tsx';
 import { SvgGlyph } from './SvgGlyph.tsx';
 
@@ -21,7 +21,10 @@ function runtimeIcon(runtime: string | null): string | null {
 }
 
 const PROVENANCE_DOT: Record<Row['provenance'], string> = {
-  hooked: '●', observed: '●', heuristic: '●', discovered: '○',
+  hooked: '●',
+  observed: '●',
+  heuristic: '●',
+  discovered: '○',
 };
 
 /** Human-readable explanation of each provenance tier — surfaced as
@@ -56,7 +59,10 @@ function isLoopback(addr: string): boolean {
  * color when there's no worktree, or a left-to-right gradient from
  * project color to worktree color when there is. Returns null when
  * we don't have enough info (no panel + no upstream project color). */
-function sessionChipBackground(panel: PanelState | null, fallbackProjectColor: string | null): string | null {
+function sessionChipBackground(
+  panel: PanelState | null,
+  fallbackProjectColor: string | null,
+): string | null {
   if (!panel) return fallbackProjectColor;
   // Prefer the configured panel theme (e.g. brainhouse's purple) over
   // the hash-derived worktreeColor fallback. Theme backgrounds are
@@ -67,7 +73,7 @@ function sessionChipBackground(panel: PanelState | null, fallbackProjectColor: s
   // through to the upstream-computed project color so the chip still
   // matches the row's Project badge instead of going gray.
   const repoRoot = panel.repo_root ?? null;
-  const repo = repoRoot ? repoRoot.split('/').filter(Boolean).pop() ?? '' : '';
+  const repo = repoRoot ? (repoRoot.split('/').filter(Boolean).pop() ?? '') : '';
   const projectColor = panel.theme?.background
     ? badgeColor(panel.theme.background)
     : repo
@@ -93,6 +99,8 @@ export function ProcessRow({
   showIdle = false,
   onOpenSession,
   preferCommand = false,
+  selected = false,
+  onToggleSelect,
 }: {
   row: Row;
   panel: PanelState | null;
@@ -135,6 +143,9 @@ export function ProcessRow({
    * a docked/hidden panel, or re-opens a reaped session from its transcript.
    * Only rows with a `session_id` are promotable. */
   onOpenSession?: (sessionId: string) => void;
+  /** Batch-kill selection state, owned by ProcessesPanel. */
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const kill = () => {
     if (!window.confirm(`Send SIGTERM to PID ${row.pid}?`)) return;
@@ -156,9 +167,15 @@ export function ProcessRow({
     }
   };
 
-  const runtimeText = row.runtime ? (row.runtime_version ? `${row.runtime} ${row.runtime_version}` : row.runtime) : '—';
+  const runtimeText = row.runtime
+    ? row.runtime_version
+      ? `${row.runtime} ${row.runtime_version}`
+      : row.runtime
+    : '—';
   const frameworkText = row.framework
-    ? (row.framework_version ? `${row.framework} ${row.framework_version}` : row.framework)
+    ? row.framework_version
+      ? `${row.framework} ${row.framework_version}`
+      : row.framework
     : '—';
 
   // Sessions-view subprocess rows (depth > 0, still running) carry the
@@ -168,13 +185,29 @@ export function ProcessRow({
 
   return (
     <>
-      <tr className={sweeping ? 'process-row subprocess-active' : 'process-row'}>
+      <tr
+        className={[
+          'process-row',
+          sweeping ? 'subprocess-active' : '',
+          selected ? 'is-selected' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
+        <td className="process-select-cell">
+          <input
+            type="checkbox"
+            checked={selected}
+            aria-label={`Select PID ${row.pid}`}
+            onChange={onToggleSelect}
+          />
+        </td>
         <td className="process-status-cell">
           {/* On expandable tree roots the status light doubles as the
-            * expand/collapse affordance. Clicking it triggers the same
-            * spin-and-morph motion used on panel pin/unpin: the dot
-            * spins 720° while the glyph swaps from a circle to a
-            * smaller downward triangle (or back). */}
+           * expand/collapse affordance. Clicking it triggers the same
+           * spin-and-morph motion used on panel pin/unpin: the dot
+           * spins 720° while the glyph swaps from a circle to a
+           * smaller downward triangle (or back). */}
           <span
             className={[
               PROVENANCE_CLASS[row.provenance],
@@ -186,10 +219,14 @@ export function ProcessRow({
               row.framework === 'brainhouse' ? 'process-dot-self' : '',
               expandable ? 'process-dot-expandable' : '',
               expandable && expanded ? 'is-expanded' : '',
-            ].filter(Boolean).join(' ')}
+            ]
+              .filter(Boolean)
+              .join(' ')}
             title={
               expandable
-                ? (expanded ? 'collapse subtree' : 'expand subtree')
+                ? expanded
+                  ? 'collapse subtree'
+                  : 'expand subtree'
                 : row.framework === 'brainhouse'
                   ? 'brainhouse server'
                   : PROVENANCE_TOOLTIP[row.provenance]
@@ -199,12 +236,16 @@ export function ProcessRow({
             aria-label={expandable ? (expanded ? 'collapse' : 'expand') : undefined}
             tabIndex={expandable ? 0 : undefined}
             onClick={expandable && onToggleExpand ? onToggleExpand : undefined}
-            onKeyDown={expandable && onToggleExpand ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onToggleExpand();
-              }
-            } : undefined}
+            onKeyDown={
+              expandable && onToggleExpand
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onToggleExpand();
+                    }
+                  }
+                : undefined
+            }
           >
             {expandable && expanded
               ? '▼'
@@ -213,7 +254,10 @@ export function ProcessRow({
                 : PROVENANCE_DOT[row.provenance]}
           </span>
         </td>
-        <td className="process-pid-cell" style={depth > 0 ? { paddingLeft: `calc(0.5rem + ${depth}rem)` } : undefined}>
+        <td
+          className="process-pid-cell"
+          style={depth > 0 ? { paddingLeft: `calc(0.5rem + ${depth}rem)` } : undefined}
+        >
           {depth > 0 && <span className="process-tree-rail" aria-hidden="true" />}
           {row.pid}
         </td>
@@ -222,12 +266,15 @@ export function ProcessRow({
             <td className="process-runtime">
               {(() => {
                 const svg = runtimeIcon(row.runtime);
-                if (svg) return (
-                  <>
-                    <SvgGlyph svg={svg} className="runtime-icon" />
-                    {row.runtime_version && <span className="runtime-version">{row.runtime_version}</span>}
-                  </>
-                );
+                if (svg)
+                  return (
+                    <>
+                      <SvgGlyph svg={svg} className="runtime-icon" />
+                      {row.runtime_version && (
+                        <span className="runtime-version">{row.runtime_version}</span>
+                      )}
+                    </>
+                  );
                 return runtimeText;
               })()}
             </td>
@@ -235,59 +282,111 @@ export function ProcessRow({
           </>
         )}
         <td title={row.project ?? undefined}>
-          {row.project ? (() => {
-            const name = row.project.split('/').filter(Boolean).pop() ?? row.project;
-            return (
-              <span
-                className="project-badge"
-                style={{ ['--project-badge-bg' as string]: projectColor ?? worktreeColor(name) } as CSSProperties}
-              >
-                {name}
-              </span>
-            );
-          })() : '—'}
+          {row.project
+            ? (() => {
+                const name = row.project.split('/').filter(Boolean).pop() ?? row.project;
+                return (
+                  <span
+                    className="project-badge"
+                    style={
+                      {
+                        ['--project-badge-bg' as string]: projectColor ?? worktreeColor(name),
+                      } as CSSProperties
+                    }
+                  >
+                    {name}
+                  </span>
+                );
+              })()
+            : '—'}
         </td>
-        {showAccount && (() => {
-          // Prefer the live panel's label (always current); fall back to
-          // the server-stamped row.account_label so non-panel rows
-          // (brainhouse self, sessions that have ended) still show.
-          const label = panel?.account_label ?? row.account_label;
-          return (
-            <td className="process-account-cell">
-              {label ? (
-                <span
-                  className="panel-account"
-                  style={accountColor ? ({ ['--account-color' as string]: accountColor } as CSSProperties) : undefined}
-                  title={`account: ${label}`}
-                >
-                  {label}
-                </span>
-              ) : '—'}
-            </td>
-          );
-        })()}
+        {showAccount &&
+          (() => {
+            // Prefer the live panel's label (always current); fall back to
+            // the server-stamped row.account_label so non-panel rows
+            // (brainhouse self, sessions that have ended) still show.
+            const label = panel?.account_label ?? row.account_label;
+            return (
+              <td className="process-account-cell">
+                {label ? (
+                  <span
+                    className="panel-account"
+                    style={
+                      accountColor
+                        ? ({ ['--account-color' as string]: accountColor } as CSSProperties)
+                        : undefined
+                    }
+                    title={`account: ${label}`}
+                  >
+                    {label}
+                  </span>
+                ) : (
+                  '—'
+                )}
+              </td>
+            );
+          })()}
         <td className="process-command-cell">
           <HoverPopover
             popoverClassName="process-info-popover"
             content={
               <dl className="process-info-grid">
-                <dt>PID</dt><dd>{row.pid}</dd>
-                <dt>Uptime</dt><dd>{fmtUptime(row.uptime_s)}</dd>
-                {row.runtime && <><dt>Runtime</dt><dd>{runtimeText}</dd></>}
-                {row.framework && <><dt>Framework</dt><dd>{frameworkText}</dd></>}
+                <dt>PID</dt>
+                <dd>{row.pid}</dd>
+                <dt>Uptime</dt>
+                <dd>{fmtUptime(row.uptime_s)}</dd>
+                {row.runtime && (
+                  <>
+                    <dt>Runtime</dt>
+                    <dd>{runtimeText}</dd>
+                  </>
+                )}
+                {row.framework && (
+                  <>
+                    <dt>Framework</dt>
+                    <dd>{frameworkText}</dd>
+                  </>
+                )}
                 {row.ports.length > 0 && (
                   <>
                     <dt>Ports</dt>
-                    <dd>{row.ports.map(p => `${p.addr}:${p.port}`).join(' ')}</dd>
+                    <dd>{row.ports.map((p) => `${p.addr}:${p.port}`).join(' ')}</dd>
                   </>
                 )}
-                {row.project && <><dt>Project</dt><dd>{row.project}</dd></>}
-                {row.session_id && <><dt>Session</dt><dd>{row.session_id}</dd></>}
-                {row.iterm_session_id && <><dt>iTerm</dt><dd>{row.iterm_session_id}</dd></>}
-                {panel?.title && <><dt>Title</dt><dd>{panel.title}</dd></>}
-                {row.hook_command && <><dt>Intent</dt><dd>{row.hook_command}</dd></>}
-                <dt>Provenance</dt><dd>{row.provenance}</dd>
-                <dt>Command</dt><dd className="process-info-command">{row.command}</dd>
+                {row.project && (
+                  <>
+                    <dt>Project</dt>
+                    <dd>{row.project}</dd>
+                  </>
+                )}
+                {row.session_id && (
+                  <>
+                    <dt>Session</dt>
+                    <dd>{row.session_id}</dd>
+                  </>
+                )}
+                {row.iterm_session_id && (
+                  <>
+                    <dt>iTerm</dt>
+                    <dd>{row.iterm_session_id}</dd>
+                  </>
+                )}
+                {panel?.title && (
+                  <>
+                    <dt>Title</dt>
+                    <dd>{panel.title}</dd>
+                  </>
+                )}
+                {row.hook_command && (
+                  <>
+                    <dt>Intent</dt>
+                    <dd>{row.hook_command}</dd>
+                  </>
+                )}
+                <dt>Provenance</dt>
+                <dd>{row.provenance}</dd>
+                <dt>Command</dt>
+                <dd className="process-info-command">{row.command}</dd>
               </dl>
             }
           >
@@ -299,7 +398,8 @@ export function ProcessRow({
               // title earns full-strength styling.
               const sessionTitle =
                 viewMode === 'sessions' && !preferCommand ? (panel?.title ?? '') : '';
-              const realTitle = !!sessionTitle && !isPlaceholderTitle(sessionTitle, panel?.id ?? '');
+              const realTitle =
+                !!sessionTitle && !isPlaceholderTitle(sessionTitle, panel?.id ?? '');
               const label = sessionTitle || row.command;
               const cls = realTitle ? 'process-command is-title' : 'process-command';
               // Rows tied to a session can be clicked to promote that session
@@ -328,28 +428,36 @@ export function ProcessRow({
         </td>
         {viewMode !== 'sessions' && (
           <td>
-            {row.ports.length === 0 ? '—' : row.ports.map((p, i) => (
-              <span
-                key={`${p.proto}-${p.addr}-${p.port}-${i}`}
-                className={p.inherited ? 'port-inherited' : undefined}
-                title={[
-                  p.addr === 'localhost' || isLoopback(p.addr) ? null : `bound to ${p.addr}`,
-                  p.inherited ? 'inherited from a descendant process' : null,
-                  p.is_http === false ? 'not an HTTP server' : null,
-                  p.is_http === null || p.is_http === undefined ? 'probing…' : null,
-                ].filter(Boolean).join(' · ') || undefined}
-              >
-                {i > 0 && ' '}
-                {/* Link only when the server-side probe confirmed an
-                 * HTTP response. null (not yet probed) and false render
-                 * as plain text so we never link a port that won't open. */}
-                {p.is_http === true ? (
-                  <a href={`http://localhost:${p.port}`} target="_blank" rel="noreferrer">:{p.port}</a>
-                ) : (
-                  <span>:{p.port}</span>
-                )}
-              </span>
-            ))}
+            {row.ports.length === 0
+              ? '—'
+              : row.ports.map((p, i) => (
+                  <span
+                    key={`${p.proto}-${p.addr}-${p.port}-${i}`}
+                    className={p.inherited ? 'port-inherited' : undefined}
+                    title={
+                      [
+                        p.addr === 'localhost' || isLoopback(p.addr) ? null : `bound to ${p.addr}`,
+                        p.inherited ? 'inherited from a descendant process' : null,
+                        p.is_http === false ? 'not an HTTP server' : null,
+                        p.is_http === null || p.is_http === undefined ? 'probing…' : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || undefined
+                    }
+                  >
+                    {i > 0 && ' '}
+                    {/* Link only when the server-side probe confirmed an
+                     * HTTP response. null (not yet probed) and false render
+                     * as plain text so we never link a port that won't open. */}
+                    {p.is_http === true ? (
+                      <a href={`http://localhost:${p.port}`} target="_blank" rel="noreferrer">
+                        :{p.port}
+                      </a>
+                    ) : (
+                      <span>:{p.port}</span>
+                    )}
+                  </span>
+                ))}
           </td>
         )}
         <td>
@@ -373,8 +481,8 @@ export function ProcessRow({
         <td>{fmtUptime(row.uptime_s)}</td>
         <td className="process-actions-cell">
           {/* Reveal-in-iTerm: only for rows whose owning session carries an
-            * iTerm2 GUID (captured by the session_pid hook). Jumps to the
-            * real terminal pane. Hidden otherwise. */}
+           * iTerm2 GUID (captured by the session_pid hook). Jumps to the
+           * real terminal pane. Hidden otherwise. */}
           {row.iterm_session_id && (
             <button
               type="button"
@@ -382,12 +490,16 @@ export function ProcessRow({
               className="process-reveal-iterm"
               aria-label="Reveal this session's iTerm2 tab"
               title="Reveal this session's iTerm2 tab"
-            ><SvgGlyph svg={terminalWindowIcon} className="svg-glyph" /></button>
+            >
+              <SvgGlyph svg={terminalWindowIcon} className="svg-glyph" />
+            </button>
           )}
           {/* Tail-stdout toggle (▾) is hidden until the logs UX is
            * redesigned — inline <pre> below the row was too disruptive.
            * Kill action remains. */}
-          <button onClick={kill} aria-label={`Kill PID ${row.pid}`}>✕</button>
+          <button onClick={kill} aria-label={`Kill PID ${row.pid}`}>
+            ✕
+          </button>
         </td>
       </tr>
     </>
@@ -409,14 +521,21 @@ export function IdleCell({ panel }: { panel: PanelState | null }) {
   // 0 = fresh, 6 = ancient. Bumps at 5m, 30m, 2h, 6h, 24h, 7d. CSS picks
   // the per-bucket color (full --fg → progressively darker via color-mix).
   const bucket =
-    idleSec === null ? null :
-    idleSec < 300 ? 0 :
-    idleSec < 1800 ? 1 :
-    idleSec < 7200 ? 2 :
-    idleSec < 21600 ? 3 :
-    idleSec < 86400 ? 4 :
-    idleSec < 604800 ? 5 :
-    6;
+    idleSec === null
+      ? null
+      : idleSec < 300
+        ? 0
+        : idleSec < 1800
+          ? 1
+          : idleSec < 7200
+            ? 2
+            : idleSec < 21600
+              ? 3
+              : idleSec < 86400
+                ? 4
+                : idleSec < 604800
+                  ? 5
+                  : 6;
   return (
     <td
       className={bucket !== null ? `process-idle idle-bucket-${bucket}` : 'process-idle'}

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProcessRow } from '../useProcesses.ts';
 import { ProcessesPanel } from './ProcessesPanel.tsx';
 
@@ -9,15 +9,40 @@ import { ProcessesPanel } from './ProcessesPanel.tsx';
 const mock = vi.hoisted(() => ({ rows: [] as ProcessRow[] }));
 vi.mock('../useProcesses.ts', () => ({ useProcesses: () => mock.rows }));
 
+const killMock = vi.hoisted(() => vi.fn());
+vi.mock('../trpc.ts', () => ({
+  trpc: {
+    processes: { kill: { mutate: killMock }, revealInIterm: { mutate: vi.fn() } },
+    restore: { mutate: vi.fn() },
+  },
+}));
+
 const FIXTURE_ROW: ProcessRow = {
-  process_id: 'p1', host: 'local', pid: 100, ppid: 1, start_ts: 0,
-  command: 'node vite', cwd: '/proj', session_id: 's1',
-  hook_command: 'npm run dev', run_in_background: true,
-  provenance: 'hooked', runtime: 'node', runtime_version: '22.5.0', runtime_source: 'path',
-  framework: 'vite', framework_version: '5.4.2',
+  process_id: 'p1',
+  host: 'local',
+  pid: 100,
+  ppid: 1,
+  start_ts: 0,
+  command: 'node vite',
+  cwd: '/proj',
+  session_id: 's1',
+  hook_command: 'npm run dev',
+  run_in_background: true,
+  provenance: 'hooked',
+  runtime: 'node',
+  runtime_version: '22.5.0',
+  runtime_source: 'path',
+  framework: 'vite',
+  framework_version: '5.4.2',
   ports: [{ proto: 'TCP', addr: '127.0.0.1', port: 5173 }],
-  ended_ts: null, ended_reason: null, uptime_s: 724,
-  bash_id: null, project: null, account_label: null, iterm_session_id: null, original_ancestors: [],
+  ended_ts: null,
+  ended_reason: null,
+  uptime_s: 724,
+  bash_id: null,
+  project: null,
+  account_label: null,
+  iterm_session_id: null,
+  original_ancestors: [],
 };
 
 describe('ProcessesPanel', () => {
@@ -54,17 +79,32 @@ describe('ProcessesPanel', () => {
     // should root a tree; the nested claude rows are its descendants,
     // not sibling top-level entries.
     const outer: ProcessRow = {
-      ...FIXTURE_ROW, process_id: 'c1', pid: 200, ppid: 1,
-      command: 'claude --dangerously-skip-permissions', runtime: 'claude',
-      framework: null, framework_version: null, ports: [], original_ancestors: [],
+      ...FIXTURE_ROW,
+      process_id: 'c1',
+      pid: 200,
+      ppid: 1,
+      command: 'claude --dangerously-skip-permissions',
+      runtime: 'claude',
+      framework: null,
+      framework_version: null,
+      ports: [],
+      original_ancestors: [],
     };
     const daemon: ProcessRow = {
-      ...outer, process_id: 'c2', pid: 201, ppid: 200,
-      command: 'claude daemon run', original_ancestors: [200],
+      ...outer,
+      process_id: 'c2',
+      pid: 201,
+      ppid: 200,
+      command: 'claude daemon run',
+      original_ancestors: [200],
     };
     const ptyHost: ProcessRow = {
-      ...outer, process_id: 'c3', pid: 202, ppid: 201,
-      command: 'claude bg-pty-host', original_ancestors: [201, 200],
+      ...outer,
+      process_id: 'c3',
+      pid: 202,
+      ppid: 201,
+      command: 'claude bg-pty-host',
+      original_ancestors: [201, 200],
     };
     mock.rows = [outer, daemon, ptyHost];
     render(<ProcessesPanel allPanels={new Map()} />);
@@ -82,18 +122,27 @@ describe('ProcessesPanel', () => {
     expect(screen.getByText('202')).toBeInTheDocument();
   });
 
-  it('adopts orphaned daemon-infra claude rows under their session\'s primary root', async () => {
+  it("adopts orphaned daemon-infra claude rows under their session's primary root", async () => {
     // A bg-pty-host whose daemon parent died reparents to launchd (ppid 1,
     // no tracked ancestors) but keeps its session_id — it should nest under
     // the session's interactive claude root, not surface as a sibling tree.
     const head: ProcessRow = {
-      ...FIXTURE_ROW, process_id: 'c1', pid: 300, ppid: 1,
-      command: 'claude --dangerously-skip-permissions', runtime: 'claude',
-      framework: null, framework_version: null, ports: [], original_ancestors: [],
+      ...FIXTURE_ROW,
+      process_id: 'c1',
+      pid: 300,
+      ppid: 1,
+      command: 'claude --dangerously-skip-permissions',
+      runtime: 'claude',
+      framework: null,
+      framework_version: null,
+      ports: [],
+      original_ancestors: [],
       session_id: 'sX',
     };
     const orphan: ProcessRow = {
-      ...head, process_id: 'c2', pid: 301,
+      ...head,
+      process_id: 'c2',
+      pid: 301,
       command: 'claude bg-pty-host --bg-pty-host /tmp/cc-daemon/x.pty.sock',
     };
     mock.rows = [head, orphan];
@@ -109,13 +158,25 @@ describe('ProcessesPanel', () => {
 
   it('marks subprocess rows (not the claude root) with the live-sweep class in Sessions view', async () => {
     const root: ProcessRow = {
-      ...FIXTURE_ROW, process_id: 'c1', pid: 400, ppid: 1,
-      command: 'claude', runtime: 'claude',
-      framework: null, framework_version: null, ports: [], original_ancestors: [],
+      ...FIXTURE_ROW,
+      process_id: 'c1',
+      pid: 400,
+      ppid: 1,
+      command: 'claude',
+      runtime: 'claude',
+      framework: null,
+      framework_version: null,
+      ports: [],
+      original_ancestors: [],
     };
     const child: ProcessRow = {
-      ...root, process_id: 'c2', pid: 401, ppid: 400,
-      command: 'node server.js', runtime: 'node', original_ancestors: [400],
+      ...root,
+      process_id: 'c2',
+      pid: 401,
+      ppid: 400,
+      command: 'node server.js',
+      runtime: 'node',
+      original_ancestors: [400],
     };
     mock.rows = [root, child];
     const { container } = render(<ProcessesPanel allPanels={new Map()} />);
@@ -125,6 +186,44 @@ describe('ProcessesPanel', () => {
     const sweeping = container.querySelectorAll('tr.subprocess-active');
     expect(sweeping).toHaveLength(1);
     expect(sweeping[0]?.textContent).toContain('401');
+  });
+
+  it('kills every checked row via the kill-selected button, then clears the selection', async () => {
+    const root: ProcessRow = {
+      ...FIXTURE_ROW,
+      process_id: 'c1',
+      pid: 500,
+      ppid: 1,
+      command: 'claude',
+      runtime: 'claude',
+      framework: null,
+      framework_version: null,
+      ports: [],
+      original_ancestors: [],
+    };
+    const child: ProcessRow = {
+      ...root,
+      process_id: 'c2',
+      pid: 501,
+      ppid: 500,
+      command: 'node server.js',
+      runtime: 'node',
+      original_ancestors: [500],
+    };
+    mock.rows = [root, child];
+    render(<ProcessesPanel allPanels={new Map()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /sessions/i }));
+    await user.click(screen.getByRole('button', { name: 'expand' }));
+    // No selection → no kill button.
+    expect(screen.queryByRole('button', { name: /kill .* selected/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'Select PID 500' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select PID 501' }));
+    await user.click(screen.getByRole('button', { name: 'kill 2 selected' }));
+    expect(killMock).toHaveBeenCalledWith({ process_id: 'c1' });
+    expect(killMock).toHaveBeenCalledWith({ process_id: 'c2' });
+    // Selection cleared → button gone again.
+    expect(screen.queryByRole('button', { name: /kill .* selected/i })).not.toBeInTheDocument();
   });
 
   it('stays mounted with an empty state when there is no process data (restart window)', () => {

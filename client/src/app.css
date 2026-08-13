@@ -135,13 +135,13 @@ body {
  * `data-affordance-kind="drag-x|drag-y"`. Give them a faint visible track
  * + hover state so the resize affordance is discoverable. Pointer-event
  * surface broadening lives in windease itself. */
-[data-affordance-kind='drag-x'],
-[data-affordance-kind='drag-y'] {
+[data-affordance-kind="drag-x"],
+[data-affordance-kind="drag-y"] {
   background: color-mix(in srgb, var(--panel-border) 60%, transparent);
   transition: background 0.12s ease;
 }
-[data-affordance-kind='drag-x']:hover,
-[data-affordance-kind='drag-y']:hover {
+[data-affordance-kind="drag-x"]:hover,
+[data-affordance-kind="drag-y"]:hover {
   background: var(--panel-border);
 }
 /* NodeContainer renders affordance hit divs *before* the child rects in
@@ -237,7 +237,7 @@ body {
 }
 /* Processes toggle reads as "on" while the panel is open — persistent accent
  * tint (mirrors the hover treatment) so its state is obvious at a glance. */
-.theme-toggle.processes-toggle[aria-pressed='true'] {
+.theme-toggle.processes-toggle[aria-pressed="true"] {
   color: var(--accent);
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -393,7 +393,7 @@ body {
  * to the left of the slot the dragged panel will land before. Pseudo-only
  * so it doesn't reflow the grid. */
 .grid-slot.insert-before::before {
-  content: '';
+  content: "";
   position: absolute;
   left: -8px;
   top: 4px;
@@ -537,7 +537,10 @@ body.loading-quiet .panel {
   font-size: 0.8rem;
   text-align: left;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 .subagent-placeholder:hover {
   background: color-mix(in srgb, var(--panel-bg) 60%, transparent);
@@ -591,7 +594,9 @@ body.loading-quiet .panel {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 120ms ease, border-color 120ms ease;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
 }
 .panel-parent-breadcrumb:hover {
   color: var(--text);
@@ -612,12 +617,19 @@ body.loading-quiet .panel {
   color: var(--text-dim);
   font-size: 0.72rem;
   cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
 }
 .panel-reveal-iterm:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--accent, #4a9eff) 16%, var(--panel-bg));
-  border-color: color-mix(in srgb, var(--accent, #4a9eff) 45%, var(--panel-border));
+  border-color: color-mix(
+    in srgb,
+    var(--accent, #4a9eff) 45%,
+    var(--panel-border)
+  );
 }
 /* The terminal-window glyph needs a touch more than the button's 1em
  * (0.72rem font) or its 1.5px strokes alias into mush. */
@@ -786,8 +798,8 @@ body.loading-quiet .panel {
 }
 .panel-subagent {
   --panel-accent: oklch(
-    from var(--panel-theme-bg, var(--hued-fallback-subagent)) var(--hued-accent-l)
-      var(--hued-accent-c) h
+    from var(--panel-theme-bg, var(--hued-fallback-subagent))
+      var(--hued-accent-l) var(--hued-accent-c) h
   );
 }
 
@@ -799,7 +811,7 @@ body.loading-quiet .panel {
 }
 .panel.waiting .panel-header::after,
 .panel-subagent.status-live .panel-header::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -837,7 +849,8 @@ body.loading-quiet .panel {
    * actually override the animation. Defaults at :root match the
    * legacy hardcoded values: panel-title-sweep-edges, 1.6s,
    * ease-in-out, infinite alternate (pendulum). */
-  animation: var(--sweep-keyframes) var(--sweep-duration) var(--sweep-easing) infinite var(--sweep-direction);
+  animation: var(--sweep-keyframes) var(--sweep-duration) var(--sweep-easing)
+    infinite var(--sweep-direction);
   will-change: transform;
 }
 /* Ensure the header's own children sit above the sweep. */
@@ -902,13 +915,23 @@ body.loading-quiet .panel {
  * parabolic easing decelerates as the band crosses, like a thrown
  * object slowing under drag. */
 @keyframes panel-title-sweep-pulse {
-  0%   { opacity: 0; transform: translate3d(-70%, 0, 0); }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { opacity: 0; transform: translate3d(70%, 0, 0); }
+  0% {
+    opacity: 0;
+    transform: translate3d(-70%, 0, 0);
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(70%, 0, 0);
+  }
 }
 
-[data-sweep-preset='pulse'] {
+[data-sweep-preset="pulse"] {
   --sweep-keyframes: panel-title-sweep-pulse;
   --sweep-direction: normal;
   /* Parabolic-feel deceleration: fast launch, drawn-out tail. */
@@ -1634,7 +1657,7 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
  * deterministic hash of the worktree key (see lib/worktree.ts), so all
  * panels on the same worktree share a stripe + swatch tint. */
 .panel.has-worktree::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 0;
@@ -1653,8 +1676,16 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   padding: 0.02rem 0.35rem 0.02rem 0.25rem;
   flex-shrink: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--panel-worktree-color, var(--accent)) 18%, transparent);
-  color: color-mix(in srgb, var(--panel-worktree-color, var(--accent)) 75%, var(--fg));
+  background: color-mix(
+    in srgb,
+    var(--panel-worktree-color, var(--accent)) 18%,
+    transparent
+  );
+  color: color-mix(
+    in srgb,
+    var(--panel-worktree-color, var(--accent)) 75%,
+    var(--fg)
+  );
   letter-spacing: 0.02em;
 }
 .panel-worktree-swatch {
@@ -1676,8 +1707,13 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   padding: 0.1rem 0.4rem;
   font-size: 0.65rem;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--panel-worktree-color, var(--accent)) 75%, var(--fg));
-  border-bottom: 1px solid color-mix(in srgb, var(--panel-worktree-color) 30%, transparent);
+  color: color-mix(
+    in srgb,
+    var(--panel-worktree-color, var(--accent)) 75%,
+    var(--fg)
+  );
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--panel-worktree-color) 30%, transparent);
 }
 .worktree-group-separator-swatch {
   width: 0.5rem;
@@ -2467,7 +2503,8 @@ body.imessage .event-assistant_text .bubble-thread {
   margin-left: 0.9rem;
 }
 .bubble.has-reply {
-  border-left: 2px solid color-mix(in srgb, var(--bubble-assistant-fg) 35%, transparent);
+  border-left: 2px solid
+    color-mix(in srgb, var(--bubble-assistant-fg) 35%, transparent);
   padding-left: 0.55rem;
 }
 .bubble.has-reply.is-task {
@@ -2520,8 +2557,12 @@ body.imessage .event-assistant_text .bubble-thread {
   border-radius: 6px;
 }
 @keyframes event-focus-pulse {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
-  100% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); }
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
 }
 
 /* Struck-out text inside a user bubble — the user typed something,
@@ -2725,7 +2766,8 @@ body.imessage .event-assistant_text .bubble-thread {
   font-variant-numeric: tabular-nums;
   text-align: right;
   user-select: none;
-  border-right: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
+  border-right: 1px solid
+    color-mix(in srgb, var(--panel-border) 70%, transparent);
 }
 .diff-gutter-del {
   background: color-mix(in srgb, #ef4444 14%, transparent);
@@ -2805,14 +2847,18 @@ body.imessage .event-assistant_text .bubble-thread {
  * `100cqw` keyframe value resolves to the capsule's width without
  * referencing the pseudo's own (fixed 20px) dimensions. */
 .tool-capsule.pending {
-  border-color: color-mix(in srgb, var(--panel-accent, #fbbf24) 45%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--panel-accent, #fbbf24) 45%,
+    transparent
+  );
   position: relative;
   overflow: hidden;
   isolation: isolate;
   container-type: inline-size;
 }
 .tool-capsule.pending::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   bottom: 0;
@@ -2830,11 +2876,15 @@ body.imessage .event-assistant_text .bubble-thread {
   will-change: transform;
 }
 @keyframes tool-pending-sweep {
-  from { transform: translateX(-20px); }
+  from {
+    transform: translateX(-20px);
+  }
   /* 100cqw is the content-box width (cq units exclude padding); add the
    * horizontal padding so the sweep crosses the whole capsule — under the
    * timestamp gutter on the right — instead of stopping at its edge. */
-  to   { transform: translateX(calc(100cqw + var(--cap-pad-l) + var(--cap-pad-r))); }
+  to {
+    transform: translateX(calc(100cqw + var(--cap-pad-l) + var(--cap-pad-r)));
+  }
 }
 .tool-capsule.ok {
   border-color: rgba(132, 204, 22, 0.35);
@@ -3084,7 +3134,8 @@ body.imessage .event-assistant_text .bubble-thread {
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--panel-border) 60%, transparent);
   cursor: pointer;
 }
 .trace-row:hover {
@@ -3219,7 +3270,8 @@ body.imessage .event-assistant_text .bubble-thread {
 .trace-stage-table td {
   text-align: left;
   padding: 0.2rem 0.4rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--panel-border) 50%, transparent);
 }
 .trace-stage-table th {
   color: var(--muted);
@@ -4411,7 +4463,7 @@ body.view-conversation
   padding-left: 1.5rem;
 }
 body.replay-drop-target::after {
-  content: 'Drop .jsonl to replay';
+  content: "Drop .jsonl to replay";
   position: fixed;
   inset: 0;
   display: flex;
@@ -4447,8 +4499,13 @@ body.replay-drop-target::after {
   animation: mermaid-pulse 1.2s ease-in-out infinite;
 }
 @keyframes mermaid-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.7; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 /* ---- debug tile ---- */
@@ -4508,7 +4565,11 @@ body.replay-drop-target::after {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   padding: 0.5rem 0.6rem;
 }
-.debug-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+.debug-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
 .debug-section-title {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -4522,7 +4583,8 @@ body.replay-drop-target::after {
   border-collapse: collapse;
   font-size: 0.7rem;
 }
-.debug-table th, .debug-table td {
+.debug-table th,
+.debug-table td {
   text-align: left;
   padding: 1px 6px 1px 0;
   vertical-align: top;
@@ -4533,11 +4595,23 @@ body.replay-drop-target::after {
   font-weight: 500;
   border-bottom: 1px solid var(--panel-border);
 }
-.debug-table code { font-size: 0.7rem; }
-.debug-id-list { margin: 0.25rem 0; padding-left: 1rem; }
-.debug-id-list li { font-size: 0.7rem; }
-.debug-gap-pos { color: #c44; font-weight: 600; }
-.debug-gap-neg { color: #888; }
+.debug-table code {
+  font-size: 0.7rem;
+}
+.debug-id-list {
+  margin: 0.25rem 0;
+  padding-left: 1rem;
+}
+.debug-id-list li {
+  font-size: 0.7rem;
+}
+.debug-gap-pos {
+  color: #c44;
+  font-weight: 600;
+}
+.debug-gap-neg {
+  color: #888;
+}
 /* Label/value summary that flows into as many columns as the width allows
  * (auto-fill) instead of one item per line — 6 stats on a 1000px tile land in
  * ~2 rows, not 6. */
@@ -4553,10 +4627,16 @@ body.replay-drop-target::after {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 1px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--panel-border) 50%, transparent);
 }
-.debug-kv dt { color: var(--muted); }
-.debug-kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+.debug-kv dt {
+  color: var(--muted);
+}
+.debug-kv dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
 .debug-cell-truncate {
   max-width: 18ch;
   overflow: hidden;
@@ -4592,7 +4672,7 @@ body.replay-drop-target::after {
   height: 0.95rem;
   display: block;
 }
-.debug-toggle[aria-pressed='true'] {
+.debug-toggle[aria-pressed="true"] {
   color: var(--accent);
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -4615,7 +4695,9 @@ body.replay-drop-target::after {
   letter-spacing: 0.04em;
   line-height: 1.5;
 }
-.debug-state-chip { margin-right: 4px; }
+.debug-state-chip {
+  margin-right: 4px;
+}
 /* Chip backgrounds are kept dark so the bright row tint shows through as a
  * border halo, and the foreground is forced to a light, high-contrast color
  * so the label remains legible against any project tint behind it. */
@@ -4663,8 +4745,12 @@ body.replay-drop-target::after {
   cursor: pointer;
   user-select: none;
 }
-.debug-th-sort:hover { color: var(--text); }
-.debug-th-sort.is-sorted { color: var(--text); }
+.debug-th-sort:hover {
+  color: var(--text);
+}
+.debug-th-sort.is-sorted {
+  color: var(--text);
+}
 .debug-kind-icon {
   display: inline-block;
   font-size: 0.7rem;
@@ -4673,9 +4759,15 @@ body.replay-drop-target::after {
   width: 1ch;
   text-align: center;
 }
-.debug-kind-parent { color: color-mix(in srgb, var(--text) 80%, transparent); }
-.debug-kind-subagent { color: var(--muted); }
-.debug-id-cell { text-align: right; }
+.debug-kind-parent {
+  color: color-mix(in srgb, var(--text) 80%, transparent);
+}
+.debug-kind-subagent {
+  color: var(--muted);
+}
+.debug-id-cell {
+  text-align: right;
+}
 .copyable-id {
   background: none;
   border: none;
@@ -4706,7 +4798,10 @@ body.replay-drop-target::after {
   align-items: center;
   border-radius: 4px;
   padding: 1px;
-  background: var(--session-chip-bg, color-mix(in srgb, var(--fg) 22%, transparent));
+  background: var(
+    --session-chip-bg,
+    color-mix(in srgb, var(--fg) 22%, transparent)
+  );
 }
 .session-chip-wrap .copyable-id {
   background: color-mix(in srgb, var(--bg) 80%, transparent);
@@ -4758,12 +4853,24 @@ body[data-freeze] .debug-tile * {
  * `.hued` color when one is configured (`.has-theme`); falls back to
  * the deterministic hash color from `worktreeColor`. */
 .panel.project-widget {
-  background: color-mix(in oklch, var(--panel-bg), var(--panel-worktree-color, transparent) 4%);
-  border-color: color-mix(in oklch, var(--panel-border), var(--panel-worktree-color, transparent) 30%);
+  background: color-mix(
+    in oklch,
+    var(--panel-bg),
+    var(--panel-worktree-color, transparent) 4%
+  );
+  border-color: color-mix(
+    in oklch,
+    var(--panel-border),
+    var(--panel-worktree-color, transparent) 30%
+  );
 }
 .panel.project-widget.has-theme {
   background: color-mix(in oklch, var(--panel-bg), var(--panel-theme-bg) 6%);
-  border-color: color-mix(in oklch, var(--panel-border), var(--panel-theme-bg) 35%);
+  border-color: color-mix(
+    in oklch,
+    var(--panel-border),
+    var(--panel-theme-bg) 35%
+  );
 }
 /* × button in the leading column — sits below the status light on
  * project widgets and mini session panels. The base TitleBar CSS
@@ -4845,12 +4952,27 @@ body[data-freeze] .debug-tile * {
   color: color-mix(in srgb, var(--stat-hue) 92%, var(--fg));
   white-space: nowrap;
 }
-.project-widget-stat[data-kind="sessions"] { --stat-hue: #a489d0; }
-.project-widget-stat[data-kind="files"]    { --stat-hue: #6ec1a4; }
-.project-widget-stat[data-kind="tokens"]   { --stat-hue: #e6b455; }
-.project-widget-stat[data-kind="sessions"]::before { content: "◇ "; opacity: 0.9; }
-.project-widget-stat[data-kind="files"]::before    { content: "✎ "; opacity: 0.9; }
-.project-widget-stat[data-kind="tokens"]::before   { content: "⛁ "; opacity: 0.9; }
+.project-widget-stat[data-kind="sessions"] {
+  --stat-hue: #a489d0;
+}
+.project-widget-stat[data-kind="files"] {
+  --stat-hue: #6ec1a4;
+}
+.project-widget-stat[data-kind="tokens"] {
+  --stat-hue: #e6b455;
+}
+.project-widget-stat[data-kind="sessions"]::before {
+  content: "◇ ";
+  opacity: 0.9;
+}
+.project-widget-stat[data-kind="files"]::before {
+  content: "✎ ";
+  opacity: 0.9;
+}
+.project-widget-stat[data-kind="tokens"]::before {
+  content: "⛁ ";
+  opacity: 0.9;
+}
 .project-widget-stat-value {
   font-weight: 600;
   font-size: 0.78rem;
@@ -4915,7 +5037,8 @@ body[data-freeze] .debug-tile * {
 }
 .project-widget-session-row.awaiting .project-widget-session-dot {
   background: var(--warn, #e0a93b);
-  box-shadow: 0 0 0 2px color-mix(in oklch, transparent, var(--warn, #e0a93b) 30%);
+  box-shadow: 0 0 0 2px
+    color-mix(in oklch, transparent, var(--warn, #e0a93b) 30%);
 }
 .project-widget-session-title {
   flex: 1;
@@ -4954,8 +5077,17 @@ body[data-freeze] .debug-tile * {
   gap: 0.5rem;
   width: 100%;
   padding: 0.3rem 0.5rem;
-  background: color-mix(in oklch, var(--panel-bg), var(--panel-worktree-color, transparent) 6%);
-  border: 1px solid color-mix(in oklch, var(--panel-border), var(--panel-worktree-color, transparent) 30%);
+  background: color-mix(
+    in oklch,
+    var(--panel-bg),
+    var(--panel-worktree-color, transparent) 6%
+  );
+  border: 1px solid
+    color-mix(
+      in oklch,
+      var(--panel-border),
+      var(--panel-worktree-color, transparent) 30%
+    );
   border-radius: 5px;
   color: inherit;
   text-align: left;
@@ -4964,7 +5096,11 @@ body[data-freeze] .debug-tile * {
 }
 .project-widget-chip.has-theme {
   background: color-mix(in oklch, var(--panel-bg), var(--panel-theme-bg) 8%);
-  border-color: color-mix(in oklch, var(--panel-border), var(--panel-theme-bg) 35%);
+  border-color: color-mix(
+    in oklch,
+    var(--panel-border),
+    var(--panel-theme-bg) 35%
+  );
 }
 .project-widget-chip:hover {
   background: color-mix(in oklch, var(--panel-bg), var(--accent) 10%);
@@ -5033,14 +5169,29 @@ body.imessage .event-thought-agent {
    * for the trailing chain; top-left mirrors it so the bubble itself
    * picks up a subtle italic-style lean. */
   border-radius: 32px 22px 32px 22px;
-  border: 1px solid color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 80%, transparent);
-  background:
-    radial-gradient(
-      ellipse at 30% 25%,
-      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 60%, white 40%) 0%,
-      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 85%, transparent) 55%,
-      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 95%, transparent) 100%
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--bubble-assistant-fg, currentColor) 80%,
+      transparent
     );
+  background: radial-gradient(
+    ellipse at 30% 25%,
+    color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 60%, white 40%)
+      0%,
+    color-mix(
+        in srgb,
+        var(--bubble-assistant-fg, currentColor) 85%,
+        transparent
+      )
+      55%,
+    color-mix(
+        in srgb,
+        var(--bubble-assistant-fg, currentColor) 95%,
+        transparent
+      )
+      100%
+  );
   color: var(--bubble-assistant, currentColor);
   font-size: 0.78rem;
   line-height: 1.4;
@@ -5055,14 +5206,18 @@ body.imessage .event-thought-agent {
   /* Mirror: user variant carves the opposite diagonal (top-right +
    * bottom-left), giving the same italic lean toward the user's column. */
   border-radius: 22px 32px 22px 32px;
-  border-color: color-mix(in srgb, var(--bubble-user-fg, currentColor) 80%, transparent);
-  background:
-    radial-gradient(
-      ellipse at 30% 25%,
-      color-mix(in srgb, var(--bubble-user-fg, currentColor) 60%, white 40%) 0%,
-      color-mix(in srgb, var(--bubble-user-fg, currentColor) 85%, transparent) 55%,
-      color-mix(in srgb, var(--bubble-user-fg, currentColor) 95%, transparent) 100%
-    );
+  border-color: color-mix(
+    in srgb,
+    var(--bubble-user-fg, currentColor) 80%,
+    transparent
+  );
+  background: radial-gradient(
+    ellipse at 30% 25%,
+    color-mix(in srgb, var(--bubble-user-fg, currentColor) 60%, white 40%) 0%,
+    color-mix(in srgb, var(--bubble-user-fg, currentColor) 85%, transparent) 55%,
+    color-mix(in srgb, var(--bubble-user-fg, currentColor) 95%, transparent)
+      100%
+  );
   color: var(--bubble-user, currentColor);
 }
 .thought-bubble-body {
@@ -5079,13 +5234,22 @@ body.imessage .event-thought-agent {
   z-index: 3;
   border-radius: 50%;
   border: 1px solid
-    color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 80%, transparent);
-  background:
-    radial-gradient(
-      ellipse at 30% 30%,
-      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 60%, white 40%) 0%,
-      color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 90%, transparent) 100%
+    color-mix(
+      in srgb,
+      var(--bubble-assistant-fg, currentColor) 80%,
+      transparent
     );
+  background: radial-gradient(
+    ellipse at 30% 30%,
+    color-mix(in srgb, var(--bubble-assistant-fg, currentColor) 60%, white 40%)
+      0%,
+    color-mix(
+        in srgb,
+        var(--bubble-assistant-fg, currentColor) 90%,
+        transparent
+      )
+      100%
+  );
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, white 35%, transparent),
     0 1px 2px color-mix(in srgb, black 18%, transparent);
@@ -5113,13 +5277,17 @@ body.imessage .event-thought-agent {
   left: 18px;
 }
 .thought-bubble-user .thought-bubble-tail-dot {
-  border-color: color-mix(in srgb, var(--bubble-user-fg, currentColor) 80%, transparent);
-  background:
-    radial-gradient(
-      ellipse at 30% 30%,
-      color-mix(in srgb, var(--bubble-user-fg, currentColor) 60%, white 40%) 0%,
-      color-mix(in srgb, var(--bubble-user-fg, currentColor) 90%, transparent) 100%
-    );
+  border-color: color-mix(
+    in srgb,
+    var(--bubble-user-fg, currentColor) 80%,
+    transparent
+  );
+  background: radial-gradient(
+    ellipse at 30% 30%,
+    color-mix(in srgb, var(--bubble-user-fg, currentColor) 60%, white 40%) 0%,
+    color-mix(in srgb, var(--bubble-user-fg, currentColor) 90%, transparent)
+      100%
+  );
 }
 /* Position the tail container — the dots themselves are absolutely
  * positioned within it. Sized to contain the full diagonal arc of
@@ -5193,46 +5361,48 @@ body.imessage .thought-bubble-user .thought-bubble-tail-dot-3 {
 body:not(.imessage) .panel.has-theme .event-thought-agent .thought-bubble,
 body:not(.imessage) .lightbox.has-theme .event-thought-agent .thought-bubble {
   border-color: color-mix(in srgb, var(--panel-theme-fg) 80%, transparent);
-  background:
-    radial-gradient(
-      ellipse at 30% 25%,
-      color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
-      color-mix(in srgb, var(--panel-theme-fg) 85%, transparent) 55%,
-      color-mix(in srgb, var(--panel-theme-fg) 95%, transparent) 100%
-    );
+  background: radial-gradient(
+    ellipse at 30% 25%,
+    color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
+    color-mix(in srgb, var(--panel-theme-fg) 85%, transparent) 55%,
+    color-mix(in srgb, var(--panel-theme-fg) 95%, transparent) 100%
+  );
   color: var(--panel-theme-bg);
 }
-body:not(.imessage) .panel.has-theme .event-thought-agent .thought-bubble-tail-dot,
-body:not(.imessage) .lightbox.has-theme .event-thought-agent .thought-bubble-tail-dot {
+body:not(.imessage)
+  .panel.has-theme
+  .event-thought-agent
+  .thought-bubble-tail-dot,
+body:not(.imessage)
+  .lightbox.has-theme
+  .event-thought-agent
+  .thought-bubble-tail-dot {
   border-color: color-mix(in srgb, var(--panel-theme-fg) 80%, transparent);
-  background:
-    radial-gradient(
-      ellipse at 30% 30%,
-      color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
-      color-mix(in srgb, var(--panel-theme-fg) 90%, transparent) 100%
-    );
+  background: radial-gradient(
+    ellipse at 30% 30%,
+    color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
+    color-mix(in srgb, var(--panel-theme-fg) 90%, transparent) 100%
+  );
 }
 body.imessage .panel.has-theme .event-thought-user .thought-bubble,
 body.imessage .lightbox.has-theme .event-thought-user .thought-bubble {
   border-color: color-mix(in srgb, var(--panel-theme-fg) 80%, transparent);
-  background:
-    radial-gradient(
-      ellipse at 30% 25%,
-      color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
-      color-mix(in srgb, var(--panel-theme-fg) 85%, transparent) 55%,
-      color-mix(in srgb, var(--panel-theme-fg) 95%, transparent) 100%
-    );
+  background: radial-gradient(
+    ellipse at 30% 25%,
+    color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
+    color-mix(in srgb, var(--panel-theme-fg) 85%, transparent) 55%,
+    color-mix(in srgb, var(--panel-theme-fg) 95%, transparent) 100%
+  );
   color: var(--panel-theme-bg);
 }
 body.imessage .panel.has-theme .event-thought-user .thought-bubble-tail-dot,
 body.imessage .lightbox.has-theme .event-thought-user .thought-bubble-tail-dot {
   border-color: color-mix(in srgb, var(--panel-theme-fg) 80%, transparent);
-  background:
-    radial-gradient(
-      ellipse at 30% 30%,
-      color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
-      color-mix(in srgb, var(--panel-theme-fg) 90%, transparent) 100%
-    );
+  background: radial-gradient(
+    ellipse at 30% 30%,
+    color-mix(in srgb, var(--panel-theme-fg) 60%, white 40%) 0%,
+    color-mix(in srgb, var(--panel-theme-fg) 90%, transparent) 100%
+  );
 }
 /* hide-thinking pref also hides thought bubbles — they're the same
  * underlying message class from the user's POV. */
@@ -5339,51 +5509,51 @@ body.hide-thinking .event-thought-agent {
   cursor: pointer;
   transition: fill 0.1s ease;
 }
-.timeline-mark[data-state='hovered'] {
+.timeline-mark[data-state="hovered"] {
   fill: color-mix(in srgb, var(--mark-color, var(--fg)) 80%, white 20%);
 }
-.timeline-mark[data-state='selected'] {
+.timeline-mark[data-state="selected"] {
   fill: var(--accent, #a78bfa);
   stroke: var(--fg);
   stroke-width: 1;
 }
 /* Per-lane mark colors. Add a new lane here when adding to EVENT_LANES /
  * ITEM_LANES — defaults to muted fg otherwise. */
-.timeline-mark[data-lane='user_text'],
-.timeline-mark[data-lane='bubble'] {
+.timeline-mark[data-lane="user_text"],
+.timeline-mark[data-lane="bubble"] {
   --mark-color: #60a5fa;
 }
-.timeline-mark[data-lane='assistant_text'] {
+.timeline-mark[data-lane="assistant_text"] {
   --mark-color: #a78bfa;
 }
-.timeline-mark[data-lane='thinking'] {
+.timeline-mark[data-lane="thinking"] {
   --mark-color: #c084fc;
 }
-.timeline-mark[data-lane='tool_use'],
-.timeline-mark[data-lane='tool'] {
+.timeline-mark[data-lane="tool_use"],
+.timeline-mark[data-lane="tool"] {
   --mark-color: #34d399;
 }
-.timeline-mark[data-lane='tool_result'] {
+.timeline-mark[data-lane="tool_result"] {
   --mark-color: #10b981;
 }
-.timeline-mark[data-lane='file-change'] {
+.timeline-mark[data-lane="file-change"] {
   --mark-color: #fbbf24;
 }
-.timeline-mark[data-lane='op-strip'] {
+.timeline-mark[data-lane="op-strip"] {
   --mark-color: #f59e0b;
 }
-.timeline-mark[data-lane='resource_usage'] {
+.timeline-mark[data-lane="resource_usage"] {
   --mark-color: #94a3b8;
 }
-.timeline-mark[data-lane='system'] {
+.timeline-mark[data-lane="system"] {
   --mark-color: #64748b;
 }
-.timeline-mark[data-lane='meta'] {
+.timeline-mark[data-lane="meta"] {
   --mark-color: #475569;
 }
-.timeline-mark[data-lane='cleared'],
-.timeline-mark[data-lane='day-divider'],
-.timeline-mark[data-lane='interrupt-divider'] {
+.timeline-mark[data-lane="cleared"],
+.timeline-mark[data-lane="day-divider"],
+.timeline-mark[data-lane="interrupt-divider"] {
   --mark-color: #ef4444;
 }
 
@@ -5401,9 +5571,14 @@ body.hide-thinking .event-thought-agent {
   align-items: center;
   gap: 0.25rem;
   padding: 0 0.4rem;
-  border: 1px solid color-mix(in srgb, var(--mark-color, var(--fg)) 55%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--mark-color, var(--fg)) 55%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--mark-color, var(--fg)) 12%, var(--panel-bg, transparent));
+  background: color-mix(
+    in srgb,
+    var(--mark-color, var(--fg)) 12%,
+    var(--panel-bg, transparent)
+  );
   cursor: pointer;
   font-size: 0.7rem;
   line-height: 1;
@@ -5414,17 +5589,25 @@ body.hide-thinking .event-thought-agent {
     background 0.1s ease,
     border-color 0.1s ease;
 }
-.timeline-capsule[data-state='hovered'] {
-  background: color-mix(in srgb, var(--mark-color, var(--fg)) 22%, var(--panel-bg, transparent));
+.timeline-capsule[data-state="hovered"] {
+  background: color-mix(
+    in srgb,
+    var(--mark-color, var(--fg)) 22%,
+    var(--panel-bg, transparent)
+  );
 }
-.timeline-capsule[data-state='selected'] {
-  background: color-mix(in srgb, var(--accent, #a78bfa) 30%, var(--panel-bg, transparent));
+.timeline-capsule[data-state="selected"] {
+  background: color-mix(
+    in srgb,
+    var(--accent, #a78bfa) 30%,
+    var(--panel-bg, transparent)
+  );
   border-color: var(--accent, #a78bfa);
 }
-.timeline-capsule[data-status='pending'] {
+.timeline-capsule[data-status="pending"] {
   border-style: dashed;
 }
-.timeline-capsule[data-status='error'] {
+.timeline-capsule[data-status="error"] {
   border-color: rgba(239, 68, 68, 0.7);
 }
 .timeline-capsule-icon {
@@ -5463,41 +5646,41 @@ body.hide-thinking .event-thought-agent {
 }
 
 /* Inherit per-lane `--mark-color` for the capsule background tint. */
-.timeline-capsule[data-lane='user_text'],
-.timeline-capsule[data-lane='bubble'] {
+.timeline-capsule[data-lane="user_text"],
+.timeline-capsule[data-lane="bubble"] {
   --mark-color: #60a5fa;
 }
-.timeline-capsule[data-lane='assistant_text'] {
+.timeline-capsule[data-lane="assistant_text"] {
   --mark-color: #a78bfa;
 }
-.timeline-capsule[data-lane='thinking'] {
+.timeline-capsule[data-lane="thinking"] {
   --mark-color: #c084fc;
 }
-.timeline-capsule[data-lane='tool_use'],
-.timeline-capsule[data-lane='tool'] {
+.timeline-capsule[data-lane="tool_use"],
+.timeline-capsule[data-lane="tool"] {
   --mark-color: #34d399;
 }
-.timeline-capsule[data-lane='tool_result'] {
+.timeline-capsule[data-lane="tool_result"] {
   --mark-color: #10b981;
 }
-.timeline-capsule[data-lane='file-change'] {
+.timeline-capsule[data-lane="file-change"] {
   --mark-color: #fbbf24;
 }
-.timeline-capsule[data-lane='op-strip'] {
+.timeline-capsule[data-lane="op-strip"] {
   --mark-color: #f59e0b;
 }
-.timeline-capsule[data-lane='resource_usage'] {
+.timeline-capsule[data-lane="resource_usage"] {
   --mark-color: #94a3b8;
 }
-.timeline-capsule[data-lane='system'] {
+.timeline-capsule[data-lane="system"] {
   --mark-color: #64748b;
 }
-.timeline-capsule[data-lane='meta'] {
+.timeline-capsule[data-lane="meta"] {
   --mark-color: #475569;
 }
-.timeline-capsule[data-lane='cleared'],
-.timeline-capsule[data-lane='day-divider'],
-.timeline-capsule[data-lane='interrupt-divider'] {
+.timeline-capsule[data-lane="cleared"],
+.timeline-capsule[data-lane="day-divider"],
+.timeline-capsule[data-lane="interrupt-divider"] {
   --mark-color: #ef4444;
 }
 .timeline-selection {
@@ -5716,7 +5899,9 @@ body.hide-thinking .event-thought-agent {
   background: color-mix(in srgb, var(--fg) 12%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
-  .process-dot-expandable { transition: none; }
+  .process-dot-expandable {
+    transition: none;
+  }
 }
 
 /* Tree rail in the Sessions view PID column: a thin guide indicating
@@ -5753,7 +5938,11 @@ body.hide-thinking .event-thought-agent {
 }
 
 .processes-panel table {
-  width: 100%;
+  /* 2px under the container: fractional column widths round scrollWidth up
+   * past clientWidth, and that 1px "overflow" alone makes the panel
+   * side-scrollable. The slack keeps it still unless columns are actually
+   * resized wider than the panel. */
+  width: calc(100% - 2px);
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
 }
@@ -5763,7 +5952,9 @@ body.hide-thinking .event-thought-agent {
  * built-in `resize` UI. Handle sits in the bottom-right corner of the
  * cell (CSS-only — drag-from-edge handle would need JS). Widths reset
  * on reload; persistence can be added later via localStorage. */
-.processes-table { table-layout: fixed; }
+.processes-table {
+  table-layout: fixed;
+}
 
 .processes-table th {
   position: relative;
@@ -5774,7 +5965,9 @@ body.hide-thinking .event-thought-agent {
 
 /* Sortable header: label sits inside an unstyled button that takes the
  * click. Arrow appears only when this column is the active sort. */
-.processes-table th.sortable-th { cursor: pointer; }
+.processes-table th.sortable-th {
+  cursor: pointer;
+}
 .processes-table th .th-sort-button {
   all: unset;
   display: inline-flex;
@@ -5842,8 +6035,37 @@ body.hide-thinking .event-thought-agent {
   animation: subprocess-live-sweep 1.8s linear infinite;
 }
 @keyframes subprocess-live-sweep {
-  from { background-position: -20px 0; }
-  to   { background-position: calc(100% + 20px) 0; }
+  from {
+    background-position: -20px 0;
+  }
+  to {
+    background-position: calc(100% + 20px) 0;
+  }
+}
+
+.process-select-cell input {
+  accent-color: var(--accent, #a78bfa);
+  cursor: pointer;
+  margin: 0;
+  vertical-align: middle;
+}
+
+.process-row.is-selected {
+  background-color: color-mix(in srgb, var(--accent, #a78bfa) 8%, transparent);
+}
+
+.processes-kill-selected {
+  border: 1px solid color-mix(in srgb, #f87171 45%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: #f87171;
+  font: inherit;
+  font-size: 0.85em;
+  padding: 0.1rem 0.55rem;
+  cursor: pointer;
+}
+.processes-kill-selected:hover {
+  background: color-mix(in srgb, #f87171 14%, transparent);
 }
 
 .process-row a {
@@ -5879,7 +6101,10 @@ body.hide-thinking .event-thought-agent {
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
-  background: var(--project-badge-bg, color-mix(in srgb, var(--fg) 12%, transparent));
+  background: var(
+    --project-badge-bg,
+    color-mix(in srgb, var(--fg) 12%, transparent)
+  );
   color: white;
   /* Inherit the system sans-serif (same font we use for project names
    * in .project-widget-title and .panel-subtitle-cwd) — was monospace
@@ -5929,14 +6154,30 @@ body.hide-thinking .event-thought-agent {
 /* Idle column color buckets. Boundaries: 5m / 30m / 2h / 6h / 24h / 7d.
  * Bucket 0 is full --fg (active sessions read brightest); each subsequent
  * bucket mixes more transparency in so quiet sessions recede. */
-.process-idle { font-variant-numeric: tabular-nums; }
-.process-idle.idle-bucket-0 { color: var(--fg); }
-.process-idle.idle-bucket-1 { color: color-mix(in srgb, var(--fg) 88%, transparent); }
-.process-idle.idle-bucket-2 { color: color-mix(in srgb, var(--fg) 78%, transparent); }
-.process-idle.idle-bucket-3 { color: color-mix(in srgb, var(--fg) 68%, transparent); }
-.process-idle.idle-bucket-4 { color: color-mix(in srgb, var(--fg) 58%, transparent); }
-.process-idle.idle-bucket-5 { color: color-mix(in srgb, var(--fg) 48%, transparent); }
-.process-idle.idle-bucket-6 { color: color-mix(in srgb, var(--fg) 38%, transparent); }
+.process-idle {
+  font-variant-numeric: tabular-nums;
+}
+.process-idle.idle-bucket-0 {
+  color: var(--fg);
+}
+.process-idle.idle-bucket-1 {
+  color: color-mix(in srgb, var(--fg) 88%, transparent);
+}
+.process-idle.idle-bucket-2 {
+  color: color-mix(in srgb, var(--fg) 78%, transparent);
+}
+.process-idle.idle-bucket-3 {
+  color: color-mix(in srgb, var(--fg) 68%, transparent);
+}
+.process-idle.idle-bucket-4 {
+  color: color-mix(in srgb, var(--fg) 58%, transparent);
+}
+.process-idle.idle-bucket-5 {
+  color: color-mix(in srgb, var(--fg) 48%, transparent);
+}
+.process-idle.idle-bucket-6 {
+  color: color-mix(in srgb, var(--fg) 38%, transparent);
+}
 
 .process-command {
   display: block;
@@ -6033,7 +6274,9 @@ body.hide-thinking .event-thought-agent {
   color: color-mix(in srgb, var(--fg) 65%, transparent);
 }
 
-.process-row a:hover { text-decoration: underline; }
+.process-row a:hover {
+  text-decoration: underline;
+}
 
 .process-row button {
   background: transparent;
@@ -6079,7 +6322,9 @@ body.hide-thinking .event-thought-agent {
  * all) keeps its dim-gray outline. The outline effect uses
  * `-webkit-text-stroke` on the existing filled ● glyph so the JSX stays
  * unchanged. */
-.process-dot-hooked     { color: #4ade80; }
+.process-dot-hooked {
+  color: #4ade80;
+}
 .process-dot-observed,
 .process-dot-heuristic {
   color: transparent;
@@ -6101,7 +6346,7 @@ body.hide-thinking .event-thought-agent {
   display: inline-block;
 }
 .process-dot-self::after {
-  content: '◇';
+  content: "◇";
   position: absolute;
   inset: 0;
   display: flex;
@@ -6201,7 +6446,10 @@ body.hide-thinking .event-thought-agent {
   min-height: 0;
 }
 
-.inspector-list-header { display: flex; gap: 0.5rem; }
+.inspector-list-header {
+  display: flex;
+  gap: 0.5rem;
+}
 
 .inspector-search {
   flex: 1;
@@ -6298,20 +6546,28 @@ body.hide-thinking .event-thought-agent {
 .inspector-transforms-row {
   grid-template-columns: auto auto 1fr;
   grid-template-areas:
-    'name name name'
-    'key key key'
-    'stage views chips'
-    'desc desc desc';
+    "name name name"
+    "key key key"
+    "stage views chips"
+    "desc desc desc";
   align-items: center;
 }
-.inspector-transforms-row .inspector-list-name { grid-area: name; }
-.inspector-transforms-row .inspector-list-key { grid-area: key; }
+.inspector-transforms-row .inspector-list-name {
+  grid-area: name;
+}
+.inspector-transforms-row .inspector-list-key {
+  grid-area: key;
+}
 .inspector-transforms-row .inspector-stage {
   grid-area: stage;
   justify-self: start;
 }
-.inspector-transforms-row .inspector-views { grid-area: views; }
-.inspector-transforms-row .inspector-list-chips { grid-area: chips; }
+.inspector-transforms-row .inspector-views {
+  grid-area: views;
+}
+.inspector-transforms-row .inspector-list-chips {
+  grid-area: chips;
+}
 .inspector-transforms-row .inspector-list-desc {
   grid-area: desc;
   white-space: normal;
@@ -6325,17 +6581,25 @@ body.hide-thinking .event-thought-agent {
   color: color-mix(in srgb, var(--fg) 70%, transparent);
 }
 
-.inspector-stage-1 { color: #6b8afd; }
-.inspector-stage-2 { color: #4ec9a4; }
+.inspector-stage-1 {
+  color: #6b8afd;
+}
+.inspector-stage-2 {
+  color: #4ec9a4;
+}
 
 .inspector-views {
   font-size: 0.8em;
   color: color-mix(in srgb, var(--fg) 65%, transparent);
 }
 
-.inspector-list-chips { display: inline-flex; gap: 0.25rem; }
+.inspector-list-chips {
+  display: inline-flex;
+  gap: 0.25rem;
+}
 
-.inspector-chip-mini, .inspector-chip-overflow {
+.inspector-chip-mini,
+.inspector-chip-overflow {
   background: color-mix(in srgb, var(--panel-border) 50%, transparent);
   color: color-mix(in srgb, var(--fg) 70%, transparent);
   font-size: 0.7em;
@@ -6367,7 +6631,10 @@ body.hide-thinking .event-thought-agent {
   gap: 0.6rem;
 }
 
-.inspector-detail-name { margin: 0; font-size: 1.1rem; }
+.inspector-detail-name {
+  margin: 0;
+  font-size: 1.1rem;
+}
 
 .inspector-detail-key {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -6435,13 +6702,17 @@ body.hide-thinking .event-thought-agent {
   font: inherit;
 }
 
-.inspector-chip:hover { border-color: var(--accent); }
+.inspector-chip:hover {
+  border-color: var(--accent);
+}
 
 .inspector-chip-key {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.inspector-chip-missing .inspector-chip-badge { color: #f88; }
+.inspector-chip-missing .inspector-chip-badge {
+  color: #f88;
+}
 
 .inspector-source {
   display: grid;
@@ -6461,7 +6732,11 @@ body.hide-thinking .event-thought-agent {
   font-size: 0.8em;
 }
 
-.inspector-source-outline ul { list-style: none; margin: 0; padding: 0; }
+.inspector-source-outline ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
 
 .inspector-source-outline button {
   background: transparent;
@@ -6501,7 +6776,9 @@ body.hide-thinking .event-thought-agent {
   font-size: 0.85em;
 }
 
-.inspector-source-code .src-line { display: block; }
+.inspector-source-code .src-line {
+  display: block;
+}
 
 .inspector-sheet {
   display: flex;
@@ -6558,7 +6835,10 @@ body.hide-thinking .event-thought-agent {
   font-size: 0.85em;
 }
 
-.inspector-sheet-meta { display: grid; gap: 0.4rem; }
+.inspector-sheet-meta {
+  display: grid;
+  gap: 0.4rem;
+}
 
 .inspector-sheet-meta label {
   display: grid;
@@ -6611,7 +6891,9 @@ body.hide-thinking .event-thought-agent {
   gap: 0.4rem;
 }
 
-.inspector-trace-placeholder h4 { margin: 0; }
+.inspector-trace-placeholder h4 {
+  margin: 0;
+}
 
 /* Bash terminal block — coalesces consecutive <bash-input>/<bash-stdout>/
  * <bash-stderr> user_text events into a single monospace card. Entries

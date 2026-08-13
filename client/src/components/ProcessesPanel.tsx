@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { badgeColor } from '../lib/worktree.ts';
+import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow as Row } from '../useProcesses.ts';
 import { useProcesses } from '../useProcesses.ts';
@@ -25,13 +26,20 @@ function sortValue(
   now: number,
 ): string | number {
   switch (key) {
-    case 'pid': return row.pid;
-    case 'project': return row.project ?? '';
-    case 'account': return panel?.account_label ?? row.account_label ?? '';
-    case 'command': return panel?.title ?? row.command;
-    case 'session': return row.session_id ?? '';
-    case 'idle': return panel ? Math.max(0, now - panel.last_event_at) : Number.MAX_SAFE_INTEGER;
-    case 'uptime': return row.uptime_s;
+    case 'pid':
+      return row.pid;
+    case 'project':
+      return row.project ?? '';
+    case 'account':
+      return panel?.account_label ?? row.account_label ?? '';
+    case 'command':
+      return panel?.title ?? row.command;
+    case 'session':
+      return row.session_id ?? '';
+    case 'idle':
+      return panel ? Math.max(0, now - panel.last_event_at) : Number.MAX_SAFE_INTEGER;
+    case 'uptime':
+      return row.uptime_s;
   }
 }
 
@@ -92,8 +100,13 @@ function isHousekeeping(row: Row): boolean {
  * actual work themselves; collapsing them by default leaves the panel
  * showing the leaf processes that bind ports / load the code. */
 const WRAPPER_HEADS = new Set([
-  'npm', 'npx', 'yarn', 'pnpm',
-  'run-p', 'run-s', 'npm-run-all',
+  'npm',
+  'npx',
+  'yarn',
+  'pnpm',
+  'run-p',
+  'run-s',
+  'npm-run-all',
   'concurrently',
   'tsx',
 ]);
@@ -103,7 +116,7 @@ function isTransparentWrapper(row: Row): boolean {
   // We skip past `node` / `/usr/local/bin/node` etc. so the
   // `node .../tsx watch ...` style invocations still match.
   const argv = row.command.split(/\s+/).slice(0, 4);
-  const hasWrapperToken = argv.some(t => {
+  const hasWrapperToken = argv.some((t) => {
     const head = (t.split('/').pop() ?? t).replace(/\.(js|mjs|cjs)$/, '');
     return WRAPPER_HEADS.has(head);
   });
@@ -111,7 +124,7 @@ function isTransparentWrapper(row: Row): boolean {
   // A wrapper that doesn't own any ports is transparent. If it has
   // inherited ports, those came from a descendant we're already
   // showing — collapsing the wrapper loses no information.
-  return row.ports.length === 0 || row.ports.every(p => p.inherited === true);
+  return row.ports.length === 0 || row.ports.every((p) => p.inherited === true);
 }
 
 /** Bucket assignment is by *what the process is*, not by what we
@@ -176,7 +189,10 @@ function buildParentLinks(rows: Row[]): {
     else {
       for (const ancPid of r.original_ancestors) {
         const cand = byPid.get(ancPid);
-        if (cand && cand.pid !== r.pid) { parent = cand; break; }
+        if (cand && cand.pid !== r.pid) {
+          parent = cand;
+          break;
+        }
       }
     }
     if (parent) {
@@ -258,13 +274,25 @@ export function ProcessesPanel({
   for (const r of all) if (r.account_label) accountLabels.add(r.account_label);
   const showAccount = accountLabels.size > 1;
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'sessions'; } catch { return 'sessions'; }
+    try {
+      return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'sessions';
+    } catch {
+      return 'sessions';
+    }
   });
   const [showRaw, setShowRaw] = useState<boolean>(() => {
-    try { return localStorage.getItem(SHOW_RAW_KEY) === '1'; } catch { return false; }
+    try {
+      return localStorage.getItem(SHOW_RAW_KEY) === '1';
+    } catch {
+      return false;
+    }
   });
   const [showWrappers, setShowWrappers] = useState<boolean>(() => {
-    try { return localStorage.getItem(SHOW_WRAPPERS_KEY) === '1'; } catch { return false; }
+    try {
+      return localStorage.getItem(SHOW_WRAPPERS_KEY) === '1';
+    } catch {
+      return false;
+    }
   });
   /** Roots whose subtrees are currently expanded. Default: empty
    * (everything collapsed). Per-pid so toggling one tree doesn't
@@ -274,7 +302,10 @@ export function ProcessesPanel({
   /** Active sort. `key === null` falls back to the view's default
    * order (sessions: natural tree order; network: attribution-tier
    * descending then uptime). Click cycles desc → asc → off. */
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: null, dir: 'desc' });
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
+    key: null,
+    dir: 'desc',
+  });
   const toggleSort = (key: SortKey) => {
     setSort((prev) => {
       if (prev.key !== key) return { key, dir: 'desc' };
@@ -283,11 +314,29 @@ export function ProcessesPanel({
     });
   };
   const toggleRoot = (pid: number) => {
-    setExpandedRoots(prev => {
+    setExpandedRoots((prev) => {
       const next = new Set(prev);
-      if (next.has(pid)) next.delete(pid); else next.add(pid);
+      if (next.has(pid)) next.delete(pid);
+      else next.add(pid);
       return next;
     });
+  };
+  /** Checked rows, by process_id. Survives view switches; ids whose rows
+   * have since exited are ignored (filtered against the live row set) and
+   * the whole set clears after a batch kill. */
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const liveSelected = [...selected].filter((id) => all.some((r) => r.process_id === id));
+  const killSelected = () => {
+    for (const id of liveSelected) void trpc.processes.kill.mutate({ process_id: id });
+    setSelected(new Set());
   };
   // Per-render snapshot of wall-clock, used ONLY to break ties when the
   // user sorts by the Idle column. Deliberately NOT a per-second state +
@@ -300,13 +349,19 @@ export function ProcessesPanel({
   // frequent enough — it doesn't need to re-sort once a second.
   const nowForSort = Date.now() / 1000;
   useEffect(() => {
-    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch {}
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, viewMode);
+    } catch {}
   }, [viewMode]);
   useEffect(() => {
-    try { localStorage.setItem(SHOW_RAW_KEY, showRaw ? '1' : '0'); } catch {}
+    try {
+      localStorage.setItem(SHOW_RAW_KEY, showRaw ? '1' : '0');
+    } catch {}
   }, [showRaw]);
   useEffect(() => {
-    try { localStorage.setItem(SHOW_WRAPPERS_KEY, showWrappers ? '1' : '0'); } catch {}
+    try {
+      localStorage.setItem(SHOW_WRAPPERS_KEY, showWrappers ? '1' : '0');
+    } catch {}
   }, [showWrappers]);
 
   // NOTE: don't bail to `null` when there's no process data yet (e.g. the
@@ -316,25 +371,33 @@ export function ProcessesPanel({
   // still-"pressed" toggle. Render the panel with an empty state instead.
 
   // Common noise gate — applies to both views.
-  const baseFiltered = all.filter(r => {
+  const baseFiltered = all.filter((r) => {
     if (!showRaw && isHousekeeping(r)) return false;
     if (!showWrappers && isTransparentWrapper(r)) return false;
     return true;
   });
 
-  let display: Array<{ row: Row; depth: number; hasChildren?: boolean; isRoot?: boolean; preferCommand?: boolean }>;
+  let display: Array<{
+    row: Row;
+    depth: number;
+    hasChildren?: boolean;
+    isRoot?: boolean;
+    preferCommand?: boolean;
+  }>;
   if (viewMode === 'sessions') {
     // Sessions tree: keep only Claude binaries and their descendants
     // (per ppid + original_ancestors). Roots are the claude-runtime
     // rows. Loose rows that didn't trace back to a Claude session get
     // dropped — they belong in Network view.
-    const claudePids = new Set(baseFiltered.filter(r => r.runtime === 'claude').map(r => r.pid));
+    const claudePids = new Set(
+      baseFiltered.filter((r) => r.runtime === 'claude').map((r) => r.pid),
+    );
     // First pass: include only rows whose direct or ancestor chain
     // leads to a claude row.
-    const inSessionTree = baseFiltered.filter(r => {
+    const inSessionTree = baseFiltered.filter((r) => {
       if (r.runtime === 'claude') return true;
       const ancestors = [r.ppid, ...r.original_ancestors];
-      return ancestors.some(p => claudePids.has(p));
+      return ancestors.some((p) => claudePids.has(p));
     });
     const { childrenByPid } = buildParentLinks(inSessionTree);
     // Roots are claude-runtime rows with no tracked claude ancestor.
@@ -342,25 +405,24 @@ export function ProcessesPanel({
     // (`daemon run` → bg-pty-host → bg-spare → ClaudeCode.app hosts);
     // promoting every claude row to a root would list one session's
     // machinery as several sibling top-level trees.
-    let roots = inSessionTree.filter(r => {
+    let roots = inSessionTree.filter((r) => {
       if (r.runtime !== 'claude') return false;
       const ancestors = [r.ppid, ...r.original_ancestors];
-      return !ancestors.some(p => p !== r.pid && claudePids.has(p));
+      return !ancestors.some((p) => p !== r.pid && claudePids.has(p));
     });
     // Orphan adoption: a daemon helper whose parent chain is gone (the
     // daemon exited, or ancestry was lost across a tracker restart and
     // the helper reparented to launchd) still carries its session_id.
     // Nest it under the session's primary non-infra claude root instead
     // of surfacing it as a sibling top-level tree.
-    const isDaemonInfra = (r: Row) =>
-      /--bg-pty-host|--bg-spare|claude daemon run/.test(r.command);
+    const isDaemonInfra = (r: Row) => /--bg-pty-host|--bg-spare|claude daemon run/.test(r.command);
     const primaryBySession = new Map<string, Row>();
     for (const r of roots) {
       if (!r.session_id || isDaemonInfra(r)) continue;
       const cur = primaryBySession.get(r.session_id);
       if (!cur || r.uptime_s > cur.uptime_s) primaryBySession.set(r.session_id, r);
     }
-    roots = roots.filter(r => {
+    roots = roots.filter((r) => {
       if (!isDaemonInfra(r)) return true;
       const primary = r.session_id ? primaryBySession.get(r.session_id) : undefined;
       // No session to adopt into (attribution lost, e.g. across a tracker
@@ -379,8 +441,8 @@ export function ProcessesPanel({
     if (sort.key) {
       const k = sort.key;
       roots = roots.slice().sort((a, b) => {
-        const pa = a.session_id ? allPanels.get(a.session_id) ?? null : null;
-        const pb = b.session_id ? allPanels.get(b.session_id) ?? null : null;
+        const pa = a.session_id ? (allPanels.get(a.session_id) ?? null) : null;
+        const pb = b.session_id ? (allPanels.get(b.session_id) ?? null) : null;
         return cmp(sortValue(a, pa, k, nowForSort), sortValue(b, pb, k, nowForSort), sort.dir);
       });
     } else {
@@ -389,33 +451,36 @@ export function ProcessesPanel({
     // A nested row whose displayed title would just repeat its parent's
     // (both attributed to the same session) shows its actual command
     // instead — a deep tree of a dozen identical titles says nothing.
-    const titleOf = (r: Row) => (r.session_id ? allPanels.get(r.session_id)?.title ?? null : null);
-    display = flattenTree(roots, childrenByPid, expandedRoots).map(n => ({
+    const titleOf = (r: Row) =>
+      r.session_id ? (allPanels.get(r.session_id)?.title ?? null) : null;
+    display = flattenTree(roots, childrenByPid, expandedRoots).map((n) => ({
       row: n.row,
       depth: n.depth,
       hasChildren: n.hasChildren,
       isRoot: n.depth === 0,
       preferCommand:
-        n.parent !== null &&
-        titleOf(n.row) !== null &&
-        titleOf(n.row) === titleOf(n.parent),
+        n.parent !== null && titleOf(n.row) !== null && titleOf(n.row) === titleOf(n.parent),
     }));
   } else {
     // Network: flat list of port-binders, with Show-all gating for
     // non-Claude-attributed listeners (host-wide noise).
-    const filtered = baseFiltered.filter(r => {
+    const filtered = baseFiltered.filter((r) => {
       if (!isNetwork(r)) return false;
       if (!isClaudeAttributed(r) && !showRaw) return false;
       return true;
     });
     const ordered = sort.key
       ? filtered.slice().sort((a, b) => {
-          const pa = a.session_id ? allPanels.get(a.session_id) ?? null : null;
-          const pb = b.session_id ? allPanels.get(b.session_id) ?? null : null;
-          return cmp(sortValue(a, pa, sort.key!, nowForSort), sortValue(b, pb, sort.key!, nowForSort), sort.dir);
+          const pa = a.session_id ? (allPanels.get(a.session_id) ?? null) : null;
+          const pb = b.session_id ? (allPanels.get(b.session_id) ?? null) : null;
+          return cmp(
+            sortValue(a, pa, sort.key!, nowForSort),
+            sortValue(b, pb, sort.key!, nowForSort),
+            sort.dir,
+          );
         })
       : filtered.slice().sort(sortRows);
-    display = ordered.map(row => ({ row, depth: 0 }));
+    display = ordered.map((row) => ({ row, depth: 0 }));
   }
   const rows = display;
 
@@ -423,11 +488,28 @@ export function ProcessesPanel({
     <section className="processes-panel">
       <header>
         <h2>
-          Processes <span className="processes-count">({rows.length}{rows.length !== all.length ? ` of ${all.length}` : ''})</span>
+          Processes{' '}
+          <span className="processes-count">
+            ({rows.length}
+            {rows.length !== all.length ? ` of ${all.length}` : ''})
+          </span>
         </h2>
         <div className="processes-filter-group">
+          {liveSelected.length > 0 && (
+            <button
+              type="button"
+              className="processes-kill-selected"
+              title="Kill every checked process (same per-row ✕ kill, batched)"
+              onClick={killSelected}
+            >
+              kill {liveSelected.length} selected
+            </button>
+          )}
           <div className="processes-view-radio" role="radiogroup" aria-label="View mode">
-            <label className="processes-filter" title="Tree view: each Claude session shown as a pstree, with its descendant processes (including any port-binding ones) nested underneath.">
+            <label
+              className="processes-filter"
+              title="Tree view: each Claude session shown as a pstree, with its descendant processes (including any port-binding ones) nested underneath."
+            >
               <input
                 type="radio"
                 name="processes-view-mode"
@@ -436,7 +518,10 @@ export function ProcessesPanel({
               />
               Sessions
             </label>
-            <label className="processes-filter" title="Flat list of every process bound to a listening TCP port, sorted by attribution confidence and uptime.">
+            <label
+              className="processes-filter"
+              title="Flat list of every process bound to a listening TCP port, sorted by attribution confidence and uptime."
+            >
               <input
                 type="radio"
                 name="processes-view-mode"
@@ -446,96 +531,166 @@ export function ProcessesPanel({
               Network
             </label>
           </div>
-          <label className="processes-filter" title="Show transparent wrapper launchers — npm, run-p, tsx watch, concurrently, etc. — that don't bind their own ports. By default they're collapsed away so the panel shows only the leaf processes that actually do the work.">
+          <label
+            className="processes-filter"
+            title="Show transparent wrapper launchers — npm, run-p, tsx watch, concurrently, etc. — that don't bind their own ports. By default they're collapsed away so the panel shows only the leaf processes that actually do the work."
+          >
             <input
               type="checkbox"
               checked={showWrappers}
-              onChange={e => setShowWrappers(e.target.checked)}
+              onChange={(e) => setShowWrappers(e.target.checked)}
             />
             Wrappers
           </label>
-          <label className="processes-filter" title="Bypass the noise filter: include Claude's own housekeeping spawns (caffeinate, etc.) and host-wide network listeners that aren't attributed to a Claude session.">
+          <label
+            className="processes-filter"
+            title="Bypass the noise filter: include Claude's own housekeeping spawns (caffeinate, etc.) and host-wide network listeners that aren't attributed to a Claude session."
+          >
             <input
               type="checkbox"
               checked={showRaw}
-              onChange={e => setShowRaw(e.target.checked)}
+              onChange={(e) => setShowRaw(e.target.checked)}
             />
             Show all
           </label>
         </div>
       </header>
       <div className="processes-scroll">
-      {rows.length > 0 && (
-        // Widths live on the <th> inline so the browser's `resize:
-        // horizontal` on each <th> actually drives column width. With
-        // <colgroup>, table-layout: fixed snapshots the col widths and
-        // ignores any th resize. PID is generous enough to hold a
-        // 5-digit pid + ~3 levels of tree indent without wrapping.
-        <table className="processes-table">
-          <thead>
-            <tr>
-              <th aria-label="status" style={{ width: '30px' }}><span className="th-resize" /></th>
-              <SortHeader label="PID" sortKey="pid" sort={sort} toggle={toggleSort} width="100px" />
-              {viewMode === 'network' && (
-                <>
-                  <th style={{ width: '100px' }}>Runtime<span className="th-resize" /></th>
-                  <th style={{ width: '150px' }}>Framework<span className="th-resize" /></th>
-                </>
-              )}
-              <SortHeader label="Project" sortKey="project" sort={sort} toggle={toggleSort} width="110px" />
-              {showAccount && (
-                <SortHeader label="Account" sortKey="account" sort={sort} toggle={toggleSort} width="90px" />
-              )}
-              <SortHeader
-                label={viewMode === 'sessions' ? 'Title' : 'Command'}
-                sortKey="command"
-                sort={sort}
-                toggle={toggleSort}
-                width="500px"
-              />
-              {viewMode === 'network' && <th style={{ width: '130px' }}>Ports<span className="th-resize" /></th>}
-              <SortHeader label="Session" sortKey="session" sort={sort} toggle={toggleSort} width="90px" />
-              {viewMode === 'sessions' && (
-                <SortHeader label="Idle" sortKey="idle" sort={sort} toggle={toggleSort} width="70px" />
-              )}
-              <SortHeader label="Uptime" sortKey="uptime" sort={sort} toggle={toggleSort} width="90px" />
-              <th aria-label="actions" style={{ width: '40px' }} />
-            </tr>
-          </thead>
-          <tbody>{rows.map(({ row, depth, hasChildren, isRoot, preferCommand }) => (
-            <ProcessRow
-              key={row.process_id}
-              row={row}
-              depth={depth}
-              preferCommand={preferCommand}
-              viewMode={viewMode}
-              showAccount={showAccount}
-              panel={row.session_id ? allPanels.get(row.session_id) ?? null : null}
-              projectColor={row.project ? projectThemes.get(row.project) ?? null : null}
-              accountColor={(() => {
-                const panelLabel = row.session_id ? allPanels.get(row.session_id)?.account_label : null;
-                const label = panelLabel ?? row.account_label;
-                return label ? accountColorByLabel?.get(label) ?? null : null;
-              })()}
-              expandable={isRoot && hasChildren}
-              expanded={expandedRoots.has(row.pid)}
-              onToggleExpand={isRoot && hasChildren ? () => toggleRoot(row.pid) : undefined}
-              showIdle={viewMode === 'sessions'}
-              onOpenSession={onOpenSession}
-            />
-          ))}</tbody>
-        </table>
-      )}
-      {rows.length === 0 && all.length > 0 && (
-        <p className="processes-filter-empty">
-          No processes match the current filters. Toggle a checkbox above to broaden the view.
-        </p>
-      )}
-      {all.length === 0 && (
-        <p className="processes-filter-empty">
-          Waiting for process data… (the tracker repopulates a moment after the server starts.)
-        </p>
-      )}
+        {rows.length > 0 && (
+          // Widths live on the <th> inline so the browser's `resize:
+          // horizontal` on each <th> actually drives column width. With
+          // <colgroup>, table-layout: fixed snapshots the col widths and
+          // ignores any th resize. PID is generous enough to hold a
+          // 5-digit pid + ~3 levels of tree indent without wrapping.
+          <table className="processes-table">
+            <thead>
+              <tr>
+                <th aria-label="select" style={{ width: '26px' }} />
+                <th aria-label="status" style={{ width: '30px' }}>
+                  <span className="th-resize" />
+                </th>
+                <SortHeader
+                  label="PID"
+                  sortKey="pid"
+                  sort={sort}
+                  toggle={toggleSort}
+                  width="100px"
+                />
+                {viewMode === 'network' && (
+                  <>
+                    <th style={{ width: '100px' }}>
+                      Runtime
+                      <span className="th-resize" />
+                    </th>
+                    <th style={{ width: '150px' }}>
+                      Framework
+                      <span className="th-resize" />
+                    </th>
+                  </>
+                )}
+                <SortHeader
+                  label="Project"
+                  sortKey="project"
+                  sort={sort}
+                  toggle={toggleSort}
+                  width="110px"
+                />
+                {showAccount && (
+                  <SortHeader
+                    label="Account"
+                    sortKey="account"
+                    sort={sort}
+                    toggle={toggleSort}
+                    width="90px"
+                  />
+                )}
+                {/* The one flexible column: `auto` absorbs whatever width the
+                 * fixed columns leave, so the table fits its container and
+                 * horizontal scroll appears only after manual th resizes
+                 * genuinely outgrow it. */}
+                <SortHeader
+                  label={viewMode === 'sessions' ? 'Title' : 'Command'}
+                  sortKey="command"
+                  sort={sort}
+                  toggle={toggleSort}
+                  width="auto"
+                />
+                {viewMode === 'network' && (
+                  <th style={{ width: '130px' }}>
+                    Ports
+                    <span className="th-resize" />
+                  </th>
+                )}
+                <SortHeader
+                  label="Session"
+                  sortKey="session"
+                  sort={sort}
+                  toggle={toggleSort}
+                  width="90px"
+                />
+                {viewMode === 'sessions' && (
+                  <SortHeader
+                    label="Idle"
+                    sortKey="idle"
+                    sort={sort}
+                    toggle={toggleSort}
+                    width="70px"
+                  />
+                )}
+                <SortHeader
+                  label="Uptime"
+                  sortKey="uptime"
+                  sort={sort}
+                  toggle={toggleSort}
+                  width="90px"
+                />
+                {/* Wide enough for the reveal-in-iterm + kill buttons side by
+                 * side: with table-layout fixed a narrower cell can't grow,
+                 * and the spilled buttons extend scrollWidth — a permanent
+                 * phantom horizontal scrollbar. */}
+                <th aria-label="actions" style={{ width: '72px' }} />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ row, depth, hasChildren, isRoot, preferCommand }) => (
+                <ProcessRow
+                  key={row.process_id}
+                  row={row}
+                  depth={depth}
+                  preferCommand={preferCommand}
+                  viewMode={viewMode}
+                  showAccount={showAccount}
+                  panel={row.session_id ? (allPanels.get(row.session_id) ?? null) : null}
+                  projectColor={row.project ? (projectThemes.get(row.project) ?? null) : null}
+                  accountColor={(() => {
+                    const panelLabel = row.session_id
+                      ? allPanels.get(row.session_id)?.account_label
+                      : null;
+                    const label = panelLabel ?? row.account_label;
+                    return label ? (accountColorByLabel?.get(label) ?? null) : null;
+                  })()}
+                  expandable={isRoot && hasChildren}
+                  expanded={expandedRoots.has(row.pid)}
+                  onToggleExpand={isRoot && hasChildren ? () => toggleRoot(row.pid) : undefined}
+                  showIdle={viewMode === 'sessions'}
+                  onOpenSession={onOpenSession}
+                  selected={selected.has(row.process_id)}
+                  onToggleSelect={() => toggleSelected(row.process_id)}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+        {rows.length === 0 && all.length > 0 && (
+          <p className="processes-filter-empty">
+            No processes match the current filters. Toggle a checkbox above to broaden the view.
+          </p>
+        )}
+        {all.length === 0 && (
+          <p className="processes-filter-empty">
+            Waiting for process data… (the tracker repopulates a moment after the server starts.)
+          </p>
+        )}
       </div>
     </section>
   );
