@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
@@ -7,8 +7,8 @@ import Fastify from 'fastify';
 import { TranscriptMonitor } from './monitor.js';
 import { checkOnboarding, ONBOARDING_WARNING_LINES } from './onboarding.js';
 import { PrefsStore } from './prefs.js';
-import { ProcessTracker } from './processes/index.js';
 import { runStartupDiscovery } from './processes/discovery.js';
+import { ProcessTracker } from './processes/index.js';
 import { resolveRoots } from './roots.js';
 import { resolveAnthropicApiKey } from './secrets.js';
 import { Store } from './store.js';
@@ -123,16 +123,13 @@ async function main() {
   // `notifications.clickFocus` pref decides — default false: raise the
   // window without stealing keyboard focus. The dashboard's reveal button
   // goes through tRPC with focus:true (an explicit "take me there").
-  app.post<{ Body: { iterm_session_id?: string; focus?: boolean } }>(
-    '/api/reveal',
-    async (req) => {
-      const guid = req.body?.iterm_session_id;
-      if (!guid) return { ok: false, found: false };
-      const focus = req.body?.focus ?? prefs.get().notifications.clickFocus;
-      const found = await tracker.revealIterm(guid, { focus });
-      return { ok: true, found };
-    },
-  );
+  app.post<{ Body: { iterm_session_id?: string; focus?: boolean } }>('/api/reveal', async (req) => {
+    const guid = req.body?.iterm_session_id;
+    if (!guid) return { ok: false, found: false };
+    const focus = req.body?.focus ?? prefs.get().notifications.clickFocus;
+    const found = await tracker.revealIterm(guid, { focus });
+    return { ok: true, found };
+  });
 
   // Menubar master toggle. Writes through the same PrefsStore the
   // dashboard modal uses, so the two switches never disagree.
@@ -147,14 +144,11 @@ async function main() {
   // single `fetch()` without speaking the tRPC protocol. Used by the
   // UserPromptSubmit `session-procs-reminder` hook to inject a one-line
   // summary of live background work for the active session.
-  app.get<{ Params: { sessionId: string } }>(
-    '/procs/by-session/:sessionId',
-    async (req) => {
-      const sid = req.params.sessionId;
-      const rows = tracker.snapshot().filter((r) => r.session_id === sid);
-      return { session_id: sid, rows };
-    },
-  );
+  app.get<{ Params: { sessionId: string } }>('/procs/by-session/:sessionId', async (req) => {
+    const sid = req.params.sessionId;
+    const rows = tracker.snapshot().filter((r) => r.session_id === sid);
+    return { session_id: sid, rows };
+  });
 
   // Debug: run the lsof sweep primitive inline and report what it sees from
   // inside the service environment (env/PATH/exit-code differences vs. a
@@ -189,7 +183,12 @@ async function main() {
       with_ports: all.filter((r) => r.ports.length > 0).length,
       rows: all
         .filter((r) => r.ports.length > 0)
-        .map((r) => ({ pid: r.pid, provenance: r.provenance, ports: r.ports, command: r.command.slice(0, 60) })),
+        .map((r) => ({
+          pid: r.pid,
+          provenance: r.provenance,
+          ports: r.ports,
+          command: r.command.slice(0, 60),
+        })),
     };
   });
 
@@ -199,6 +198,23 @@ async function main() {
   const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'public');
   if (existsSync(publicDir)) {
     await app.register(fastifyStatic, { root: publicDir });
+    // Watch-mode live reload: the supervisor (scripts/watch-service.mjs)
+    // rewrites this dir on client-source edits; every rebuild rewrites
+    // index.html (asset hashes live in it). Poll its mtime — NOT fs.watch,
+    // which silently drops events on this machine (see watchBackend.ts) —
+    // and nudge connected clients to reload so :8765 tracks the working
+    // tree. One stat every 2s; inert in a frozen prod build. Server-source
+    // edits need no hint: the supervisor restarts this process and clients
+    // re-bootstrap over the reconnecting SSE stream.
+    const indexHtmlPath = path.join(publicDir, 'index.html');
+    let lastBundleMtime = statSync(indexHtmlPath, { throwIfNoEntry: false })?.mtimeMs ?? 0;
+    setInterval(() => {
+      const m = statSync(indexHtmlPath, { throwIfNoEntry: false })?.mtimeMs ?? 0;
+      if (m > lastBundleMtime) {
+        lastBundleMtime = m;
+        monitor.emitter.emit('delta', { op: 'client_build_updated' });
+      }
+    }, 2000).unref();
     app.setNotFoundHandler((req, reply) => {
       if (
         req.method !== 'GET' ||

@@ -249,7 +249,10 @@ export type Delta =
   /** Transient: drives the title flash + toast on the client when the
    * auto-title hook proposes a new name. Not persisted, not part of
    * panel state — it's a one-shot UX cue. */
-  | { op: 'auto_titled'; panel_id: string; prev_title: string; new_title: string };
+  | { op: 'auto_titled'; panel_id: string; prev_title: string; new_title: string }
+  /** The served client bundle was rewritten on disk (watch-mode rebuild).
+   * Clients reload the page so localhost:8765 tracks the working tree. */
+  | { op: 'client_build_updated' };
 
 export interface SessionStoreOptions {
   idleSeconds?: number;

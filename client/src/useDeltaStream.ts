@@ -161,6 +161,12 @@ export function useDeltaStream(): DeltaState {
           // tRPC's inferred Delta loses some narrowing precision around the
           // payload union; runtime shape matches Delta exactly.
           const delta = msg.delta as unknown as Delta;
+          // Watch-mode rebuild of the served bundle: reload rather than
+          // dispatch — this page is now running stale code.
+          if (delta.op === 'client_build_updated') {
+            window.location.reload();
+            return;
+          }
           dispatch({ type: 'delta', delta });
           if (delta.op === 'panel_remove') {
             setTimeout(

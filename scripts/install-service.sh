@@ -4,6 +4,11 @@
 #
 # Env overrides, baked into the plist:
 #   PORT   listen port (default 8765)
+#   WATCH  1 (default) runs `npm run start:watch` — the supervisor
+#          (scripts/watch-service.mjs) polls sources, rebuilds on edits,
+#          restarts the server on server changes, and browsers reload
+#          themselves on client rebuilds. 0 runs the frozen prod build
+#          (old behavior): deploys only via `npm run build` + kickstart.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
@@ -13,6 +18,7 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$HOME/Library/Logs/brainhouse"
 NODE_BIN="$(command -v node)"
 PORT="${PORT:-8765}"
+WATCH="${WATCH:-1}"
 
 # Boot out any prior install first so a reinstall over the running service
 # doesn't trip the port check below (the check is for foreign dev servers).
@@ -38,6 +44,18 @@ mkdir -p "$LOG_DIR" "$HOME/Library/LaunchAgents"
 # sweeps). Dropping either silently kills its feature under launchd.
 SERVICE_PATH="$(dirname "$NODE_BIN"):$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+# Watch mode runs the polling supervisor (scripts/watch-service.mjs) via
+# npm; launchd kills the whole process group on bootout/kickstart so the
+# server child never orphans. Prod mode runs the built server directly.
+if [ "$WATCH" = "1" ]; then
+  PROGRAM_ARGS="    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>exec npm run start:watch</string>"
+else
+  PROGRAM_ARGS="    <string>$NODE_BIN</string>
+    <string>$ROOT/server/dist/index.js</string>"
+fi
+
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -46,8 +64,7 @@ cat > "$PLIST" <<EOF
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$NODE_BIN</string>
-    <string>$ROOT/server/dist/index.js</string>
+$PROGRAM_ARGS
   </array>
   <key>WorkingDirectory</key><string>$ROOT</string>
   <key>EnvironmentVariables</key>
@@ -66,5 +83,6 @@ EOF
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 
 echo "brainhouse service installed → http://localhost:$PORT"
+[ "$WATCH" = "1" ] && echo "watch mode: source edits rebuild + redeploy automatically (WATCH=0 to disable)"
 echo "logs:    $LOG_DIR"
 echo "restart: launchctl kickstart -k gui/\$(id -u)/$LABEL"

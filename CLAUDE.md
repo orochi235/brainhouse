@@ -7,10 +7,15 @@ these areas, read the linked file before searching.
 
 This project has exactly one user: its author, running the production
 service on this machine. There is no other tester, so a change that
-isn't deployed is a change nobody is exercising. Treat deployment as
-part of every change, not a follow-up: after landing server/client
-work, build and restart the service (`npm run build`, then
-`launchctl kickstart -k gui/$(id -u)/com.brainhouse`); after touching
+isn't deployed is a change nobody is exercising. The service normally
+runs in watch mode (`scripts/watch-service.mjs`, installed by
+`npm run service:install`): server/client source edits rebuild and
+redeploy themselves within a few seconds — client edits reload open
+browser tabs, server edits restart the server child. Verify a change
+landed via `~/Library/Logs/brainhouse/stdout.log` (`[watch-service]`
+lines) rather than kickstarting. Manual `npm run build` +
+`launchctl kickstart -k gui/$(id -u)/com.brainhouse` is the fallback
+(and the only path when installed with WATCH=0). After touching
 `menubar/` or its install script, rerun `npm run menubar:install`;
 after touching `hooks/`, remember running Claude Code sessions keep
 their hook snapshot — only new sessions pick changes up. Leaving work
