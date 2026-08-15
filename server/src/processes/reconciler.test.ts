@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { homedir } from 'node:os';
 import { Reconciler } from './reconciler.js';
 import type { PsRow } from './native.js';
 
@@ -110,6 +111,48 @@ describe('Reconciler', () => {
     const row = upserts.find(u => u.pid === 200);
     expect(row?.provenance).toBe('heuristic');
     expect(row?.session_id).toBe('s1');
+  });
+
+  it('heuristic attribution by cwd descends into the session repo', () => {
+    const r = new Reconciler();
+    r.registerSession('s1', { pid: 50, cwd: '/repo', repoRoot: '/repo' });
+    const { upserts } = r.tick([
+      baseProc({ pid: 50, ppid: 1 }),
+      baseProc({ pid: 200, ppid: 1, command: 'node x', start_ts: 0 }),
+    ], 5, (pid) => pid === 200 ? '/repo/client/sub' : null);
+    const row = upserts.find(u => u.pid === 200);
+    expect(row?.session_id).toBe('s1');
+    expect(row?.provenance).toBe('heuristic');
+  });
+
+  it('a session outside any repo claims only an exact cwd match', () => {
+    const r = new Reconciler();
+    r.registerSession('s1', { pid: 50, cwd: '/Users/u' });
+    r.tick([
+      baseProc({ pid: 50, ppid: 1 }),
+      baseProc({ pid: 200, ppid: 1, command: 'steam_osx', start_ts: 0 }),
+    ], 5, (pid) => pid === 200 ? '/Users/u/Library/Application Support/Steam' : null);
+    const row = r.getRow('p_local_200_0');
+    expect(row?.session_id).toBeNull();
+    expect(row?.project).toBeNull();
+    // Staying 'discovered' is what keeps a port-binding system app out of
+    // the Network view's default (non-Show-all) list.
+    expect(row?.provenance).toBe('discovered');
+  });
+
+  it('a home-directory repo does not count as a project boundary', () => {
+    const r = new Reconciler();
+    // A dotfiles repo at $HOME gives the session a repo_root, but it's the
+    // whole machine — descendant matching there claims every process.
+    const home = homedir();
+    r.registerSession('s1', { pid: 50, cwd: home, repoRoot: home });
+    r.tick([
+      baseProc({ pid: 50, ppid: 1 }),
+      baseProc({ pid: 200, ppid: 1, command: 'steam_osx', start_ts: 0 }),
+    ], 5, (pid) => pid === 200 ? `${home}/Library/Application Support/Steam` : null);
+    const row = r.getRow('p_local_200_0');
+    expect(row?.session_id).toBeNull();
+    expect(row?.provenance).toBe('discovered');
   });
 
   it('PID recycling: same pid, different start_ts → new row', () => {

@@ -222,6 +222,14 @@ UI/server is meant to uphold. New entries go at the bottom.
   arbitrary subdirectories of the same checkout cluster into one
   widget. `cwd`'s leaf segment is only used as a fallback for non-repo
   scratch directories.
+- The process tracker's cwd-heuristic attribution tier only walks
+  *descendants* of a session's `cwd` when that session has a `repo_root`.
+  A session opened outside any repo (`$HOME`, `/tmp`, a scratch dir)
+  claims a process only on an exact `cwd` match. Otherwise one session
+  started in `$HOME` promotes every unrelated process under the home
+  directory from `discovered` to `heuristic`, which drags host-wide
+  listeners (Steam, Dropbox, Music) into the top widget's Network view
+  even with Show-all off.
 - A panel whose title was explicitly set via `/rename` (any non-
   suppressed `custom-title` meta record) carries `manually_renamed:
   true` on its DTO and renders a `❖` (U+2756) glyph immediately before

@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import type { PsRow } from './native.js';
 import { detectRuntimeFromPath, detectRuntimeFromArgv } from './runtime.js';
 import { detectFrameworkFromArgv, readPackageVersion } from './framework.js';
@@ -78,6 +79,8 @@ const SIGNAL_MIN_UPTIME_S = 3;
 const INTENT_TTL_S = 30;
 const INTENT_BUFFER_SIZE = 50;
 const INTENT_MATCH_WINDOW_S = 2;
+
+const HOME = homedir();
 
 /** Discovered rows (no Claude session attribution) only qualify if they
  * bind a port — otherwise every long-running system process (launchd,
@@ -284,7 +287,13 @@ export class Reconciler {
           const matches: Array<{ sid: string; cwd: string; repoRoot: string | null }> = [];
           for (const [sid, info] of this.sessions) {
             if (!info.cwd) continue;
-            if (info.cwd === cwd || cwd.startsWith(`${info.cwd}/`)) {
+            // Descendant matching needs a project boundary to be meaningful.
+            // Without one (a session opened in $HOME, /tmp, …, or in a
+            // dotfiles repo rooted at $HOME) the prefix walk claims every
+            // unrelated process under that path.
+            const bounded = info.repoRoot != null && info.repoRoot !== HOME;
+            const descends = bounded && cwd.startsWith(`${info.cwd}/`);
+            if (info.cwd === cwd || descends) {
               matches.push({ sid, cwd: info.cwd, repoRoot: info.repoRoot ?? null });
             }
           }
