@@ -1996,6 +1996,97 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   text-decoration: line-through;
   opacity: 0.55;
 }
+/* Active-work shimmer — a highlight traveling through the two surfaces that
+ * track a task in flight: the in-progress task's own text, and the filled part
+ * of the progress bar.
+ *
+ * Travel is a fixed pixel period, not a percentage of the element, so the
+ * highlight moves at one speed everywhere — a bar at 8% and a bar at 90%
+ * shimmer at the same px/s instead of the short one crawling. The period
+ * exceeds a typical row/bar width, so only one pass is on screen at a time and
+ * it reads as a pulse: narrow surfaces wait longer between passes.
+ *
+ * Docked tiles are included (an unfinished pin means work parked mid-flight,
+ * worth spotting in the dock) but ended panels are not — a leftover
+ * in-progress row on a finished session shouldn't keep advertising work. */
+:root {
+  --checklist-shimmer-period: 320px;
+  --checklist-shimmer-duration: 1.6s;
+}
+.panel.status-live .checklist-progress-fill,
+.panel.render-mini:not(.ended) .checklist-progress-fill {
+  position: relative;
+  overflow: hidden;
+}
+.panel.status-live .checklist-progress-fill::after,
+.panel.render-mini:not(.ended) .checklist-progress-fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* One period of overhang on the left so the band is already in flight when
+   * the cycle restarts; translating exactly one period is therefore seamless. */
+  left: calc(-1 * var(--checklist-shimmer-period));
+  right: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 115px,
+    rgb(255 255 255 / 0.55) 160px,
+    transparent 205px,
+    transparent var(--checklist-shimmer-period)
+  );
+  animation: checklist-shimmer var(--checklist-shimmer-duration) linear infinite;
+  will-change: transform;
+}
+@keyframes checklist-shimmer {
+  to {
+    transform: translate3d(var(--checklist-shimmer-period), 0, 0);
+  }
+}
+/* The task label shimmers through its own glyphs (background-clip: text), not
+ * behind them. The highlight mixes the accent toward `--fg`, so it gains
+ * contrast in both themes — brighter on dark, darker on light. One tile is
+ * exactly one period wide, so shifting the position by a period is seamless;
+ * a repeating-gradient sized to the element would seam at the tile edge. */
+@supports (background-clip: text) {
+  .panel.status-live .checklist li.in-progress .label,
+  .panel.render-mini:not(.ended) .checklist li.in-progress .label {
+    background-image: linear-gradient(
+      90deg,
+      var(--panel-accent, var(--accent)) 0,
+      var(--panel-accent, var(--accent)) 33%,
+      color-mix(in srgb, var(--panel-accent, var(--accent)) 30%, var(--fg)) 50%,
+      var(--panel-accent, var(--accent)) 67%,
+      var(--panel-accent, var(--accent)) 100%
+    );
+    background-size: var(--checklist-shimmer-period) 100%;
+    background-repeat: repeat-x;
+    background-clip: text;
+    color: transparent;
+    animation: checklist-text-shimmer var(--checklist-shimmer-duration) linear
+      infinite;
+  }
+}
+@keyframes checklist-text-shimmer {
+  to {
+    background-position: var(--checklist-shimmer-period) 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel.status-live .checklist-progress-fill::after,
+  .panel.render-mini:not(.ended) .checklist-progress-fill::after {
+    display: none;
+  }
+  .panel.status-live .checklist li.in-progress .label,
+  .panel.render-mini:not(.ended) .checklist li.in-progress .label {
+    background-image: none;
+    color: var(--panel-accent, var(--accent));
+    animation: none;
+  }
+}
 /* Completion timestamp — sits at the end of a done row, hover for the
  * absolute time. Dim by default so it doesn't compete with the label. */
 .checklist .checklist-completed,

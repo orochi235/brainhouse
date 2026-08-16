@@ -115,6 +115,15 @@ UI/server is meant to uphold. New entries go at the bottom.
   `system` record with subtype `local_command`, so any "is this command
   scaffolding?" check has to cover both kinds or it will read the echo
   as real session activity.
+- While work is in flight, a highlight travels through the pinned
+  checklist's in-progress task text (`background-clip: text` on the
+  label — through the glyphs, not a band behind them) and across the
+  filled part of its progress bar. Applies on live panels and on docked
+  (`render-mini`) tiles that haven't ended, never on an ended panel.
+  Travel is a fixed pixel period (320px per 1.6s, linear), so every bar
+  and label shimmers at the same speed regardless of length; a
+  percentage-based travel would make a nearly-empty bar crawl and a
+  nearly-full one race.
 - The non-live panel terminator reads "session cleared" instead of
   "session ended" when `ended_provenance === 'hook_session_start_supersede'`
   (i.e. the panel was retired by a follow-up `/clear` or `/compact`).
