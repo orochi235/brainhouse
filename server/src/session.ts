@@ -1544,6 +1544,9 @@ function parseEventTs(ts: string): number | null {
  * …) that Claude Code writes into the transcript for /clear and friends.
  * They live in the JSONL as `user_text` but aren't real user input. */
 function isCommandArtifact(event: Event): boolean {
+  // A slash command lands as user_text scaffolding plus a separate `system`
+  // record carrying its stdout echo — both are command noise, not activity.
+  if (event.kind === 'system') return event.payload.subtype === 'local_command';
   if (event.kind !== 'user_text') return false;
   const t = (event.payload.text ?? '').trim();
   return !t || /^<(local-command-(caveat|stdout)|command-(name|message|args))>/.test(t);

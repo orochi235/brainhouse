@@ -109,8 +109,12 @@ UI/server is meant to uphold. New entries go at the bottom.
   post-clear session — `<local-command-caveat>`, `<command-name>/clear`,
   `<local-command-stdout>` — is replaced by a single "prior session
   cleared" divider styled like the session-ended terminator. Caveat and
-  stdout user_texts are dropped silently; only a command-name matching
+  stdout are dropped silently; only a command-name matching
   `/clear` produces the divider, so other slash commands still render.
+  Only the first two arrive as `user_text`: the stdout echo is a
+  `system` record with subtype `local_command`, so any "is this command
+  scaffolding?" check has to cover both kinds or it will read the echo
+  as real session activity.
 - The non-live panel terminator reads "session cleared" instead of
   "session ended" when `ended_provenance === 'hook_session_start_supersede'`
   (i.e. the panel was retired by a follow-up `/clear` or `/compact`).

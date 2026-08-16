@@ -1301,6 +1301,43 @@ describe('TranscriptMonitor', () => {
       expect(monitor.store.panel('NEW')?.status).toBe('live');
     });
 
+    // Claude Code writes the command's stdout echo as a `system` record with
+    // subtype `local_command`, NOT as a user_text — `artifactEvent` above
+    // models the other three records of the trio, not this one.
+    function stdoutEvent(uuid: string): Event {
+      return {
+        session_id: 'NEW',
+        agent_id: null,
+        uuid,
+        parent_uuid: null,
+        ts: freshIso(),
+        cwd: CWD,
+        kind: 'system',
+        tags: ['system'],
+        payload: {
+          subtype: 'local_command',
+          content: '<local-command-stdout></local-command-stdout>',
+          level: 'info',
+        },
+      } as Event;
+    }
+
+    it('holds mini through the stdout echo of the cleared command', () => {
+      const monitor = newMonitor();
+      clearHook(monitor);
+      monitor.ingest(artifactEvent('a1', '<command-name>/clear</command-name>'));
+      monitor.ingest(stdoutEvent('a2'));
+      expect(monitor.store.panel('NEW')?.status).toBe('mini');
+    });
+
+    it('demotes a late-hooked panel whose stdout echo already landed', () => {
+      const monitor = newMonitor();
+      monitor.ingest(artifactEvent('a1', '<command-name>/clear</command-name>'));
+      monitor.ingest(stdoutEvent('a2'));
+      clearHook(monitor);
+      expect(monitor.store.panel('NEW')?.status).toBe('mini');
+    });
+
     it('does not minimize when autoMinimizeOnClear is off', () => {
       const monitor = new TranscriptMonitor({
         roots: [],
