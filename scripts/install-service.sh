@@ -71,6 +71,7 @@ $PROGRAM_ARGS
   <dict>
     <key>PATH</key><string>$SERVICE_PATH</string>
     <key>PORT</key><string>$PORT</string>
+    <key>BRAINHOUSE_LOG_DIR</key><string>$LOG_DIR</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

@@ -15,9 +15,21 @@ import { existsSync, promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
+import { rotateIfLarge } from './lib/log-rotation.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const POLL_MS = 2000;
+const HEALTH_MS = 30_000;
+const HEALTH_TIMEOUT_MS = 5000;
+/** Consecutive failed probes before we replace the child. Three at 30s rides
+ * out a slow start or a momentarily blocked event loop. */
+const HEALTH_STRIKES = 3;
+const ROTATE_MS = 60_000;
+const MAX_LOG_BYTES = Number(process.env.BRAINHOUSE_MAX_LOG_BYTES ?? 128 * 1024 * 1024);
+/** Set by install-service.sh to launchd's StandardOutPath dir. Absent when run
+ * from a terminal, where there are no launchd logs to rotate. */
+const LOG_DIR = process.env.BRAINHOUSE_LOG_DIR;
+const PORT = Number(process.env.PORT ?? 8765);
 const CLIENT_ROOT = path.join(ROOT, 'client');
 const CLIENT_SRC = path.join(CLIENT_ROOT, 'src');
 const SERVER_SRC = path.join(ROOT, 'server', 'src');
@@ -71,8 +83,11 @@ const serverFingerprint = () => fingerprint(SERVER_SRC);
 
 let server = null;
 let stoppingServer = false;
+let restarting = false;
+let healthStrikes = 0;
 
 function startServer() {
+  healthStrikes = 0;
   server = spawn(process.execPath, [SERVER_ENTRY], { stdio: 'inherit', env: process.env });
   server.on('exit', (code, signal) => {
     if (stoppingServer) return;
@@ -82,18 +97,24 @@ function startServer() {
 }
 
 async function restartServer() {
-  const prev = server;
-  if (prev && prev.exitCode === null) {
-    stoppingServer = true;
-    await new Promise((resolve) => {
-      prev.once('exit', resolve);
-      prev.kill('SIGTERM');
-      const force = setTimeout(() => prev.kill('SIGKILL'), 3000);
-      force.unref?.();
-    });
-    stoppingServer = false;
+  if (restarting) return;
+  restarting = true;
+  try {
+    const prev = server;
+    if (prev && prev.exitCode === null) {
+      stoppingServer = true;
+      await new Promise((resolve) => {
+        prev.once('exit', resolve);
+        prev.kill('SIGTERM');
+        const force = setTimeout(() => prev.kill('SIGKILL'), 3000);
+        force.unref?.();
+      });
+      stoppingServer = false;
+    }
+    startServer();
+  } finally {
+    restarting = false;
   }
-  startServer();
 }
 
 async function buildClient() {
@@ -153,3 +174,62 @@ setInterval(async () => {
     busy = false;
   }
 }, POLL_MS);
+
+// Liveness, not just death: the server can keep its process alive while it has
+// stopped serving, and `exit` — the only other restart trigger — never fires.
+let probing = false;
+setInterval(async () => {
+  if (probing || restarting || stoppingServer) return;
+  if (!server || server.exitCode !== null) return;
+  probing = true;
+  try {
+    let ok = false;
+    try {
+      const res = await fetch(`http://127.0.0.1:${PORT}/health`, {
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+      });
+      ok = res.ok;
+    } catch {
+      ok = false;
+    }
+    if (ok) {
+      healthStrikes = 0;
+      return;
+    }
+    healthStrikes++;
+    console.error(`[watch-service] /health probe failed (${healthStrikes}/${HEALTH_STRIKES})`);
+    if (healthStrikes >= HEALTH_STRIKES) {
+      console.error('[watch-service] server unresponsive; restarting');
+      await restartServer();
+    }
+  } finally {
+    probing = false;
+  }
+}, HEALTH_MS);
+
+if (LOG_DIR) {
+  let rotating = false;
+  setInterval(async () => {
+    if (rotating) return;
+    rotating = true;
+    try {
+      for (const name of ['stdout.log', 'stderr.log']) {
+        try {
+          const bytes = await rotateIfLarge(path.join(LOG_DIR, name), MAX_LOG_BYTES);
+          if (bytes) {
+            console.log(
+              `[watch-service] rotated ${name} → ${name}.1 at ${Math.round(bytes / 1e6)}MB`,
+            );
+          }
+        } catch (e) {
+          console.error(
+            `[watch-service] rotating ${name} failed:`,
+            e instanceof Error ? e.message : e,
+          );
+        }
+      }
+    } finally {
+      rotating = false;
+    }
+  }, ROTATE_MS);
+}

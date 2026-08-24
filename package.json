@@ -35,7 +35,8 @@
     "fix": "biome check --write && biome lint --write",
     "test:server": "npm run test -w server",
     "test:client": "npm run test -w client",
-    "test": "npm run test:server && npm run test:client",
+    "test:bin": "vitest run --config vitest.bin.config.mts",
+    "test": "npm run test:server && npm run test:client && npm run test:bin",
     "scan:transforms": "tsx scripts/scan-transforms.mts",
     "test:scan": "vitest run --config vitest.scan.config.mts",
     "postinstall": "node scripts/ensure-platform-binaries.mjs"
