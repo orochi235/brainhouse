@@ -72,16 +72,14 @@ async function main() {
   // panels the moment a client connects.
   monitor.hydrate();
 
-  // pino-pretty's default ANSI emission (color resets, attribute clears)
-  // visibly wipes terminal background tints in some terminals — opt out
-  // of all in-line colors. Timestamps + level prefixes stay readable.
+  // A pino transport formats in a worker thread, and that worker dying takes
+  // all logging with it while the server keeps serving (see docs/assertions.md).
+  // Under launchd stdout is a file nobody tails live, so only a TTY pays for it.
   const app = Fastify({
-    logger: {
-      transport: {
-        target: 'pino-pretty',
-        options: { colorize: false },
-      },
-    },
+    logger: process.stdout.isTTY
+      ? // colorize:false — pino-pretty's ANSI resets wipe terminal background tints.
+        { transport: { target: 'pino-pretty', options: { colorize: false } } }
+      : true,
   });
 
   // Cross-origin isolation so the client's measureUserAgentSpecificMemory()

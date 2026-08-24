@@ -753,3 +753,24 @@ UI/server is meant to uphold. New entries go at the bottom.
   `onScroll` requires `scrollTop <= TOP_TRIGGER_PX` *and* more than
   `BOTTOM_SLACK_PX` of content below the viewport before calling
   `loadOlder`.
+
+- **Service logging never goes through a worker thread under launchd.** A pino
+  `transport` (pino-pretty) formats in a worker, and when that worker dies the
+  main thread keeps serving while every log line silently stops — a failure
+  invisible by construction, because the log is the thing that broke. It cost
+  two days on 2026-08-19: the server ingested transcripts the whole time and
+  nothing restarted it. `server/src/index.ts` attaches the transport only when
+  `process.stdout.isTTY`, so launchd gets raw JSON written by the same thread
+  that serves requests.
+- **The supervisor restarts on unresponsive, not just on exit.**
+  `scripts/watch-service.mjs` polls `/health` every 30s and replaces the child
+  after three consecutive failures. Watching `exit` alone cannot catch a server
+  that holds its process open while it has stopped doing its job, and a
+  `restarting` guard keeps the probe from racing a rebuild-triggered restart.
+- **launchd logs rotate by copy-truncate.** launchd opens `StandardOutPath`
+  itself and holds that fd `O_APPEND` for the life of the job, so renaming the
+  file would leave every later write landing in the orphaned inode. The
+  supervisor copies to `stdout.log.1` and truncates in place past
+  `BRAINHOUSE_MAX_LOG_BYTES` (128MB default). Rotation is enabled by
+  `BRAINHOUSE_LOG_DIR`, which `install-service.sh` bakes into the plist —
+  absent in a terminal run, where there are no launchd logs to rotate.
