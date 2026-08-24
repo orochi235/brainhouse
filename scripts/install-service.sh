@@ -16,7 +16,21 @@ ROOT="$(pwd)"
 LABEL="com.brainhouse"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$HOME/Library/Logs/brainhouse"
-NODE_BIN="$(command -v node)"
+# launchd sources no profile, so nvm's shell function never runs and `nvm use`
+# never happens — resolve .nvmrc to an absolute bin dir here and bake that into
+# the plist, rather than inheriting whichever node the installing shell had.
+NVMRC="$ROOT/.nvmrc"
+if [ -f "$NVMRC" ]; then
+  NODE_VERSION="v$(tr -d '[:space:]' < "$NVMRC" | sed 's/^v//')"
+  NODE_BIN="${NVM_DIR:-$HOME/.nvm}/versions/node/$NODE_VERSION/bin/node"
+  if [ ! -x "$NODE_BIN" ]; then
+    echo "error: .nvmrc pins $NODE_VERSION, but $NODE_BIN is missing." >&2
+    echo "Install it first: nvm install $NODE_VERSION" >&2
+    exit 1
+  fi
+else
+  NODE_BIN="$(command -v node)"
+fi
 PORT="${PORT:-8765}"
 WATCH="${WATCH:-1}"
 
