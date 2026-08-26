@@ -15,6 +15,7 @@ import { StatsModal } from './components/StatsModal.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
 import { UptimeClock } from './components/UptimeClock.tsx';
 import { Layout } from './layout/Layout.tsx';
+import { setProcessesVisible } from './layout/store.ts';
 import { getActiveDrag, setActiveDrag } from './lib/activeDrag.ts';
 import { debugEnabled } from './lib/debugMode.ts';
 import { useGridLayout } from './lib/gridLayout.ts';
@@ -227,6 +228,9 @@ function AppMain() {
     try {
       localStorage.setItem('brainhouse:processesPanelOpen', processesPanelOpen ? '1' : '0');
     } catch {}
+    // A hidden pane is left out of its strip entirely, so closing the
+    // widget gives the grid the whole column and removes their seam.
+    setProcessesVisible(processesPanelOpen);
   }, [processesPanelOpen]);
   const { prefs, refetch: refetchPrefs } = usePrefs();
   // Debug *mode* — the master dev-affordances switch. The ?debug query
@@ -818,15 +822,15 @@ function AppMain() {
                   </header>
                 </>
               ),
+              processes: (
+                <ProcessesPanel
+                  allPanels={allPanels}
+                  accountColorByLabel={accountColorByLabel}
+                  onOpenSession={openSessionFromWidget}
+                />
+              ),
               main: (
                 <div className="main-stack">
-                  {processesPanelOpen && (
-                    <ProcessesPanel
-                      allPanels={allPanels}
-                      accountColorByLabel={accountColorByLabel}
-                      onOpenSession={openSessionFromWidget}
-                    />
-                  )}
                   <main
                     className="session-grid"
                     ref={gridRef}

@@ -14,8 +14,13 @@ UI/server is meant to uphold. New entries go at the bottom.
   unreadable badge.
 - The top widget lives in the main column, above the grid — not in a
   full-width strip under the topbar. The dock therefore spans the whole
-  height beneath the topbar. The widget's height is its own content up to
-  40vh, past which `.processes-scroll` scrolls inside it.
+  height beneath the topbar. A draggable seam sits between the widget and
+  the grid; the widget opens at 300px and keeps whatever height the seam
+  was last dragged to, scrolling inside `.processes-scroll` either way.
+  Closing it hides its pane, which drops it out of the strip entirely —
+  the grid takes the whole column and the seam goes with it.
+- The topbar is chrome, not a pane: it is sized by its own content and its
+  strip emits no seam, so there is nothing to drag it taller by.
 - When opening or restoring a session window, always scroll to the bottom
   — *unless* sessionStorage has a recent (<60s) saved scroll position for
   that panel, in which case restore the saved position. That exception

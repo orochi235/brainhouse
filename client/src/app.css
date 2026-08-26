@@ -113,13 +113,13 @@ body {
 .layout-slot-top > .topbar {
   flex: 0 0 auto;
 }
-.main-stack > .processes-panel {
-  /* Sits above the grid inside the main column, so the sidebar spans
-   * the full height under the topbar. Height is the panel's own
-   * content up to its 40vh cap; past that .processes-scroll scrolls
-   * and the grid keeps the rest of the column. */
-  flex: 0 0 auto;
+.layout-slot-processes > .processes-panel {
+  /* Fills the pane's extent (default, or whatever the seam was dragged
+   * to) so .processes-scroll is what scrolls. The panel's own 40vh cap
+   * would override a taller pane, so it's off here. */
+  flex: 1 1 auto;
   min-height: 0;
+  max-height: none;
 }
 .layout-slot-main > .session-grid,
 .layout-slot-sidebar > .session-dock {
