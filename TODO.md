@@ -1004,3 +1004,84 @@ Needs: a small server-side store (persist alongside intentions), a
 transform/parser hook to detect the trigger, and a UI surface to browse
 the collected questions. Later: widen detection beyond `/btw` (heuristic
 or model-assisted "this is a how-does-X-work question").
+
+## `reopenSession` is a silent no-op on a panel the server already holds
+
+Found 2026-08-16 while testing the inline-image work. Reopening a session
+that had been binned did all its work and surfaced nothing, returning
+`{ ok: true }`.
+
+`TranscriptMonitor.reopenSession` short-circuits only when
+`store.snapshotHas(sessionId)` — which is `panel exists && binned_at ===
+null`. A binned panel fails that check, so reopen proceeds: re-resolves the
+transcript, re-parses it, and calls `ingest` for every event. But
+`SessionStore.apply` dedupes on `panel.events.some(e => e.uuid ===
+event.uuid)` and returns early, so every one of those events is a dedupe hit
+and the whole replay emits **zero deltas**. Meanwhile `bin()` already sent
+the client a `panel_remove`. Client and server now disagree permanently: the
+server holds a full panel the client has dropped and will never hear about
+again. Only `bin.restore` (which does emit) brings it back.
+
+Nothing here is bin-specific — any path that drops a panel client-side while
+the server keeps its events makes reopen unrecoverable. The bin is just the
+reachable instance.
+
+Fixes worth considering, roughly in order:
+
+- Make `reopenSession` unbin when the target panel is binned, before
+  re-ingesting. Reopening a trashed session is a clear "I want this back".
+- Have it return something honest — `{ ok: false, reason: 'binned' }` or
+  `{ ok: true, surfaced: false }` — so a caller can tell "reopened" from
+  "did nothing". Today `ok: true` means only "a transcript was found".
+- Consider a `panel_upsert` at the end of a reopen regardless of whether
+  `apply` produced deltas, so a client that has lost the panel gets it back.
+  This is the general fix for the client/server divergence; the two above
+  only cover the bin.
+
+The early-return comment reads `// already live`, which is also wrong for the
+binned case — it's "already resident", and residency is not visibility.
+
+## [HIGH] Kill browser-MCP subtrees belonging to long-idle sessions
+
+Measured 2026-08-26 on this machine: **116 processes and 6.05 GB RSS** across
+`@playwright/mcp` and `chrome-devtools-mcp` server trees, held by **18 concurrent
+Claude Code sessions**, the oldest **4 days 22 hours** old. Three of those trees
+had also launched a real Chrome (~200 MB each, plus helpers). System memory was
+exhausted at the time — 134 MB free, 7.9 GB of 9.2 GB swap used — which is a UI
+performance problem, not just an accounting one.
+
+**Nothing is orphaned.** Zero of the 116 were reparented to launchd, and every one
+traced to a *live* `claude`. A sweep keyed on "parent is dead" finds nothing and
+frees nothing. The predicate has to be session idleness, not process parentage.
+
+Note the vocabulary collision before writing any of this: **reap** here means
+removing a panel from the UI. Nothing in the lifecycle kills a process. This item
+is about the second thing, and it should not be called reaping.
+
+The pieces already exist:
+
+- `server/src/processes/native.ts::listProcesses` returns `pid`, `ppid`,
+  `start_ts`, `comm`, `command` — enough to identify an MCP tree by its argv and
+  walk it to its owning `claude`.
+- `server/src/processes/native.ts::signalProcess` already sends TERM/KILL.
+- `server/src/processes/index.ts::ProcessTracker` already holds the tree the top
+  widget renders in sessions view.
+- Session idleness already drives the panel lifecycle (`session.ts`, the
+  `idleSeconds` = 60 live→done threshold).
+
+So this is a policy joining two things brainhouse already has, not new machinery.
+
+Designed 2026-08-26 as generic memory accounting rather than an MCP
+special case — see `docs/superpowers/specs/2026-08-26-process-memory-accounting-design.md`.
+RSS on every process row, a subtree-rollup column in the top widget, and a
+header banner totaling RSS under sessions idle past a threshold, which filters
+the list for the existing batch-kill. Surface-only: brainhouse never kills on
+its own. Rows serving a listening port get a warning glyph rather than being
+excluded from the total.
+
+Still open and NOT in that spec: capping browser-MCP spawn at the MCP config so
+sessions stop launching servers they never browse with. That prevents the sprawl
+instead of cleaning it up, and is the better fix — do it too.
+
+The existing `kill -0 <pid>` sweep idea under "Slot allocator" is a different
+thing — it detects sessions that ended without a Stop hook. Don't merge them.
