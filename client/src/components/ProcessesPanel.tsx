@@ -621,12 +621,14 @@ export function ProcessesPanel({
                     <span className="th-resize" />
                   </th>
                 )}
+                {/* Sized to the 8-char monospace session chip plus cell
+                 * padding — narrower and the chip spills into Idle. */}
                 <SortHeader
                   label="Session"
                   sortKey="session"
                   sort={sort}
                   toggle={toggleSort}
-                  width="90px"
+                  width="104px"
                 />
                 {viewMode === 'sessions' && (
                   <SortHeader

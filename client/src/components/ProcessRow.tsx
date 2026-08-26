@@ -3,6 +3,7 @@ import { useState } from 'react';
 import terminalWindowIcon from '../assets/icons/terminal-window.svg?raw';
 import { CopyableId } from '../lib/CopyableId.tsx';
 import { useClock } from '../lib/clock.ts';
+import { readableInk } from '../lib/contrast.ts';
 import { formatDurationTwoUnits } from '../lib/format.ts';
 import { isPlaceholderTitle } from '../lib/sessionTitle.ts';
 import { CLI_ICONS } from '../lib/tools.ts';
@@ -285,12 +286,14 @@ export function ProcessRow({
           {row.project
             ? (() => {
                 const name = row.project.split('/').filter(Boolean).pop() ?? row.project;
+                const bg = projectColor ?? worktreeColor(name);
                 return (
                   <span
                     className="project-badge"
                     style={
                       {
-                        ['--project-badge-bg' as string]: projectColor ?? worktreeColor(name),
+                        ['--project-badge-bg' as string]: bg,
+                        ['--project-badge-fg' as string]: readableInk(bg),
                       } as CSSProperties
                     }
                   >
@@ -460,7 +463,7 @@ export function ProcessRow({
                 ))}
           </td>
         )}
-        <td>
+        <td className="process-session-cell">
           {row.session_id ? (
             <span
               className="session-chip-wrap"

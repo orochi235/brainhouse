@@ -113,19 +113,13 @@ body {
 .layout-slot-top > .topbar {
   flex: 0 0 auto;
 }
-.layout-slot-top > .processes-panel {
-  /* Stretch to fill the slot below the topbar so the panel's own
-   * `overflow: auto` is what scrolls when content outgrows the slot.
-   * `max-height` is unset here — the slot rect (driven by the auto-fit
-   * in Layout.tsx) owns vertical sizing; the panel's 40vh default
-   * would otherwise both lie to the measurement and cap the panel at
-   * 40vh even when the user has dragged the slot taller. */
-  flex: 1 1 auto;
+.main-stack > .processes-panel {
+  /* Sits above the grid inside the main column, so the sidebar spans
+   * the full height under the topbar. Height is the panel's own
+   * content up to its 40vh cap; past that .processes-scroll scrolls
+   * and the grid keeps the rest of the column. */
+  flex: 0 0 auto;
   min-height: 0;
-  max-height: none;
-  /* Scrolling belongs to the inner .processes-scroll wrapper — the panel
-   * header (title + view/filter controls) stays pinned while the table
-   * scrolls beneath it. */
 }
 .layout-slot-main > .session-grid,
 .layout-slot-sidebar > .session-dock {
@@ -5842,11 +5836,6 @@ body.hide-thinking .event-thought-agent {
  */
 
 .processes-panel {
-  /* Body is a 2-col grid (main | dock); span both so this is a full-width
-   * strip beneath the topbar. The body's row track is `auto 1fr`; this
-   * element naturally creates an additional `auto` row when present, so
-   * the session-grid (1fr) shrinks to make room rather than overlapping. */
-  grid-column: 1 / -1;
   margin: 0.5rem 1rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
@@ -6054,6 +6043,13 @@ body.hide-thinking .event-thought-agent {
   min-width: 3ch;
 }
 
+/* The session chip is a fixed-width monospace id; clip the cell so a
+ * manual th resize can't bleed it into the next column. */
+.processes-table td.process-session-cell {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* Sortable header: label sits inside an unstyled button that takes the
  * click. Arrow appears only when this column is the active sort. */
 .processes-table th.sortable-th {
@@ -6196,7 +6192,10 @@ body.hide-thinking .event-thought-agent {
     --project-badge-bg,
     color-mix(in srgb, var(--fg) 12%, transparent)
   );
-  color: white;
+  /* Ink is picked per badge by readableInk() — hash- and theme-derived
+   * backgrounds run from near-black to pale yellow, so no fixed color
+   * clears 4.5:1 on all of them. */
+  color: var(--project-badge-fg, white);
   /* Inherit the system sans-serif (same font we use for project names
    * in .project-widget-title and .panel-subtitle-cwd) — was monospace
    * which made the badge feel like a code chip rather than an

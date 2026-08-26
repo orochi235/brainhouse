@@ -37,22 +37,16 @@ export interface LayoutProps {
 }
 
 export function Layout({ slots }: LayoutProps) {
-  // Keep the top section sized to its actual content (topbar +
-  // ProcessesPanel-if-open) by writing the root binarySplit ratio. The
-  // top's children don't flex-grow vertically, so their offsetHeights are
-  // intrinsic; we sum those to get the natural height and convert it to a
-  // ratio (clamped to [TOP_MIN_PX, TOP_MAX_FRACTION] — see fit.ts).
+  // Keep the top section sized to the topbar's natural height by writing
+  // the root binarySplit ratio (clamped to [TOP_MIN_PX,
+  // TOP_MAX_FRACTION] — see fit.ts).
   //
-  // Three things made earlier versions fail and are handled here:
+  // Two things made earlier versions fail and are handled here:
   //  1. The slot is mounted by a nested windease Container that may not
   //     exist when this effect first runs — so we retry across frames
   //     until it appears instead of bailing forever (which left the slot
   //     stuck at the default ratio).
-  //  2. ProcessesPanel is `flex: 1` and stretches to the slot, so observing
-  //     ITS box re-fires on our own writes (and fights a manual drag). We
-  //     observe the unstretched inner pieces (topbar, panel header/table)
-  //     instead, which only change on real content changes.
-  //  3. ratio is a viewport fraction, so it must be recomputed on window
+  //  2. ratio is a viewport fraction, so it must be recomputed on window
   //     resize.
   // Stops refitting the first time the ratio changes to a value we didn't
   // write — that's a manual drag, and the user now owns the size.
@@ -65,38 +59,7 @@ export function Layout({ slots }: LayoutProps) {
 
     const measure = (slot: HTMLElement): number => {
       let naturalH = 0;
-      for (const c of Array.from(slot.children)) {
-        const el = c as HTMLElement;
-        if (el.classList.contains('processes-panel')) {
-          // Intrinsic content = sum of the panel's (unstretched) children
-          // plus the panel's own box chrome. Robust to header+table vs
-          // header+empty-state, and not circular with the flex-stretched box.
-          const cs = getComputedStyle(el);
-          const chrome =
-            (parseFloat(cs.paddingTop) || 0) +
-            (parseFloat(cs.paddingBottom) || 0) +
-            (parseFloat(cs.marginTop) || 0) +
-            (parseFloat(cs.marginBottom) || 0) +
-            (parseFloat(cs.borderTopWidth) || 0) +
-            (parseFloat(cs.borderBottomWidth) || 0);
-          let inner = 0;
-          for (const piece of Array.from(el.children)) {
-            const p = piece as HTMLElement;
-            // .processes-scroll is flex-stretched to the slot, so its own
-            // box is circular with the fit. Sum its (unstretched) children
-            // instead — inside an overflow container their offsetHeights
-            // are intrinsic content heights.
-            if (p.classList.contains('processes-scroll')) {
-              for (const inner2 of Array.from(p.children)) inner += (inner2 as HTMLElement).offsetHeight;
-            } else {
-              inner += p.offsetHeight;
-            }
-          }
-          naturalH += inner + chrome;
-        } else {
-          naturalH += el.offsetHeight;
-        }
-      }
+      for (const c of Array.from(slot.children)) naturalH += (c as HTMLElement).offsetHeight;
       return naturalH;
     };
 
@@ -117,26 +80,9 @@ export function Layout({ slots }: LayoutProps) {
       setSplitRatio(ROOT_ID, apply);
     };
 
-    // Observe the unstretched inner pieces (not the flex-stretched panel
-    // box), re-targeting whenever the slot's subtree changes.
     const reobserve = (slot: HTMLElement) => {
       ro?.disconnect();
-      for (const c of Array.from(slot.children)) {
-        const el = c as HTMLElement;
-        if (el.classList.contains('processes-panel')) {
-          for (const piece of Array.from(el.children)) {
-            // Same transparency as measure(): observe the scroll wrapper's
-            // children, not its flex-stretched box.
-            if ((piece as HTMLElement).classList.contains('processes-scroll')) {
-              for (const inner of Array.from(piece.children)) ro?.observe(inner);
-            } else {
-              ro?.observe(piece as Element);
-            }
-          }
-        } else {
-          ro?.observe(el);
-        }
-      }
+      for (const c of Array.from(slot.children)) ro?.observe(c);
     };
 
     const attach = () => {
@@ -145,21 +91,8 @@ export function Layout({ slots }: LayoutProps) {
         raf = requestAnimationFrame(attach);
         return;
       }
-      let hadPanel = !!slot.querySelector('.processes-panel');
       ro = new ResizeObserver(() => fit());
       mo = new MutationObserver(() => {
-        // Toggling the ProcessesPanel on/off is a structural content
-        // change, not a content-size tweak: any prior manual gutter drag
-        // (which parked `active` at false) no longer applies. Re-arm the
-        // auto-fit and clear its history so the top resizes to the new
-        // content — otherwise a stale ratio leaves a dead gap below the
-        // topbar when the panel is off (or clips it on the next resize).
-        const hasPanel = !!slot.querySelector('.processes-panel');
-        if (hasPanel !== hadPanel) {
-          hadPanel = hasPanel;
-          active = true;
-          fitState = { last: null, prev: null };
-        }
         reobserve(slot);
         fit();
       });

@@ -816,6 +816,10 @@ function AppMain() {
                       </span>
                     </span>
                   </header>
+                </>
+              ),
+              main: (
+                <div className="main-stack">
                   {processesPanelOpen && (
                     <ProcessesPanel
                       allPanels={allPanels}
@@ -823,10 +827,6 @@ function AppMain() {
                       onOpenSession={openSessionFromWidget}
                     />
                   )}
-                </>
-              ),
-              main: (
-                <div className="main-stack">
                   <main
                     className="session-grid"
                     ref={gridRef}

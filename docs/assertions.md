@@ -6,6 +6,16 @@ UI/server is meant to uphold. New entries go at the bottom.
 
 ## UI
 
+- Project badges pick their own text color. Their backgrounds come from a
+  hue hash or a repo's `.hued` theme and run from near-black to pale
+  yellow, so the badge stays white-on-color only while that clears 4.5:1;
+  below it the ink inverts to black (`lib/contrast.ts`). Whichever of the
+  two wins always clears 4.58:1, so no background can render an
+  unreadable badge.
+- The top widget lives in the main column, above the grid — not in a
+  full-width strip under the topbar. The dock therefore spans the whole
+  height beneath the topbar. The widget's height is its own content up to
+  40vh, past which `.processes-scroll` scrolls inside it.
 - When opening or restoring a session window, always scroll to the bottom
   — *unless* sessionStorage has a recent (<60s) saved scroll position for
   that panel, in which case restore the saved position. That exception
