@@ -717,13 +717,15 @@ Append inside `describe('ProcessesPanel', ...)` in `client/src/components/Proces
     expect(screen.getByRole('button', { name: /kill 1 selected/i })).toHaveTextContent('1 serving');
   });
 
-  it('omits the serving warning for a row with no ports', () => {
-    // Sessions view (the default): a claude row is a tree root whether or
-    // not it binds a port, so it can carry the negative assertion that
-    // Network view structurally cannot — `isNetwork` requires a
-    // non-inherited port, and no filter toggle relaxes that.
+  it('omits the serving warning for a row with no ports', async () => {
+    // Sessions view: a claude row is a tree root whether or not it binds a
+    // port, so it can carry the negative assertion Network view
+    // structurally cannot (`isNetwork` requires a non-inherited port).
     mock.rows = [{ ...FIXTURE_ROW, runtime: 'claude', command: 'claude', ports: [] }];
     render(<ProcessesPanel allPanels={new Map()} />);
+    // Earlier tests may have persisted viewMode=network; pick Sessions explicitly.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /sessions/i }));
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.queryByLabelText(/serving a listening port/i)).not.toBeInTheDocument();
   });
