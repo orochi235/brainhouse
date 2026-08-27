@@ -6,6 +6,7 @@ import {
   formatElapsed,
   formatIdle,
   formatIdleCoarse,
+  formatRss,
 } from './format.ts';
 
 describe('formatDurationTwoUnits', () => {
@@ -112,5 +113,20 @@ describe('formatClockTime', () => {
   it('falls back to current time on invalid input', () => {
     expect(formatClockTime('not-a-date')).toMatch(/^\d{2}:\d{2}:\d{2}$/);
     expect(formatClockTime('')).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+  });
+});
+
+describe('formatRss', () => {
+  it('renders KB below a megabyte', () => {
+    expect(formatRss(0)).toBe('0 KB');
+    expect(formatRss(912)).toBe('912 KB');
+  });
+  it('renders whole megabytes', () => {
+    expect(formatRss(831488)).toBe('812 MB');
+    expect(formatRss(1024)).toBe('1 MB');
+  });
+  it('renders gigabytes to one decimal', () => {
+    expect(formatRss(5138022)).toBe('4.9 GB');
+    expect(formatRss(1048576)).toBe('1.0 GB');
   });
 });

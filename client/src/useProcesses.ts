@@ -22,6 +22,10 @@ export type ProcessRow = {
   }>;
   ended_ts: number | null; ended_reason: string | null;
   uptime_s: number;
+  /** Resident set size in KB. Mirrors the server `ProcessRow` field
+   * (`processes/reconciler.ts`); both type definitions are hand-kept in
+   * sync. */
+  rss_kb: number;
   bash_id: string | null;
   /** Project path (= a registered session's cwd) when we can pin the
    * process to a Claude project but not to a single specific session.

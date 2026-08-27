@@ -121,3 +121,11 @@ export function formatElapsed(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60);
   return m ? `+${h}h${m}m` : `+${h}h`;
 }
+
+/** Resident set size, KB in → a short human string. Whole MB reads better
+ * than a decimal in a dense table; only GB earns a decimal place. */
+export function formatRss(kb: number): string {
+  if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(1)} GB`;
+  if (kb >= 1024) return `${Math.round(kb / 1024)} MB`;
+  return `${Math.round(kb)} KB`;
+}
