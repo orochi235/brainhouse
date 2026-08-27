@@ -13,7 +13,14 @@
 **Commands you will use repeatedly:**
 - Server tests: `npm run test:server` (a single file: `npx vitest run src/processes/native.test.ts --root server`)
 - Client tests: `npm run test:client` (a single file: `npx vitest run src/lib/processMemory.test.ts --root client`)
-- Lint/format: `npm run fix` then `npm run check`
+- Lint: `npx biome check <the paths you touched>`
+
+**Do NOT run `npm run fix`.** It runs `biome check --write` across the whole
+repo, and this repo is not biome-clean — it reformats ~90 files that have
+nothing to do with your task, and there is uncommitted work in the tree.
+Formatting is not enforced here. Lint only the paths you touched, and do not
+reformat existing lines you did not otherwise change: a commit whose diff is
+ten times its semantic change is unreviewable.
 
 **Deployment note:** the service runs in watch mode (`scripts/watch-service.mjs`). Server/client source edits rebuild and redeploy within seconds; confirm via `~/Library/Logs/brainhouse/stdout.log`. Do not `launchctl kickstart` unless watch mode is off.
 
@@ -1054,8 +1061,12 @@ Match the file's existing formatting. Add:
 
 - [ ] **Step 2: Lint and run everything**
 
-Run: `npm run fix && npm run check && npm test`
-Expected: clean lint, all suites pass.
+Run: `npm test`
+Expected: all suites pass (server, client, bin).
+
+Then lint only what this feature touched:
+Run: `npx biome check server/src/processes client/src/lib/processMemory.ts client/src/lib/format.ts client/src/components/ProcessRow.tsx client/src/components/ProcessesPanel.tsx`
+Expected: no NEW errors attributable to this branch.
 
 - [ ] **Step 3: Commit**
 
@@ -1071,6 +1082,6 @@ git commit -m "record process memory accounting behavior rules"
 Before calling this done, confirm each with actual output — not inference:
 
 - [ ] `npm test` passes end to end (server, client, bin).
-- [ ] `npm run check` is clean.
+- [ ] `npx biome check` on the touched paths reports no new errors.
 - [ ] `~/Library/Logs/brainhouse/stdout.log` shows the `[watch-service]` rebuild for both the server and client changes.
 - [ ] In the live dashboard: RSS column sorts, collapsed roots roll up, the banner shows a nonzero total, its filter narrows the list, and a port-binding row shows the warning glyph.
