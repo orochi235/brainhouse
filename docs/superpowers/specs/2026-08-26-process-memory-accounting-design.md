@@ -114,8 +114,11 @@ subtree total; expanded, each row shows its own `rss_kb`.
 Clicking filters the list to exactly those trees. The user then checks
 rows and presses the existing "kill N selected". The threshold is a
 select over the boundaries `IdleCell` already buckets on — 5m, 30m, 2h,
-6h, 24h, 7d — defaulting to 2h. `preferences.ts` currently exposes only
-`useBoolPref`; this adds a small string-valued sibling.
+6h, 24h, 7d — defaulting to 2h. It persists as an inline localStorage
+key inside `ProcessesPanel`, matching the three view-scoped prefs
+(`viewMode`, `showRaw`, `showWrappers`) already kept there —
+`preferences.ts` holds only body-class boolean prefs and is the wrong
+home for it.
 
 **Server-loss warning.** Any row that binds a listening port, or has a
 port-binding descendant, gets a warning glyph beside its ✕. The
