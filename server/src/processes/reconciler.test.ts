@@ -4,7 +4,7 @@ import { Reconciler } from './reconciler.js';
 import type { PsRow } from './native.js';
 
 const baseProc = (over: Partial<PsRow>): PsRow => ({
-  pid: 100, ppid: 1, start_ts: 1000, comm: 'node', command: 'node x', ...over,
+  pid: 100, ppid: 1, start_ts: 1000, rss_kb: 0, comm: 'node', command: 'node x', ...over,
 });
 
 describe('Reconciler', () => {

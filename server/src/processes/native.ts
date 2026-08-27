@@ -15,7 +15,7 @@ export type { SpawnDiagnostics } from './spawnQueue.js';
 
 const execFileAsync = promisify(execFile);
 
-export type PsRow = { pid: number; ppid: number; start_ts: number; comm: string; command: string };
+export type PsRow = { pid: number; ppid: number; start_ts: number; rss_kb: number; comm: string; command: string };
 export type PortRow = { pid: number; ports: Array<{ proto: 'TCP'; addr: string; port: number }> };
 
 export function parsePsOutput(out: string): PsRow[] {
@@ -25,14 +25,15 @@ export function parsePsOutput(out: string): PsRow[] {
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
-    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+[ \d]\d\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\S+)\s+(.+)$/);
-    if (!m || !m[1] || !m[2] || !m[3] || !m[4] || !m[5]) continue;
+    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+[ \d]\d\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\d+)\s+(\S+)\s+(.+)$/);
+    if (!m || !m[1] || !m[2] || !m[3] || !m[4] || !m[5] || !m[6]) continue;
     rows.push({
       pid: parseInt(m[1], 10),
       ppid: parseInt(m[2], 10),
       start_ts: Date.parse(m[3]) * 1_000_000,
-      comm: m[4],
-      command: m[5],
+      rss_kb: parseInt(m[4], 10),
+      comm: m[5],
+      command: m[6],
     });
   }
   return rows;
@@ -84,7 +85,7 @@ export async function listProcesses(): Promise<PsRow[]> {
   const { stdout } = await execWithRetry(
     () =>
       execFileAsync(
-        'ps', ['-A', '-o', 'pid,ppid,lstart,comm,command'],
+        'ps', ['-A', '-o', 'pid,ppid,lstart,rss,comm,command'],
         { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 },
       ),
     { label: 'ps' },

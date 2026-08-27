@@ -127,18 +127,26 @@ describe('execWithRetry diagnostics', () => {
 });
 
 describe('parsePsOutput', () => {
-  it('extracts pid/ppid/start/comm/command', () => {
-    const sample = `  PID  PPID                      LSTART COMM             COMMAND
-    1     0 Thu Jun  5 09:00:00 2025 launchd          /sbin/launchd
-12345 12300 Thu Jun  5 10:30:15 2025 node             /usr/local/bin/node /x/bin/vite
+  it('extracts pid/ppid/start/rss/comm/command', () => {
+    const sample = `  PID  PPID                      LSTART    RSS COMM             COMMAND
+    1     0 Thu Jun  5 09:00:00 2025   12048 launchd          /sbin/launchd
+12345 12300 Thu Jun  5 10:30:15 2025  831488 node             /usr/local/bin/node /x/bin/vite
 `;
     const rows = parsePsOutput(sample);
     expect(rows).toHaveLength(2);
     expect(rows[1]).toMatchObject({
-      pid: 12345, ppid: 12300, comm: 'node',
+      pid: 12345, ppid: 12300, comm: 'node', rss_kb: 831488,
       command: '/usr/local/bin/node /x/bin/vite',
     });
+    expect(rows[0]).toMatchObject({ pid: 1, rss_kb: 12048 });
     expect(typeof rows[1].start_ts).toBe('number');
+  });
+
+  it('skips a line whose rss column is missing rather than mis-binding comm', () => {
+    const sample = `  PID  PPID                      LSTART    RSS COMM             COMMAND
+    1     0 Thu Jun  5 09:00:00 2025 launchd          /sbin/launchd
+`;
+    expect(parsePsOutput(sample)).toHaveLength(0);
   });
 });
 
