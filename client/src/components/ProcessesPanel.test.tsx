@@ -38,6 +38,7 @@ const FIXTURE_ROW: ProcessRow = {
   ended_ts: null,
   ended_reason: null,
   uptime_s: 724,
+  rss_kb: 831488,
   bash_id: null,
   project: null,
   account_label: null,
@@ -224,6 +225,14 @@ describe('ProcessesPanel', () => {
     expect(killMock).toHaveBeenCalledWith({ process_id: 'c2' });
     // Selection cleared → button gone again.
     expect(screen.queryByRole('button', { name: /kill .* selected/i })).not.toBeInTheDocument();
+  });
+
+  it('shows an RSS column with the row footprint', async () => {
+    render(<ProcessesPanel allPanels={new Map()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /network/i }));
+    expect(screen.getByText('812 MB')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /rss/i })).toBeInTheDocument();
   });
 
   it('stays mounted with an empty state when there is no process data (restart window)', () => {

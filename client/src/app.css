@@ -1607,6 +1607,10 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   font-weight: 600;
   color: color-mix(in srgb, var(--fg) 72%, transparent);
 }
+.panel-subtitle-sep {
+  margin: 0 0.3rem;
+  color: color-mix(in srgb, var(--fg) 40%, transparent);
+}
 .panel-meta-row {
   display: inline-flex;
   align-items: center;
@@ -2596,6 +2600,22 @@ body.imessage .event-assistant_text .bubble-thread {
   /* Cool/info tint distinguishes background-task replies from /btw. */
   border-left-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
+.bubble.has-reply.is-agent {
+  /* Warm tint for a reply to another Claude session. */
+  border-left-color: color-mix(in srgb, #f59e0b 55%, transparent);
+}
+/* A message delivered from another Claude Code session, shown on the user
+   side but attributed to its sender rather than to the user. */
+.bubble.from-peer {
+  border: 1px dashed color-mix(in srgb, #f59e0b 45%, transparent);
+}
+.peer-from {
+  margin-bottom: 0.2rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+}
 .reply-quote {
   display: block;
   max-width: 100%;
@@ -2673,6 +2693,48 @@ body.imessage .event-assistant_text .bubble-thread {
   -webkit-mask-size: 24px 6px;
   mask-size: 24px 6px;
   opacity: 0.55;
+}
+
+/* ---- pasted / tool-result images ---- */
+.inline-image {
+  display: block;
+  margin: 0.35rem 0 0.1rem;
+  padding: 0;
+  border: 1px solid var(--border, rgb(255 255 255 / 0.18));
+  border-radius: 6px;
+  background: none;
+  cursor: zoom-in;
+  overflow: hidden;
+  line-height: 0;
+}
+.inline-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+}
+.inline-image:hover {
+  border-color: currentcolor;
+}
+.inline-image-missing {
+  display: inline-block;
+  margin: 0.35rem 0 0.1rem;
+  font-size: 0.8em;
+  font-style: italic;
+  opacity: 0.6;
+}
+.lightbox-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.lightbox-image {
+  display: block;
+  max-width: 100%;
+  max-height: 85vh;
+  margin: 0 auto;
+  object-fit: contain;
 }
 
 /* ---- tool capsule ---- */
@@ -5837,7 +5899,10 @@ body.hide-thinking .event-thought-agent {
 
 .processes-panel {
   margin: 0.5rem 1rem;
-  padding: 0.5rem 0.75rem;
+  /* No bottom padding: it sits below .processes-scroll's clipping edge, so
+   * it cut every row short of the border and left a dead strip. The
+   * breathing room lives inside the scroller instead, where it scrolls. */
+  padding: 0.5rem 0.75rem 0;
   border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
   border-radius: 6px;
   background: color-mix(in srgb, var(--bg) 90%, var(--fg) 4%);
@@ -5856,19 +5921,13 @@ body.hide-thinking .event-thought-agent {
   z-index: 1;
 }
 
-.processes-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: auto;
-}
-
 /* Owns the vertical scroll for the table so the panel header above it
  * stays pinned. The thead sticks to this container's top edge. */
 .processes-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  padding-bottom: 0.5rem;
 }
 
 /* Pin the table's column-header row inside the scroll container so it
@@ -7080,4 +7139,67 @@ body.hide-thinking .event-thought-agent {
   background: color-mix(in srgb, var(--fg) 6%, transparent);
   border-radius: 6px;
   color: color-mix(in srgb, var(--fg) 70%, transparent);
+}
+
+/* Report-an-issue modal (⚑ in the panel tool palette). */
+.report-issue-modal {
+  max-width: 640px;
+  min-width: min(560px, 80vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  font-size: 0.85rem;
+}
+.report-issue-context {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--muted);
+}
+.report-issue-project {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+.report-issue-context code {
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+.report-issue-text {
+  width: 100%;
+  resize: vertical;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  color: var(--fg);
+  font: inherit;
+  line-height: 1.45;
+}
+.report-issue-text:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fg) 45%, transparent);
+  outline-offset: 1px;
+}
+.report-issue-saved {
+  margin: 0;
+  color: var(--muted);
+}
+.report-issue-saved code {
+  word-break: break-all;
+}
+.report-issue-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.process-rss {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.process-rss-subtree {
+  font-style: italic;
 }

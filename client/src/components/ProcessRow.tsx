@@ -4,7 +4,7 @@ import terminalWindowIcon from '../assets/icons/terminal-window.svg?raw';
 import { CopyableId } from '../lib/CopyableId.tsx';
 import { useClock } from '../lib/clock.ts';
 import { readableInk } from '../lib/contrast.ts';
-import { formatDurationTwoUnits } from '../lib/format.ts';
+import { formatDurationTwoUnits, formatRss } from '../lib/format.ts';
 import { isPlaceholderTitle } from '../lib/sessionTitle.ts';
 import { CLI_ICONS } from '../lib/tools.ts';
 import { badgeColor, deriveWorktree, worktreeColor } from '../lib/worktree.ts';
@@ -102,6 +102,8 @@ export function ProcessRow({
   preferCommand = false,
   selected = false,
   onToggleSelect,
+  rssKb,
+  rssIsSubtree = false,
 }: {
   row: Row;
   panel: PanelState | null;
@@ -136,6 +138,10 @@ export function ProcessRow({
    * renderer-native raster leak documented in lib/clock.ts). Network view
    * omits the column. */
   showIdle?: boolean;
+  /** RSS to display for this row. A collapsed root shows its subtree
+   * total; anything else shows its own. Defaults to the row's own value. */
+  rssKb?: number;
+  rssIsSubtree?: boolean;
   /** Show the row's command instead of its session title — set for nested
    * rows whose title would just repeat the parent's (see ProcessesPanel). */
   preferCommand?: boolean;
@@ -481,6 +487,16 @@ export function ProcessRow({
           )}
         </td>
         {showIdle && <IdleCell panel={panel} />}
+        <td
+          className={rssIsSubtree ? 'process-rss process-rss-subtree' : 'process-rss'}
+          title={
+            rssIsSubtree
+              ? 'resident memory summed over this tree — an upper bound, since shared pages are counted once per process'
+              : 'resident memory for this process'
+          }
+        >
+          {formatRss(rssKb ?? row.rss_kb)}
+        </td>
         <td>{fmtUptime(row.uptime_s)}</td>
         <td className="process-actions-cell">
           {/* Reveal-in-iTerm: only for rows whose owning session carries an

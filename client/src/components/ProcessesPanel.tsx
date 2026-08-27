@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { subtreeRss } from '../lib/processMemory.ts';
 import { badgeColor } from '../lib/worktree.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
@@ -14,7 +15,16 @@ const SHOW_RAW_KEY = 'brainhouse:processes:showRaw';
 const SHOW_WRAPPERS_KEY = 'brainhouse:processes:showWrappers';
 
 type ViewMode = 'sessions' | 'network';
-type SortKey = 'pid' | 'project' | 'account' | 'command' | 'session' | 'idle' | 'uptime' | null;
+type SortKey =
+  | 'pid'
+  | 'project'
+  | 'account'
+  | 'command'
+  | 'session'
+  | 'idle'
+  | 'uptime'
+  | 'rss'
+  | null;
 
 /** Pick the comparable value for a row under a given sort key. Strings
  * sort lexicographically; numbers naturally; nulls land at the end of
@@ -38,6 +48,8 @@ function sortValue(
       return row.session_id ?? '';
     case 'idle':
       return panel ? Math.max(0, now - panel.last_event_at) : Number.MAX_SAFE_INTEGER;
+    case 'rss':
+      return row.rss_kb;
     case 'uptime':
       return row.uptime_s;
   }
@@ -383,6 +395,7 @@ export function ProcessesPanel({
     hasChildren?: boolean;
     isRoot?: boolean;
     preferCommand?: boolean;
+    rssKb?: number;
   }>;
   if (viewMode === 'sessions') {
     // Sessions tree: keep only Claude binaries and their descendants
@@ -434,6 +447,8 @@ export function ProcessesPanel({
       else childrenByPid.set(primary.pid, [r]);
       return false;
     });
+    const subtreeRssByPid = new Map<number, number>();
+    for (const r of roots) subtreeRssByPid.set(r.pid, subtreeRss(r, childrenByPid));
     // Column-sort applies to the root level only; descendants stay in
     // natural tree order under their root so the hierarchy reads
     // coherently. With no active column sort, fall back to the prior
@@ -443,6 +458,9 @@ export function ProcessesPanel({
       roots = roots.slice().sort((a, b) => {
         const pa = a.session_id ? (allPanels.get(a.session_id) ?? null) : null;
         const pb = b.session_id ? (allPanels.get(b.session_id) ?? null) : null;
+        if (k === 'rss') {
+          return cmp(subtreeRssByPid.get(a.pid) ?? 0, subtreeRssByPid.get(b.pid) ?? 0, sort.dir);
+        }
         return cmp(sortValue(a, pa, k, nowForSort), sortValue(b, pb, k, nowForSort), sort.dir);
       });
     } else {
@@ -460,6 +478,10 @@ export function ProcessesPanel({
       isRoot: n.depth === 0,
       preferCommand:
         n.parent !== null && titleOf(n.row) !== null && titleOf(n.row) === titleOf(n.parent),
+      rssKb:
+        n.depth === 0 && !expandedRoots.has(n.row.pid)
+          ? (subtreeRssByPid.get(n.row.pid) ?? n.row.rss_kb)
+          : n.row.rss_kb,
     }));
   } else {
     // Network: flat list of port-binders, with Show-all gating for
@@ -640,6 +662,13 @@ export function ProcessesPanel({
                   />
                 )}
                 <SortHeader
+                  label="RSS"
+                  sortKey="rss"
+                  sort={sort}
+                  toggle={toggleSort}
+                  width="80px"
+                />
+                <SortHeader
                   label="Uptime"
                   sortKey="uptime"
                   sort={sort}
@@ -654,12 +683,14 @@ export function ProcessesPanel({
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ row, depth, hasChildren, isRoot, preferCommand }) => (
+              {rows.map(({ row, depth, hasChildren, isRoot, preferCommand, rssKb }) => (
                 <ProcessRow
                   key={row.process_id}
                   row={row}
                   depth={depth}
                   preferCommand={preferCommand}
+                  rssKb={rssKb}
+                  rssIsSubtree={rssKb !== undefined && rssKb !== row.rss_kb}
                   viewMode={viewMode}
                   showAccount={showAccount}
                   panel={row.session_id ? (allPanels.get(row.session_id) ?? null) : null}
