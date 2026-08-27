@@ -717,22 +717,20 @@ Append inside `describe('ProcessesPanel', ...)` in `client/src/components/Proces
     expect(screen.getByRole('button', { name: /kill 1 selected/i })).toHaveTextContent('1 serving');
   });
 
-  it('omits the serving warning for a row with no ports', async () => {
-    mock.rows = [{ ...FIXTURE_ROW, ports: [] }];
+  it('omits the serving warning for a row with no ports', () => {
+    // Sessions view (the default): a claude row is a tree root whether or
+    // not it binds a port, so it can carry the negative assertion that
+    // Network view structurally cannot — `isNetwork` requires a
+    // non-inherited port, and no filter toggle relaxes that.
+    mock.rows = [{ ...FIXTURE_ROW, runtime: 'claude', command: 'claude', ports: [] }];
     render(<ProcessesPanel allPanels={new Map()} />);
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('radio', { name: /network/i }));
-    // Network view hides non-Claude-attributed rows that bind no port, so
-    // the portless fixture only appears with Show all on.
-    await user.click(screen.getByRole('checkbox', { name: 'Show all' }));
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.queryByLabelText(/serving a listening port/i)).not.toBeInTheDocument();
   });
 ```
 
 Accessible names used above are the ones the components already render:
-`ProcessRow.tsx:202` labels the row checkbox `Select PID ${row.pid}`, and
-`ProcessesPanel.tsx:551-554` labels the raw filter `Show all`.
+`ProcessRow.tsx:202` labels the row checkbox `Select PID ${row.pid}`.
 
 - [ ] **Step 2: Run it to make sure it fails**
 
