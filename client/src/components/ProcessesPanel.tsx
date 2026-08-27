@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { subtreeRss } from '../lib/processMemory.ts';
+import { formatRss } from '../lib/format.ts';
+import {
+  DEFAULT_IDLE_THRESHOLD_S,
+  IDLE_THRESHOLDS,
+  reclaimable,
+  subtreeRss,
+} from '../lib/processMemory.ts';
 import { badgeColor } from '../lib/worktree.ts';
 import { trpc } from '../trpc.ts';
 import type { PanelState } from '../useDeltaStream.ts';
@@ -13,6 +19,7 @@ import { ProcessRow } from './ProcessRow.tsx';
 const VIEW_MODE_KEY = 'brainhouse:processes:viewMode';
 const SHOW_RAW_KEY = 'brainhouse:processes:showRaw';
 const SHOW_WRAPPERS_KEY = 'brainhouse:processes:showWrappers';
+const IDLE_THRESHOLD_KEY = 'brainhouse:processes:reclaimThresholdS';
 
 type ViewMode = 'sessions' | 'network';
 type SortKey =
@@ -306,6 +313,16 @@ export function ProcessesPanel({
       return false;
     }
   });
+  const [reclaimThresholdS, setReclaimThresholdS] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem(IDLE_THRESHOLD_KEY));
+      return IDLE_THRESHOLDS.some((t) => t.seconds === saved) ? saved : DEFAULT_IDLE_THRESHOLD_S;
+    } catch {
+      return DEFAULT_IDLE_THRESHOLD_S;
+    }
+  });
+  /** When on, the sessions tree is narrowed to the trees the banner counted. */
+  const [reclaimFilterOn, setReclaimFilterOn] = useState(false);
   /** Roots whose subtrees are currently expanded. Default: empty
    * (everything collapsed). Per-pid so toggling one tree doesn't
    * disturb the others. Not persisted — collapse state resets when
@@ -378,6 +395,11 @@ export function ProcessesPanel({
       localStorage.setItem(SHOW_WRAPPERS_KEY, showWrappers ? '1' : '0');
     } catch {}
   }, [showWrappers]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(IDLE_THRESHOLD_KEY, String(reclaimThresholdS));
+    } catch {}
+  }, [reclaimThresholdS]);
 
   // NOTE: don't bail to `null` when there's no process data yet (e.g. the
   // reconnect window right after a server restart). The panel is mounted
@@ -400,6 +422,11 @@ export function ProcessesPanel({
     preferCommand?: boolean;
     rssKb?: number;
   }>;
+  let reclaim: { sessionIds: Set<string>; totalKb: number; treeCount: number } = {
+    sessionIds: new Set(),
+    totalKb: 0,
+    treeCount: 0,
+  };
   if (viewMode === 'sessions') {
     // Sessions tree: keep only Claude binaries and their descendants
     // (per ppid + original_ancestors). Roots are the claude-runtime
@@ -450,8 +477,22 @@ export function ProcessesPanel({
       else childrenByPid.set(primary.pid, [r]);
       return false;
     });
+    // Memory accounting runs on the UNFILTERED set. A wrapper row (npm/npx
+    // exec heading an MCP server) is hidden from the view but still holds
+    // real memory, and a total that moves when you toggle a display
+    // checkbox is a wrong total, not a filtered one.
+    const rssClaudePids = new Set(all.filter((r) => r.runtime === 'claude').map((r) => r.pid));
+    const rssInSessionTree = all.filter((r) => {
+      if (r.runtime === 'claude') return true;
+      return [r.ppid, ...r.original_ancestors].some((p) => rssClaudePids.has(p));
+    });
+    const { childrenByPid: rssChildrenByPid } = buildParentLinks(rssInSessionTree);
     const subtreeRssByPid = new Map<number, number>();
-    for (const r of roots) subtreeRssByPid.set(r.pid, subtreeRss(r, childrenByPid));
+    for (const r of roots) subtreeRssByPid.set(r.pid, subtreeRss(r, rssChildrenByPid));
+    reclaim = reclaimable(roots, rssChildrenByPid, allPanels, reclaimThresholdS, nowForSort);
+    if (reclaimFilterOn) {
+      roots = roots.filter((r) => r.session_id !== null && reclaim.sessionIds.has(r.session_id));
+    }
     // Column-sort applies to the root level only; descendants stay in
     // natural tree order under their root so the hierarchy reads
     // coherently. With no active column sort, fall back to the prior
@@ -508,10 +549,42 @@ export function ProcessesPanel({
     display = ordered.map((row) => ({ row, depth: 0 }));
   }
   const rows = display;
+  useEffect(() => {
+    if (reclaimFilterOn && reclaim.treeCount === 0) setReclaimFilterOn(false);
+  }, [reclaimFilterOn, reclaim.treeCount]);
 
   return (
     <section className="processes-panel">
       <header>
+        {viewMode === 'sessions' && reclaim.treeCount > 0 && (
+          <div className="processes-reclaim">
+            <button
+              type="button"
+              className={
+                reclaimFilterOn ? 'processes-reclaim-total is-filtering' : 'processes-reclaim-total'
+              }
+              aria-pressed={reclaimFilterOn}
+              title="Resident memory summed across sessions idle past the threshold. Click to narrow the list to those trees; summed RSS double-counts shared pages, so this is an upper bound."
+              onClick={() => setReclaimFilterOn((v) => !v)}
+            >
+              {formatRss(reclaim.totalKb)} reclaimable in {reclaim.treeCount}{' '}
+              {reclaim.treeCount === 1 ? 'tree' : 'trees'}
+            </button>
+            <label className="processes-reclaim-threshold">
+              idle over
+              <select
+                value={reclaimThresholdS}
+                onChange={(e) => setReclaimThresholdS(Number(e.target.value))}
+              >
+                {IDLE_THRESHOLDS.map((t) => (
+                  <option key={t.seconds} value={t.seconds}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
         <h2>
           Processes{' '}
           <span className="processes-count">

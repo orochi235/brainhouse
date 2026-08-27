@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PanelState } from '../useDeltaStream.ts';
 import type { ProcessRow } from '../useProcesses.ts';
 import { ProcessesPanel } from './ProcessesPanel.tsx';
 
@@ -266,5 +267,68 @@ describe('ProcessesPanel', () => {
     const { container } = render(<ProcessesPanel allPanels={new Map()} />);
     expect(container.querySelector('.processes-panel')).toBeInTheDocument();
     expect(screen.getByText(/Waiting for process data/i)).toBeInTheDocument();
+  });
+
+  // m1 is deliberately an `npx`-headed row: isTransparentWrapper hides it
+  // from the view by default, and its memory must still be counted.
+  function reclaimFixtureRows() {
+    return [
+      { ...FIXTURE_ROW, process_id: 'c1', pid: 200, ppid: 1, runtime: 'claude',
+        command: 'claude', session_id: 'idle-1', ports: [], rss_kb: 100_000 },
+      { ...FIXTURE_ROW, process_id: 'm1', pid: 201, ppid: 200, runtime: 'node',
+        command: 'npx @playwright/mcp', session_id: 'idle-1', ports: [], rss_kb: 900_000 },
+      { ...FIXTURE_ROW, process_id: 'c2', pid: 300, ppid: 1, runtime: 'claude',
+        command: 'claude', session_id: 'busy-1', ports: [], rss_kb: 100_000 },
+    ];
+  }
+  function reclaimFixturePanels(now: number) {
+    return new Map([
+      ['idle-1', { id: 'idle-1', last_event_at: now - 10_000 } as unknown as PanelState],
+      ['busy-1', { id: 'busy-1', last_event_at: now - 5 } as unknown as PanelState],
+    ]);
+  }
+
+  it('totals memory under sessions idle past the threshold and filters to them', async () => {
+    const now = Date.now() / 1000;
+    mock.rows = reclaimFixtureRows();
+    render(<ProcessesPanel allPanels={reclaimFixturePanels(now)} />);
+    // Earlier tests may have persisted viewMode=network; pick Sessions explicitly.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /sessions/i }));
+    const banner = screen.getByRole('button', { name: /reclaimable/i });
+    // 1,000,000 KB across one tree.
+    expect(banner).toHaveTextContent('977 MB');
+    expect(banner).toHaveTextContent('1 tree');
+
+    await user.click(banner);
+    expect(screen.getByText('200')).toBeInTheDocument(); // idle session's pid
+    expect(screen.queryByText('300')).not.toBeInTheDocument(); // busy session gone
+  });
+
+  it('counts memory in wrapper rows the view hides, and does not change when Wrappers is toggled', async () => {
+    const now = Date.now() / 1000;
+    mock.rows = reclaimFixtureRows();
+    render(<ProcessesPanel allPanels={reclaimFixturePanels(now)} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /sessions/i }));
+    const before = screen.getByRole('button', { name: /reclaimable/i }).textContent;
+    await user.click(screen.getByRole('checkbox', { name: /wrappers/i }));
+    expect(screen.getByRole('button', { name: /reclaimable/i })).toHaveTextContent(before ?? '');
+  });
+
+  it('hides the banner when nothing is idle past the threshold', async () => {
+    const now = Date.now() / 1000;
+    mock.rows = [
+      { ...FIXTURE_ROW, process_id: 'c2', pid: 300, ppid: 1, runtime: 'claude',
+        command: 'claude', session_id: 'busy-1', ports: [], rss_kb: 100_000 },
+    ];
+    const panels = new Map([
+      ['busy-1', { id: 'busy-1', last_event_at: now - 5 } as unknown as PanelState],
+    ]);
+    render(<ProcessesPanel allPanels={panels} />);
+    // Earlier tests may have persisted viewMode=network; pick Sessions explicitly.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /sessions/i }));
+    expect(screen.queryByRole('button', { name: /reclaimable/i })).not.toBeInTheDocument();
   });
 });

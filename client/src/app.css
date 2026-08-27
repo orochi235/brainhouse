@@ -7208,3 +7208,16 @@ body.hide-thinking .event-thought-agent {
   display: inline-flex;
   align-items: center;
 }
+.processes-reclaim {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 0.85em;
+}
+.processes-reclaim-total {
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.processes-reclaim-total.is-filtering {
+  outline: 1px solid currentColor;
+}
