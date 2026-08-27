@@ -437,10 +437,18 @@ UI/server is meant to uphold. New entries go at the bottom.
 - A background-task `<task-notification>` `queued_command` record renders as
   a compact one-line **notification anchor** entry in the conversation — never
   as a raw user bubble.
-- An assistant turn triggered by a side channel (a `/btw` interjection or a
-  `<task-notification>` completion) shows a small, dimmed single-line quote of
-  what it is replying to, directly above the bubble body. The single-side
-  accent color encodes kind: `/btw` = neutral tint; task = a cool/info tint.
+- A message from another Claude Code session (a `<cross-session-message>`
+  envelope, delivered either as a `queued_command` attachment or as a plain
+  `user_text`) renders as a user-side bubble carrying **only the message
+  body**, labeled with the sending session's name. The delivery preamble,
+  the envelope markup and the trailing peer-message notice are stripped, and
+  the bubble is never mistaken for a `/btw` the user typed.
+- An assistant turn triggered by a side channel (a `/btw` interjection, a
+  `<task-notification>` completion, or a peer session's message) shows a
+  small, dimmed single-line quote of what it is replying to, directly above
+  the bubble body. The single-side accent color encodes kind: `/btw` =
+  neutral tint; task = a cool/info tint; peer session = a warm tint, and the
+  quote is prefixed with the sending session's name.
 - The old standalone `↩ btw` chip is **gone** — the quote line replaces it
   and is self-describing.
 - Clicking the quote opens the panel/log lightbox and scrolls to + pulses the
@@ -768,6 +776,44 @@ UI/server is meant to uphold. New entries go at the bottom.
   `onScroll` requires `scrollTop <= TOP_TRIGGER_PX` *and* more than
   `BOTTOM_SLACK_PX` of content below the viewport before calling
   `loadOlder`.
+- **Image bytes never ride the event stream.** Transcript records inline
+  pasted images and tool screenshots as base64 (200KB apiece is typical);
+  `parseLine` swaps each blob for an `ImageRef` and `ingest` writes the
+  bytes to `~/.brainhouse/images/<sha256>.<ext>` before anything stores or
+  broadcasts the event, so panels, deltas and the persisted event index
+  carry a hash. The picture comes back over `GET /api/image/<sha256>.<ext>`,
+  which is immutable and browser-cacheable because the name is the content.
+  A ref that reaches a client without a `sha256` never got stashed and
+  renders as a placeholder, not a broken image.
+- **`[Image #N]` resolves to the image it stands for.** Claude Code leaves
+  that token in the text of a message it pasted an image into, and writes
+  the image as a sibling content block. `inlineImages` folds the block back
+  onto its record's bubble as a thumbnail and drops the token; an image
+  whose record produced no bubble gets one of its own rather than vanishing.
+- **A subagent panel keeps its project label.** The subtitle slot used to
+  be either/or — `agent_type` for subagents, the `projectLabel` cwd chip
+  for everyone else — so a Task subagent rendered as `general-purpose`
+  with nothing tying it to its repo, even though its `cwd` and
+  `repo_root` were populated exactly like the parent's. Both now render
+  (`BLITSKLIEG · general-purpose`), separated by `.panel-subtitle-sep`;
+  a subagent with no `cwd` still shows the agent type alone.
+
+- **`brainhouse init` owns exactly what it can re-create.** Install strips
+  every entry it recognizes as its own — tagged with the `brainhouse`
+  marker, or untagged but invoking a script from the repo's `hooks/` dir —
+  then re-adds the canonical table, so a legacy install de-duplicates
+  instead of stacking. The corollary is that a hook script with no registry
+  row gets deleted and never comes back: `hooks/handoff-resume.mjs` was
+  tagged but unregistered and vanished on every run. Adding a script to
+  `hooks/` means adding its row to `hookRegistry`.
+- **The panel checklist needs the task-list tools turned on.** Claude Code
+  gates `TaskCreate`/`TaskUpdate` off for an allowlist of model versions
+  (opus 4.8, sonnet 5, fable 5, mythos 5); a gated session emits none, so
+  `todoWriteToChecklist` has nothing to consume and the pinned checklist
+  stays empty with no error anywhere. `brainhouse init` sets
+  `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` in `settings.json`, which is read at CLI
+  launch — already-running sessions keep the gate they started with.
+
 
 - **Service logging never goes through a worker thread under launchd.** A pino
   `transport` (pino-pretty) formats in a worker, and when that worker dies the
@@ -789,3 +835,23 @@ UI/server is meant to uphold. New entries go at the bottom.
   `BRAINHOUSE_MAX_LOG_BYTES` (128MB default). Rotation is enabled by
   `BRAINHOUSE_LOG_DIR`, which `install-service.sh` bakes into the plist —
   absent in a terminal run, where there are no launchd logs to rotate.
+- **Memory accounting runs on the unfiltered process set.** The top widget's
+  RSS rollup and reclaimable banner build their own parent-link map from every
+  tracked row, not from the display-filtered one. A wrapper row (`npm exec`
+  heading an MCP server) is hidden from the view by default but holds real
+  memory — 1.0 GB across 21 rows when this was measured — so a total derived
+  from the visible tree would silently undercount and would change when the
+  user toggled the Wrappers checkbox.
+- **A tree's RSS total is an upper bound.** Summing `rss_kb` across a subtree
+  counts shared pages once per process. A collapsed session root displays its
+  subtree total; expanding it shows each process's own footprint. The cell's
+  tooltip says so rather than pretending to a precision `ps` cannot give.
+- **The reclaimable banner excludes sessions it has no activity record for.**
+  It counts a session tree only when that session has a panel whose
+  `last_event_at` is older than the selected threshold. A root with no panel
+  (started before brainhouse, or unwatched) is unknown, not idle.
+- **brainhouse never kills a process on its own.** Every kill is a user click.
+  Any row serving a listening port — directly or via a descendant — shows a
+  warning glyph beside its ✕, and the batch kill button names how many of the
+  checked rows are serving, so nothing is quietly excluded from a reclaim
+  total on the user's behalf.
