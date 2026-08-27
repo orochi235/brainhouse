@@ -213,3 +213,14 @@ describe('Reconciler', () => {
     expect(r.getRow('p_local_100_1000')?.provenance).toBe('observed');
   });
 });
+
+describe('rss', () => {
+  it('stamps rss_kb on a new row and refreshes it on the next tick', () => {
+    const rec = new Reconciler();
+    const ps = (rss: number) => [baseProc({ pid: 4242, ppid: 1, start_ts: 0, rss_kb: rss, command: 'claude' })];
+    const first = rec.tick(ps(120_000), 10);
+    expect(first.upserts[0]).toMatchObject({ pid: 4242, rss_kb: 120_000 });
+    const second = rec.tick(ps(180_500), 11);
+    expect(second.upserts[0]).toMatchObject({ pid: 4242, rss_kb: 180_500 });
+  });
+});

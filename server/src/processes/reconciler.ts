@@ -30,6 +30,10 @@ export interface ProcessRow {
   ports: Array<{ proto: 'TCP'; addr: string; port: number; inherited?: boolean; is_http?: boolean | null }>;
   ended_ts: number | null; ended_reason: string | null;
   uptime_s: number;
+  /** Resident set size in KB, resampled from `ps` on every tick. Summing
+   * it across a subtree double-counts shared pages, so a tree total is an
+   * upper bound — the UI says so rather than correcting it. */
+  rss_kb: number;
   /** Claude Code background bash id (`bash_1` style) when this row was
    * matched to a `run_in_background: true` Bash invocation via the
    * PostToolUse `bash_id_map` hook record. Lets the UI query
@@ -358,6 +362,7 @@ export class Reconciler {
       }
 
       row.uptime_s = nowS - p.start_ts / 1_000_000_000;
+      row.rss_kb = p.rss_kb;
       this.missingTicks.delete(processId);
 
       if (qualifiesForBroadcast(row)) {
@@ -431,6 +436,7 @@ export class Reconciler {
       ports: [],
       ended_ts: null, ended_reason: null,
       uptime_s: 0,
+      rss_kb: p.rss_kb,
       bash_id: null,
       project: null,
       account_label: null,
