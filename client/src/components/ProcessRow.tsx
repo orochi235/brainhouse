@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useState } from 'react';
+import servingIcon from '../assets/icons/serving.svg?raw';
 import terminalWindowIcon from '../assets/icons/terminal-window.svg?raw';
 import { CopyableId } from '../lib/CopyableId.tsx';
 import { useClock } from '../lib/clock.ts';
@@ -516,6 +517,16 @@ export function ProcessRow({
           {/* Tail-stdout toggle (▾) is hidden until the logs UX is
            * redesigned — inline <pre> below the row was too disruptive.
            * Kill action remains. */}
+          {row.ports.length > 0 && (
+            <span
+              className="process-serving-warning"
+              role="img"
+              aria-label={`PID ${row.pid} is serving a listening port — killing it takes the server down`}
+              title="Serving a listening port. Killing this takes the server down."
+            >
+              <SvgGlyph svg={servingIcon} className="svg-glyph" />
+            </span>
+          )}
           <button onClick={kill} aria-label={`Kill PID ${row.pid}`}>
             ✕
           </button>

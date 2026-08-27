@@ -346,6 +346,9 @@ export function ProcessesPanel({
     });
   };
   const liveSelected = [...selected].filter((id) => all.some((r) => r.process_id === id));
+  const servingSelected = liveSelected.filter(
+    (id) => (all.find((r) => r.process_id === id)?.ports.length ?? 0) > 0,
+  ).length;
   const killSelected = () => {
     for (const id of liveSelected) void trpc.processes.kill.mutate({ process_id: id });
     setSelected(new Set());
@@ -525,6 +528,7 @@ export function ProcessesPanel({
               onClick={killSelected}
             >
               kill {liveSelected.length} selected
+              {servingSelected > 0 ? ` — ${servingSelected} serving` : ''}
             </button>
           )}
           <div className="processes-view-radio" role="radiogroup" aria-label="View mode">

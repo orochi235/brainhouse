@@ -7203,3 +7203,8 @@ body.hide-thinking .event-thought-agent {
 .process-rss-subtree {
   font-style: italic;
 }
+.process-serving-warning {
+  color: var(--warn, #e0a93b);
+  display: inline-flex;
+  align-items: center;
+}
