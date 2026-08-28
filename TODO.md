@@ -1083,5 +1083,38 @@ Still open and NOT in that spec: capping browser-MCP spawn at the MCP config so
 sessions stop launching servers they never browse with. That prevents the sprawl
 instead of cleaning it up, and is the better fix — do it too.
 
+Tested 2026-08-26, which the spec's batch-kill depends on: TERM to the four
+`@playwright/mcp` processes under a 4-day-old `claude --continue` left that
+session running (state `S+`) and it did not respawn them. Killing under a live
+session is therefore safe for the session itself. Still unknown: what that
+session does when it *next* reaches for a browser tool — whether the harness
+reconnects on demand or the call just fails. Worth knowing before the button
+ships, since that is the case a user will hit.
+
+A manual sweep the same day — TERM to every browser-MCP tree except the current
+session's, plus three idle automation Chrome instances — took the population from
+102 processes / 5.41 GB to 5 / 0.21 GB. System free memory went 47% → 54%, swap
+in use 7.9 GB → 6.7 GB. `WindowServer` did not move (94% before and after) — that
+is the standing cost of this machine's five displays (four 6016×3384 @ 120 Hz plus
+the built-in XDR, ~9.8 Gpx/s of compositing), not a fault to chase. This item
+should not claim it.
+
 The existing `kill -0 <pid>` sweep idea under "Slot allocator" is a different
 thing — it detects sessions that ended without a Stop hook. Don't merge them.
+
+## HUD mode + question tagger (2026-08-27)
+
+New UI mode shaped like a HUD rather than the grid. The motivating
+capability: keep track of the actual questions asked in each project.
+The `/btw` feature is the right idea with the wrong UX, and this is the
+replacement direction.
+
+Designed: `docs/superpowers/specs/2026-08-27-question-tagger-design.md`.
+An out-of-band `claude-haiku-4-5` pass, sibling to `server/src/titler.ts`,
+labelling user turns question / directive / control. Measured on 280 real
+turns: punctuation is a coin flip (half of `?` turns are directives) and
+"did the reply use tools" is no better (14% of `?` turns got a tool-free
+reply, because codebase questions need reads). So it needs the model.
+
+Start with the free half — `AskUserQuestion` is already structured and
+appears 217× across 200 transcripts, needing no inference at all.
