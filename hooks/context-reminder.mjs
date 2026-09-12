@@ -37,9 +37,12 @@
  * first crosses the small window; the cost of guessing from the model id
  * was a hook reporting 242% full.
  *
+ * Whatever the fraction yields, the hook stays silent below `MIN_WARN_TOKENS`.
+ *
  * Env:
  *   BRAINHOUSE_CONTEXT_FRACTION   how full before warning (default 0.7)
- *   BRAINHOUSE_CONTEXT_THRESHOLD  absolute override, skips the fraction
+ *   BRAINHOUSE_CONTEXT_THRESHOLD  absolute override, skips the fraction and
+ *                                 the floor — the one way to warn earlier
  *   BRAINHOUSE_HOOK_DEBUG         if set, append parse errors to
  *                                 ~/.brainhouse/dispatcher.log
  *
@@ -54,6 +57,14 @@ import { estimateTokens, recordHookOverhead } from './lib/overhead.mjs';
 
 /** Warn once the window is this full. Late enough to be worth acting on. */
 const DEFAULT_FRACTION = 0.7;
+/**
+ * Never warn below this, whatever the fraction works out to. Under half a
+ * million tokens there is nothing worth clearing, and a warning that arrives
+ * anyway teaches the model to recommend `/clear` on sessions with room to
+ * spare — which is what happened while the window was being misread as 200k.
+ * A session on the small window can no longer warn at all, which is the point.
+ */
+const MIN_WARN_TOKENS = 500_000;
 /** The windows worth telling apart, smallest first. */
 const WINDOWS = [200_000, 1_000_000];
 const DEFAULT_WINDOW = WINDOWS[0];
@@ -89,7 +100,8 @@ async function main() {
   const window = windowFor(peak);
   const fraction = Number(process.env.BRAINHOUSE_CONTEXT_FRACTION) || DEFAULT_FRACTION;
   const threshold =
-    Number(process.env.BRAINHOUSE_CONTEXT_THRESHOLD) || Math.round(window * fraction);
+    Number(process.env.BRAINHOUSE_CONTEXT_THRESHOLD) ||
+    Math.max(MIN_WARN_TOKENS, Math.round(window * fraction));
   if (tokens < threshold) return;
 
   // Throttle: don't re-nag within the cooldown window. First crossing
