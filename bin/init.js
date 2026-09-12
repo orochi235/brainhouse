@@ -9,7 +9,7 @@
  * the next `brainhouse init` invocation.
  *
  * Flags:
- *   --uninstall    remove brainhouse hook entries
+ *   --uninstall    remove brainhouse hook entries and env keys
  *   --dry-run      show what would be written but don't write
  */
 import { existsSync, readdirSync } from 'node:fs';
@@ -30,6 +30,16 @@ const DISPATCHER_EVENTS = /** @type {const} */ ([
   ['SessionStart', 'session_start'],
 ]);
 
+/** Env keys brainhouse sets alongside its hooks. Claude Code gates its
+ * task-list tools off for an allowlist of model versions (opus 4.8, sonnet
+ * 5, fable 5, mythos 5); without the opt-in those sessions emit no
+ * TaskCreate/TaskUpdate and the panel checklist stays empty. */
+export function envRegistry() {
+  return /** @type {{ key: string, value: string }[]} */ ([
+    { key: 'CLAUDE_CODE_ENABLE_TODO_TOOLS', value: '1' },
+  ]);
+}
+
 /** Canonical table of hooks brainhouse manages. Each entry produces one
  * settings.json hook registration tagged `brainhouse: "<role>"`. Add a
  * new hook by appending a row — install/uninstall iterate this list. */
@@ -44,6 +54,12 @@ export function hookRegistry(hooksDir) {
       command: `node ${quote(dispatcher)} ${kind}`,
     });
   }
+  entries.push({
+    role: 'handoff-resume',
+    event: 'SessionStart',
+    matcher: 'clear',
+    command: `node ${quote(path.join(hooksDir, 'handoff-resume.mjs'))}`,
+  });
   // UserPromptSubmit hooks: piggyback small instructions onto the live
   // session's context, paying near-zero token cost instead of spawning
   // fresh `claude -p` subprocesses.
@@ -115,15 +131,21 @@ async function readJson(file) {
   return JSON.parse(raw);
 }
 
-/** Remove every hook entry tagged with our marker, regardless of role.
- * Truthy check covers both the legacy `brainhouse: true` form and the
- * current role-string form (`brainhouse: "dispatcher"` etc.). */
-function stripBrainhouse(settings) {
+/** True for entries we own: tagged with our marker (legacy `true` or the
+ * current role string), or — from installs predating the tag — untagged but
+ * still invoking a script out of our hooks directory. */
+export function isOurs(entry, hooksDir) {
+  if (entry?.[MARKER]) return true;
+  const cmds = Array.isArray(entry?.hooks) ? entry.hooks : [];
+  return cmds.some((h) => typeof h?.command === 'string' && h.command.includes(hooksDir));
+}
+
+function stripBrainhouse(settings, hooksDir) {
   const hooks = settings.hooks ?? {};
   for (const event of Object.keys(hooks)) {
     const arr = hooks[event];
     if (!Array.isArray(arr)) continue;
-    const filtered = arr.filter((e) => !e?.[MARKER]);
+    const filtered = arr.filter((e) => !isOurs(e, hooksDir));
     if (filtered.length === 0) delete hooks[event];
     else hooks[event] = filtered;
   }
@@ -145,6 +167,41 @@ function addBrainhouse(settings, registry) {
   return settings;
 }
 
+/** Values brainhouse wrote into `settings.env`, recorded under the same
+ * marker key the hook entries use. Uninstall consults it so a key the user
+ * has since edited is left alone. */
+function ownedEnv(settings) {
+  const rec = settings[MARKER]?.ownedEnv;
+  return rec && typeof rec === 'object' && !Array.isArray(rec) ? rec : {};
+}
+
+export function removeEnv(settings) {
+  const owned = ownedEnv(settings);
+  const env = settings.env ?? {};
+  for (const [key, written] of Object.entries(owned)) {
+    if (env[key] === written) delete env[key];
+  }
+  if (Object.keys(env).length === 0) delete settings.env;
+  if (settings[MARKER]) {
+    delete settings[MARKER].ownedEnv;
+    if (Object.keys(settings[MARKER]).length === 0) delete settings[MARKER];
+  }
+  return settings;
+}
+
+export function applyEnv(settings, registry) {
+  if (registry.length === 0) return settings;
+  if (!settings.env) settings.env = {};
+  const owned = {};
+  for (const { key, value } of registry) {
+    settings.env[key] = value;
+    owned[key] = value;
+  }
+  if (!settings[MARKER]) settings[MARKER] = {};
+  settings[MARKER].ownedEnv = owned;
+  return settings;
+}
+
 async function writeJson(file, data) {
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
@@ -157,6 +214,7 @@ export async function runInit(argv) {
 
   const dir = hooksDir();
   const registry = hookRegistry(dir);
+  const envReg = envRegistry();
   // Pre-flight: every script the table references must exist.
   for (const { command } of registry) {
     const m = command.match(/^node "([^"]+)"/);
@@ -177,9 +235,8 @@ export async function runInit(argv) {
   for (const file of targets) {
     const before = await readJson(file);
     const beforeStr = JSON.stringify(before, null, 2);
-    const next = uninstall
-      ? stripBrainhouse(structuredClone(before))
-      : addBrainhouse(stripBrainhouse(structuredClone(before)), registry);
+    const stripped = removeEnv(stripBrainhouse(structuredClone(before), dir));
+    const next = uninstall ? stripped : applyEnv(addBrainhouse(stripped, registry), envReg);
     const nextStr = JSON.stringify(next, null, 2);
     if (beforeStr === nextStr) {
       console.log(`= ${file} (no change)`);
@@ -197,6 +254,11 @@ export async function runInit(argv) {
     console.log('');
     console.log('Hooks installed:');
     for (const line of formatRegistry(registry)) console.log(`  ${line}`);
+    if (envReg.length > 0) {
+      console.log('');
+      console.log('Environment set:');
+      for (const { key, value } of envReg) console.log(`  ${key}=${value}`);
+    }
     console.log('');
     console.log('New Claude Code sessions will pick up the changes immediately.');
   }
@@ -209,7 +271,8 @@ export function formatRegistry(registry) {
   const byRole = new Map();
   for (const entry of registry) {
     const existing = byRole.get(entry.role);
-    const tag = entry.matcher && entry.matcher !== '.*' ? `${entry.event}(${entry.matcher})` : entry.event;
+    const tag =
+      entry.matcher && entry.matcher !== '.*' ? `${entry.event}(${entry.matcher})` : entry.event;
     if (existing) existing.push(tag);
     else byRole.set(entry.role, [tag]);
   }

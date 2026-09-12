@@ -87,9 +87,16 @@ brainhouse init --dry-run   # show what would change
 brainhouse init --uninstall # remove only brainhouse's entries
 ```
 
-The installer touches `~/.claude/settings.json`. Brainhouse-owned entries
-are tagged `"brainhouse": true` so re-running or uninstalling never disturbs
-hooks you authored yourself.
+The installer touches `~/.claude/settings.json` and every sibling
+`~/.claude-*` config dir. Brainhouse-owned entries are tagged
+`"brainhouse": "<role>"` so re-running or uninstalling never disturbs hooks
+you authored yourself.
+
+It also sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` in each file's `env` block.
+Claude Code gates its task-list tools off for certain model versions, and
+without them a panel's pinned checklist has nothing to render. The keys it
+wrote are recorded under `"brainhouse": { "ownedEnv": ... }`, so
+`--uninstall` removes only the ones still holding the value it set.
 
 Hook events land at `~/.brainhouse/events/<session_id>.jsonl` (override with
 `BRAINHOUSE_EVENTS_DIR`). The server tails that directory the same way it
