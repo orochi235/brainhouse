@@ -110,6 +110,13 @@ export const SELECTOR_REGISTRY: SelectorDef[] = [
     samplePayload: F.userArtifact,
   },
   {
+    key: 'image.any',
+    name: 'any image block',
+    description: 'A pasted image lifted out of a user message.',
+    selector: 'event[kind=image]',
+    samplePayload: F.imageEvent,
+  },
+  {
     key: 'meta.any',
     name: 'any meta',
     description: 'Any meta record (queue-operation, attachment, etc.).',

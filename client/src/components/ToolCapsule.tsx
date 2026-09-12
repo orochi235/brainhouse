@@ -6,8 +6,15 @@ import {
 } from '../lib/filenameLinksContext.tsx';
 import { useLightbox } from '../lib/lightboxContext.ts';
 import type { ViewItem } from '../lib/pipeline.ts';
-import { iconForTool, parseMcpToolName, stringifyToolValue, summarizeTool } from '../lib/tools.ts';
+import {
+  iconForTool,
+  parseMcpToolName,
+  splitResultImages,
+  stringifyToolValue,
+  summarizeTool,
+} from '../lib/tools.ts';
 import { CapsuleRow } from './CapsuleRow.tsx';
+import { InlineImage } from './InlineImage.tsx';
 import { Markdown } from './Markdown.tsx';
 import { SvgGlyph } from './SvgGlyph.tsx';
 
@@ -68,6 +75,7 @@ function ToolLightboxContent({ item }: { item: ToolItem }) {
   const use = item.use;
   const result = item.result;
   const mcp = use ? parseMcpToolName(use.name) : null;
+  const { images, rest } = splitResultImages(result?.content);
   return (
     <>
       <h3 className="lightbox-title" title={use?.name}>
@@ -84,9 +92,22 @@ function ToolLightboxContent({ item }: { item: ToolItem }) {
       {result ? (
         <>
           <div className="lightbox-section">{result.is_error ? 'result (error)' : 'result'}</div>
-          <pre className="lightbox-code">
-            <LinkifyText text={stringifyToolValue(result.content)} />
-          </pre>
+          {images.length > 0 && (
+            <div className="lightbox-images">
+              {images.map((image, i) => (
+                <InlineImage
+                  key={image.sha256 ?? i}
+                  image={image}
+                  alt={`${use?.name ?? 'tool'} image ${i + 1}`}
+                />
+              ))}
+            </div>
+          )}
+          {rest !== null && (
+            <pre className="lightbox-code">
+              <LinkifyText text={stringifyToolValue(rest)} />
+            </pre>
+          )}
         </>
       ) : (
         <div className="lightbox-section">result pending…</div>

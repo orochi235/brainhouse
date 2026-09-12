@@ -11,6 +11,7 @@ import {
   type FileChangeItem,
   type OpStripItem,
   preprocessEvents,
+  type ReplyTo,
   type ViewItem,
 } from '../lib/pipeline.ts';
 import {
@@ -23,6 +24,7 @@ import {
 import { usePrefs } from '../lib/usePrefs.tsx';
 import { CapsuleRow } from './CapsuleRow.tsx';
 import { FileChangeLightbox } from './FileChangeLightbox.tsx';
+import { InlineImage } from './InlineImage.tsx';
 import { Markdown } from './Markdown.tsx';
 import { OpStripLightbox } from './OpStripLightbox.tsx';
 import { SvgGlyph } from './SvgGlyph.tsx';
@@ -179,10 +181,13 @@ function Bubble({
       className={classNames(
         'bubble',
         reply && 'has-reply',
-        // btw uses the neutral .has-reply accent; only task needs an override.
+        // btw uses the neutral .has-reply accent; task and agent override it.
         reply?.kind === 'task' && 'is-task',
+        reply?.kind === 'agent' && 'is-agent',
+        item.from && 'from-peer',
       )}
     >
+      {item.from ? <div className="peer-from">{item.from}</div> : null}
       {item.parts.map((part, i) => (
         <BubblePartView key={`${item.event.uuid}-${i}`} part={part} escape={item.role === 'user'} />
       ))}
@@ -212,14 +217,12 @@ function Bubble({
                 onReplyJump(reply.refUuid);
               }}
             >
-              ↩ {clampWords(reply.quote, QUOTE_WORD_LIMIT)}
+              ↩ {replyQuoteLabel(reply)}
             </button>
           ) : (
             // No jump handler wired (e.g. inside the lightbox itself) — show the
             // quote as static context rather than a dead-looking button.
-            <span className="reply-quote reply-quote-static">
-              ↩ {clampWords(reply.quote, QUOTE_WORD_LIMIT)}
-            </span>
+            <span className="reply-quote reply-quote-static">↩ {replyQuoteLabel(reply)}</span>
           )}
           {body}
         </div>
@@ -228,6 +231,13 @@ function Bubble({
       )}
     </CapsuleRow>
   );
+}
+
+/** Quote line above a reply. A peer message is quoted under the sending
+ * session's name, since "who asked" is the part a raw quote loses. */
+function replyQuoteLabel(reply: ReplyTo): string {
+  const quote = clampWords(reply.quote, QUOTE_WORD_LIMIT);
+  return reply.from ? `${reply.from}: ${quote}` : quote;
 }
 
 /** Max words shown in a threaded-reply quote before we trim with an ellipsis.
@@ -501,6 +511,7 @@ function GroupIcon({ icon }: { icon: ToolIcon }) {
 
 function BubblePartView({ part, escape }: { part: BubblePart; escape: boolean }) {
   if (part.kind === 'sawtooth') return <div className="interrupt-sawtooth" />;
+  if (part.kind === 'image') return <InlineImage image={part.ref} alt={`Image #${part.pasteId}`} />;
   if (part.struck) {
     return (
       <div className="bubble-text-struck">
@@ -629,5 +640,9 @@ export function EventTime({ ts, startedAt }: { ts: string; startedAt?: number })
       );
     }
   }
-  return <span className="event-time" onMouseEnter={hover}>{formatClockTime(ts)}</span>;
+  return (
+    <span className="event-time" onMouseEnter={hover}>
+      {formatClockTime(ts)}
+    </span>
+  );
 }

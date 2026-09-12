@@ -23,14 +23,15 @@ export type {
   FileChangeItem,
   OpStripItem,
   PreprocessResult,
+  ReplyTo,
   TerminalEntry,
   TerminalItem,
   ToolItem,
   ViewItem,
 } from './pipeline-types.ts';
 export { FILE_TOOLS } from './pipeline-types.ts';
-export { extractLastChecklist };
 export type { ViewName };
+export { extractLastChecklist };
 
 export interface PreprocessOpts {
   /** Restrict the transform set to those that opt into the named view.
@@ -45,9 +46,6 @@ export interface PreprocessOpts {
   isEnabled?: (transformKey: string) => boolean;
 }
 
-export function preprocessEvents(
-  events: Event[],
-  opts: PreprocessOpts = {},
-): PreprocessResult {
+export function preprocessEvents(events: Event[], opts: PreprocessOpts = {}): PreprocessResult {
   return runViewPipeline(events, opts);
 }

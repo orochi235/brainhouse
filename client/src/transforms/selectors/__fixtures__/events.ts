@@ -21,7 +21,7 @@ function base(uuid: string, tags?: Event['tags']): Omit<Event, 'kind' | 'payload
 
 export const F = {
   userText: { ...base('u1', ['dialogue']), kind: 'user_text', payload: { text: 'hello' } } as Event,
-  userTextNoTags: ({
+  userTextNoTags: {
     session_id: 's1',
     agent_id: null,
     uuid: 'u1b',
@@ -30,7 +30,7 @@ export const F = {
     cwd: null,
     kind: 'user_text',
     payload: { text: 'hello' },
-  } as unknown as Event),
+  } as unknown as Event,
   userMeta: {
     ...base('u2', ['meta']),
     kind: 'user_text',
@@ -90,6 +90,19 @@ export const F = {
     ...base('tr1', ['tool']),
     kind: 'tool_result',
     payload: { tool_use_id: 't1', content: 'ok', is_error: false },
+  } as Event,
+  imageEvent: {
+    ...base('img1:1', ['dialogue']),
+    kind: 'image',
+    payload: {
+      ref: {
+        type: 'brainhouse-image',
+        media_type: 'image/png',
+        bytes: 1234,
+        sha256: 'a'.repeat(64),
+      },
+      paste_id: 1,
+    },
   } as Event,
   metaEvent: {
     ...base('m1', ['meta']),

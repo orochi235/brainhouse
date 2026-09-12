@@ -350,9 +350,7 @@ describe('parseLine', () => {
         type: 'assistant',
         message: {
           role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } },
-          ],
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }],
         },
       });
       const tu = events.find((e) => e.kind === 'tool_use');
@@ -396,6 +394,128 @@ describe('parseLine', () => {
     it('fallback meta records are tagged with meta', () => {
       const [e] = lineWith({ type: 'permission-mode', mode: 'bypass' });
       expect(e?.tags).toEqual(['meta']);
+    });
+  });
+
+  describe('image blocks', () => {
+    // "AAAA" decodes to 3 bytes; the trailing "==" in the padded form marks
+    // a 1-byte tail.
+    const PNG = { type: 'base64', media_type: 'image/png', data: 'AAAAAA==' };
+
+    const pastedImage = (extra: Record<string, unknown> = {}) => ({
+      type: 'user',
+      uuid: 'ui',
+      sessionId: 's1',
+      timestamp: 't',
+      message: {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'look at this [Image #1]' },
+          { type: 'image', source: PNG },
+        ],
+      },
+      ...extra,
+    });
+
+    it('becomes its own image event carrying an unstashed ref', () => {
+      const events = parseLine(pastedImage());
+      expect(events.map((e) => e.kind)).toEqual(['user_text', 'image']);
+      const img = events[1];
+      if (img?.kind !== 'image') throw new Error('expected an image event');
+      expect(img.payload.ref).toEqual({
+        type: 'brainhouse-image',
+        media_type: 'image/png',
+        bytes: 4,
+        data: 'AAAAAA==',
+      });
+      expect(img.tags).toEqual(['dialogue']);
+    });
+
+    it('paste_id comes from imagePasteIds when the record declares them', () => {
+      const events = parseLine(pastedImage({ imagePasteIds: [7] }));
+      const img = events[1];
+      if (img?.kind !== 'image') throw new Error('expected an image event');
+      expect(img.payload.paste_id).toBe(7);
+    });
+
+    it('paste_id falls back to 1-based block order', () => {
+      const events = parseLine({
+        type: 'user',
+        uuid: 'ui2',
+        sessionId: 's1',
+        timestamp: 't',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'image', source: PNG },
+            { type: 'image', source: PNG },
+          ],
+        },
+      });
+      const ids = events.map((e) => (e.kind === 'image' ? e.payload.paste_id : null));
+      expect(ids).toEqual([1, 2]);
+    });
+
+    it('images nested in a tool_result are dereferenced in place', () => {
+      const events = parseLine({
+        type: 'user',
+        uuid: 'ui3',
+        sessionId: 's1',
+        timestamp: 't',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 't1',
+              content: [
+                { type: 'text', text: 'screenshot taken' },
+                { type: 'image', source: PNG },
+              ],
+            },
+          ],
+        },
+      });
+      const [e] = events;
+      if (e?.kind !== 'tool_result') throw new Error('expected a tool_result event');
+      expect(e.payload.content).toEqual([
+        { type: 'text', text: 'screenshot taken' },
+        {
+          type: 'image',
+          source: { type: 'brainhouse-image', media_type: 'image/png', bytes: 4, data: 'AAAAAA==' },
+        },
+      ]);
+    });
+
+    it('a text-only tool_result keeps its content identity', () => {
+      const content = [{ type: 'text', text: 'ok' }];
+      const events = parseLine({
+        type: 'user',
+        uuid: 'ui4',
+        sessionId: 's1',
+        timestamp: 't',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content }],
+        },
+      });
+      const [e] = events;
+      if (e?.kind !== 'tool_result') throw new Error('expected a tool_result event');
+      expect(e.payload.content).toBe(content);
+    });
+
+    it('a non-base64 image block falls through to meta', () => {
+      const events = parseLine({
+        type: 'user',
+        uuid: 'ui5',
+        sessionId: 's1',
+        timestamp: 't',
+        message: {
+          role: 'user',
+          content: [{ type: 'image', source: { type: 'url', url: 'https://example/x.png' } }],
+        },
+      });
+      expect(events[0]?.kind).toBe('meta');
     });
   });
 });

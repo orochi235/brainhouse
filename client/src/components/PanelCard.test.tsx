@@ -73,6 +73,28 @@ describe('<PanelCard>', () => {
     expect(container.querySelector('.panel-subtitle')?.textContent).toBe('brainhouse');
   });
 
+  it('keeps the project label on a subagent alongside its agent type', () => {
+    const { container } = renderPanel(
+      panel({
+        kind: 'subagent',
+        parent_panel_id: 'p0',
+        agent_type: 'general-purpose',
+        cwd: '/Users/mike/src/blitsklieg',
+        repo_root: '/Users/mike/src/blitsklieg',
+      }),
+    );
+    expect(container.querySelector('.panel-subtitle-cwd')?.textContent).toBe('blitsklieg');
+    expect(container.querySelector('.panel-subtitle-agent')?.textContent).toBe('general-purpose');
+  });
+
+  it('renders just the agent type when a subagent has no cwd', () => {
+    const { container } = renderPanel(
+      panel({ kind: 'subagent', parent_panel_id: 'p0', agent_type: 'Explore', cwd: null }),
+    );
+    expect(container.querySelector('.panel-subtitle-cwd')).toBeNull();
+    expect(container.querySelector('.panel-subtitle-agent')?.textContent).toBe('Explore');
+  });
+
   it('renders the green status light while status is live', () => {
     const { container } = renderPanel(panel({ status: 'live' }));
     // Live state is now communicated via the status icon (green LED) rather

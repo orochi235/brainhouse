@@ -14,6 +14,7 @@ import path from 'node:path';
 import { type AlertNotificationPrefs, AlertQueue } from './alertQueue.js';
 import { findDirByInode } from './findRenamed.js';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
+import { stashEventImages } from './images.js';
 import { BackgroundIndexer } from './indexer.js';
 import type { Event } from './parser.js';
 import type { Discovery } from './prefs.js';
@@ -613,6 +614,9 @@ export class TranscriptMonitor {
    * `sourceRoot` is the root the event came from; resolved to an account
    * label before being stamped on the panel. */
   ingest(event: Event, sourceRoot?: string): void {
+    // Before anything stores or broadcasts the event: move any inline image
+    // bytes to the on-disk cache and leave a hash behind.
+    stashEventImages(event);
     // Prefer an explicitly-configured prefs.roots label; otherwise
     // derive it from the `.claude*` config-dir segment of the root so
     // multi-account setups badge every session with zero config.

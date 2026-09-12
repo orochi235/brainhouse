@@ -13,8 +13,51 @@ export type EventKind =
   | 'tool_use'
   | 'tool_result'
   | 'resource_usage'
+  | 'image'
   | 'system'
   | 'meta';
+
+/**
+ * Stand-in for an `{ type: 'image', source: { type: 'base64', … } }` block.
+ * Transcript records inline image bytes as base64 — 200KB apiece is typical
+ * — which would otherwise ride the whole way into panel memory and every
+ * delta broadcast. The parser swaps the blob for one of these; the server's
+ * ingest path (`stashEventImages`) writes the bytes to a content-addressed
+ * cache, stamps `sha256`, and drops `data`. Anything a client sees therefore
+ * has `sha256` and no `data`.
+ */
+export interface ImageRef {
+  type: 'brainhouse-image';
+  media_type: string;
+  /** Decoded size. Derived from the base64 length, so it survives stashing. */
+  bytes: number;
+  /** Absent when the bytes were never stashed (persistence disabled, cache
+   * unwritable) — renderers should fall back to a placeholder. */
+  sha256?: string;
+  /** Base64 payload. Lives only between `parseLine` and `stashEventImages`. */
+  data?: string;
+}
+
+/** Media types served with a real Content-Type; everything else falls back
+ * to `.bin` / octet-stream. */
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+};
+
+/** Cache file name (and URL segment under `/api/image/`) for a stashed ref.
+ * Null while the bytes haven't reached the cache. */
+export function imageFileName(ref: Pick<ImageRef, 'sha256' | 'media_type'>): string | null {
+  if (!ref.sha256) return null;
+  return `${ref.sha256}.${IMAGE_EXTENSIONS[ref.media_type] ?? 'bin'}`;
+}
+
+export function isImageRef(value: unknown): value is ImageRef {
+  return !!value && typeof value === 'object' && (value as ImageRef).type === 'brainhouse-image';
+}
 
 /**
  * Additive classification tags computed once at parse time. Downstream
@@ -117,6 +160,16 @@ export type Event =
       };
     })
   | (EventBase & {
+      kind: 'image';
+      payload: {
+        ref: ImageRef;
+        /** The N in the sibling text block's `[Image #N]` placeholder. Taken
+         * from the record's `imagePasteIds` when present, else 1-based
+         * position among the record's image blocks. */
+        paste_id: number;
+      };
+    })
+  | (EventBase & {
       kind: 'system';
       payload: {
         subtype: string | null;
@@ -214,6 +267,9 @@ function tagEvent(ev: Event, isSidechain: boolean): void {
     case 'tool_result':
       tags.push('tool');
       break;
+    case 'image':
+      tags.push('dialogue');
+      break;
     case 'resource_usage':
       tags.push('usage');
       break;
@@ -269,12 +325,16 @@ function parseLineInner(
     }
     if (!Array.isArray(content)) return usageEvent ? [usageEvent] : [];
 
+    const pasteIds = Array.isArray(raw.imagePasteIds) ? raw.imagePasteIds : [];
+    let imageOrdinal = 0;
+
     const out: Event[] = [];
     content.forEach((block, i) => {
       if (!block || typeof block !== 'object') return;
       const b = block as Raw;
       const btype = asString(b.type);
       const sfx = `:${i}`;
+      const imageRef = btype === 'image' ? imageRefFromBlock(b) : null;
 
       if (btype === 'text') {
         const kind = rtype === 'user' ? 'user_text' : 'assistant_text';
@@ -303,8 +363,19 @@ function parseLineInner(
           kind: 'tool_result',
           payload: {
             tool_use_id: asString(b.tool_use_id) ?? '',
-            content: b.content,
+            content: derefImageBlocks(b.content),
             is_error: Boolean(b.is_error),
+          },
+        });
+      } else if (imageRef) {
+        const ordinal = imageOrdinal++;
+        const declared = pasteIds[ordinal];
+        out.push({
+          ...base(sfx),
+          kind: 'image',
+          payload: {
+            ref: imageRef,
+            paste_id: typeof declared === 'number' ? declared : ordinal + 1,
           },
         });
       } else {
@@ -348,6 +419,50 @@ function parseLineInner(
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+/** `{ type: 'image', source: { type: 'base64', … } }` → an ImageRef holding
+ * the still-unstashed blob. Null for any other block shape (including
+ * already-dereferenced blocks and hypothetical url sources), which routes
+ * the block to the `meta` catch-all unchanged. */
+function imageRefFromBlock(block: Raw): ImageRef | null {
+  const source = block.source;
+  if (!source || typeof source !== 'object') return null;
+  const s = source as Raw;
+  if (asString(s.type) !== 'base64') return null;
+  const data = asString(s.data);
+  if (!data) return null;
+  return {
+    type: 'brainhouse-image',
+    media_type: asString(s.media_type) ?? 'application/octet-stream',
+    bytes: base64ByteLength(data),
+    data,
+  };
+}
+
+/** Rewrite any base64 image blocks nested in a tool_result's content array
+ * (browser screenshots, mostly) into ImageRefs, leaving everything else
+ * untouched. Returns the input unchanged when there's nothing to swap, so
+ * the common text-only result keeps its identity. */
+function derefImageBlocks(content: unknown): unknown {
+  if (!Array.isArray(content)) return content;
+  let changed = false;
+  const out = content.map((block) => {
+    if (!block || typeof block !== 'object') return block;
+    const b = block as Raw;
+    if (asString(b.type) !== 'image') return block;
+    const ref = imageRefFromBlock(b);
+    if (!ref) return block;
+    changed = true;
+    return { ...b, source: ref };
+  });
+  return changed ? out : content;
+}
+
+/** Decoded length of a base64 string, without decoding it. */
+function base64ByteLength(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor(data.length / 4) * 3 - padding);
 }
 
 /** djb2 hash of a stably-stringified record. Used to fabricate a stable,

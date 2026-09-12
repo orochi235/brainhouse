@@ -8,7 +8,7 @@
  * under `../transforms/builtIn/` that emits it.
  */
 
-import type { Event } from '@server/parser.ts';
+import type { Event, ImageRef } from '@server/parser.ts';
 import type { ToolResultPayload, ToolUsePayload } from './tools.ts';
 
 export type BubblePart =
@@ -20,6 +20,12 @@ export type BubblePart =
        * stays visible (so the revision history reads naturally) but is
        * struck out to signal it never reached the model. */
       struck?: boolean;
+    }
+  | {
+      kind: 'image';
+      ref: ImageRef;
+      /** The N from the `[Image #N]` placeholder this part replaced. */
+      pasteId: number;
     }
   | { kind: 'sawtooth' };
 
@@ -91,12 +97,15 @@ export interface OpStripItem {
 /** What an assistant turn is replying to when it was triggered by a side
  * channel rather than a normal top-line prompt. `btw` = a `/btw`
  * interjection; `task` = a background-task `<task-notification>`
- * completion. `quote` is the dimmed one-line preview shown above the
- * reply; `refUuid` is the original entry the quote jumps to. */
+ * completion; `agent` = a message from another Claude Code session. `quote`
+ * is the dimmed one-line preview shown above the reply; `refUuid` is the
+ * original entry the quote jumps to. */
 export interface ReplyTo {
-  kind: 'btw' | 'task';
+  kind: 'btw' | 'task' | 'agent';
   quote: string;
   refUuid: string;
+  /** Sending session, on `agent` replies only. */
+  from?: string;
 }
 
 export interface BubbleItem {
@@ -109,6 +118,9 @@ export interface BubbleItem {
    * the threaded-reply quote line above the bubble body. Subsumes the old
    * `btw` boolean (`replyTo.kind === 'btw'`). */
   replyTo?: ReplyTo;
+  /** Sending session, when this user-side bubble is a message delivered from
+   * another Claude Code session rather than something the user typed. */
+  from?: string;
 }
 
 /** Compact, dimmed stand-in for a background-task `<task-notification>`

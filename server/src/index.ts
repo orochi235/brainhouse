@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import Fastify from 'fastify';
+import { resolveImageFile } from './images.js';
 import { TranscriptMonitor } from './monitor.js';
 import { checkOnboarding, ONBOARDING_WARNING_LINES } from './onboarding.js';
 import { PrefsStore } from './prefs.js';
@@ -106,6 +107,17 @@ async function main() {
   // badge count. Outside the tRPC tree so the Swift URLSession client
   // stays a one-line JSON fetch.
   app.get('/api/summary', async () => monitor.store.menubarSummary());
+
+  // Image bytes lifted out of transcript records. Content-addressed, so the
+  // response is immutable and the browser cache does the repeat work.
+  app.get<{ Params: { name: string } }>('/api/image/:name', async (req, reply) => {
+    const hit = resolveImageFile(req.params.name);
+    if (!hit) return reply.code(404).send({ error: 'not found' });
+    return reply
+      .type(hit.mediaType)
+      .header('Cache-Control', 'public, max-age=31536000, immutable')
+      .send(createReadStream(hit.file));
+  });
 
   // Alert feed for the menu bar helper: cursor-paginated by monotonic id.
   // `enabled` mirrors the notification prefs so the helper's menu toggle

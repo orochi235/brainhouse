@@ -13,7 +13,9 @@ import bashTerminalSrc from '../../transforms/builtIn/bashTerminal.ts?raw';
 import clearMarkerSrc from '../../transforms/builtIn/clearMarker.ts?raw';
 import coalesceBetweenChatsSrc from '../../transforms/builtIn/coalesceBetweenChats.ts?raw';
 import coalesceFileOpsSrc from '../../transforms/builtIn/coalesceFileOps.ts?raw';
+import crossSessionMessageSrc from '../../transforms/builtIn/crossSessionMessage.ts?raw';
 import defaultEventItemSrc from '../../transforms/builtIn/defaultEventItem.ts?raw';
+import inlineImagesSrc from '../../transforms/builtIn/inlineImages.ts?raw';
 import insertDayDividersSrc from '../../transforms/builtIn/insertDayDividers.ts?raw';
 import mergeToolResultSrc from '../../transforms/builtIn/mergeToolResult.ts?raw';
 import scanChecklistSrc from '../../transforms/builtIn/scanChecklist.ts?raw';
@@ -40,10 +42,12 @@ export const TRANSFORM_SOURCE: Record<string, string> = {
   'built-in.suppress-interrupt-marker': suppressInterruptMarkerSrc,
   'built-in.clear-marker': clearMarkerSrc,
   'built-in.attach-skill-prelude': attachSkillPreludeSrc,
+  'built-in.cross-session-message': crossSessionMessageSrc,
   'built-in.tag-btw-user-text': tagBtwUserTextSrc,
   'built-in.bash-terminal': bashTerminalSrc,
   'built-in.user-text-bubble': userTextBubbleSrc,
   'built-in.assistant-text-bubble': assistantTextBubbleSrc,
+  'built-in.inline-images': inlineImagesSrc,
   'built-in.default-event-item': defaultEventItemSrc,
   'built-in.coalesce-file-ops': coalesceFileOpsSrc,
   'built-in.coalesce-between-chats': coalesceBetweenChatsSrc,

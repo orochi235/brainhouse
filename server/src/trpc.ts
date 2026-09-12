@@ -29,6 +29,7 @@ import {
   parseJsonlToPanel,
   replayAllowedRoots,
 } from './replay.js';
+import { brainhouseRoot, currentRevision, writeAndLaunch } from './reportIssue.js';
 import { resolveRoots } from './roots.js';
 import { getScenario, listScenarios } from './scenarios.js';
 import type { Delta, PanelDto } from './session.js';
@@ -101,6 +102,33 @@ export const appRouter = t.router({
     .mutation(async ({ ctx, input }) => {
       const ok = await ctx.monitor.reopenSession(input.sessionId);
       return { ok };
+    }),
+
+  /** Write the user's issue report about a panel to `~/.brainhouse/reports/`
+   * and open an iTerm2 window running `claude` in the brainhouse checkout,
+   * seeded with it. `launched: false` means the report is on disk but no
+   * window opened (non-macOS, iTerm2 absent, osascript failed). */
+  reportIssue: t.procedure
+    .input(z.object({ panelId: z.string().min(1), text: z.string().trim().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const panel = ctx.monitor.store.panel(input.panelId);
+      if (!panel) throw new Error(`Unknown panel: ${input.panelId}`);
+      const root = brainhouseRoot();
+      return writeAndLaunch(input.text, {
+        panelId: panel.id,
+        kind: panel.kind,
+        parentPanelId: panel.parent_panel_id ?? null,
+        title: panel.title,
+        agentType: panel.agent_type ?? null,
+        accountLabel: panel.account_label ?? null,
+        status: panel.status,
+        cwd: panel.cwd ?? null,
+        repoRoot: panel.repo_root ?? null,
+        startedAt: panel.started_at,
+        lastEventAt: panel.last_event_at,
+        transcriptPath: ctx.monitor.sourceFileForPanel(input.panelId),
+        brainhouseRevision: await currentRevision(root),
+      });
     }),
 
   processes: t.router({

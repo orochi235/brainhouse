@@ -13,10 +13,12 @@
  *     - suppressInterruptMarker drops "[Request interrupted by user]" and marks the in-flight turn canceled
  *     - clearMarker            `/clear` artifacts → "prior session cleared" divider; drops caveat/stdout noise
  *     - attachSkillPrelude     SKILL.md meta-text → attached to its Skill capsule (lightbox-only)
+ *     - crossSessionMessage    `<cross-session-message>` delivery (either shape) → bubble attributed to the sending session
  *     - tagBtwUserText         /btw queue-operation meta + background-task `<task-notification>` queued_command attachments → bubble (marks next assistant btw:true)
  *     - bashTerminal           user_text with `<bash-*>` blocks → coalesced terminal item
  *     - userTextBubble         default user_text → bubble (handles interrupted-followup sawtooth)
  *     - assistantTextBubble    default assistant_text → bubble (folds short ones onto a prior tool capsule)
+ *     - inlineImages           pasted image → image part on its record's bubble (strips `[Image #N]`)
  *     - defaultEventItem       thinking / system / meta → wrapper items
  *
  *   Stage 2 (over assembled list, in order)
@@ -35,7 +37,9 @@ import { bashTerminal } from './builtIn/bashTerminal.ts';
 import { clearMarker } from './builtIn/clearMarker.ts';
 import { coalesceBetweenChats } from './builtIn/coalesceBetweenChats.ts';
 import { coalesceFileOps } from './builtIn/coalesceFileOps.ts';
+import { crossSessionMessage } from './builtIn/crossSessionMessage.ts';
 import { defaultEventItem } from './builtIn/defaultEventItem.ts';
+import { inlineImages } from './builtIn/inlineImages.ts';
 import { insertDayDividers } from './builtIn/insertDayDividers.ts';
 import { mergeToolResult } from './builtIn/mergeToolResult.ts';
 import { scanChecklist } from './builtIn/scanChecklist.ts';
@@ -61,10 +65,12 @@ export const VIEW_TRANSFORMS: ViewTransform[] = [
   suppressInterruptMarker,
   clearMarker,
   attachSkillPrelude,
+  crossSessionMessage,
   tagBtwUserText,
   bashTerminal,
   userTextBubble,
   assistantTextBubble,
+  inlineImages,
   defaultEventItem,
   coalesceFileOps,
   coalesceBetweenChats,

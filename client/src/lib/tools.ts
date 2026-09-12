@@ -11,6 +11,7 @@
  * for kill/pkill/killall) comes from Lucide (https://lucide.dev/), MIT.
  */
 
+import { type ImageRef, isImageRef } from '@server/parser.ts';
 import awsIcon from '../assets/icons/aws.svg?raw';
 import azIcon from '../assets/icons/az.svg?raw';
 import brewIcon from '../assets/icons/brew.svg?raw';
@@ -356,7 +357,12 @@ export function salientBashCommand(cmd: string): string {
     kept.push({ op: seg.op, text });
   }
   if (kept.length === 0) {
-    return logical.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+    return (
+      logical
+        .split('\n')
+        .map((l) => l.trim())
+        .find(Boolean) ?? ''
+    );
   }
   let out = kept[0]?.text ?? '';
   for (let i = 1; i < kept.length; i += 1) {
@@ -433,6 +439,29 @@ export function summarizeTool(
   else if (lines > 1) suffix = `${lines} lines`;
   else suffix = `${text.length} chars`;
   return `${label}  · ${suffix}`;
+}
+
+/**
+ * Split a tool_result's content into the images it carries and everything
+ * else. Browser and screenshot tools return `{ type: 'image', source: … }`
+ * blocks alongside their text; the parser has already swapped the base64 for
+ * an `ImageRef`, and this keeps the leftover ref out of the text dump so it
+ * can render as an actual picture.
+ */
+export function splitResultImages(content: unknown): { images: ImageRef[]; rest: unknown } {
+  if (!Array.isArray(content)) return { images: [], rest: content };
+  const images: ImageRef[] = [];
+  const rest: unknown[] = [];
+  for (const block of content) {
+    const source = (block as { source?: unknown } | null)?.source;
+    if (isImageRef(source)) images.push(source);
+    else rest.push(block);
+  }
+  if (images.length === 0) return { images, rest: content };
+  // A result that was nothing but images has no text left to print; one
+  // leftover block prints better unwrapped than as a one-element array.
+  if (rest.length === 0) return { images, rest: null };
+  return { images, rest: rest.length === 1 ? rest[0] : rest };
 }
 
 export function stringifyToolValue(value: unknown): string {

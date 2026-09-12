@@ -34,6 +34,7 @@ import { EventList } from './EventList.tsx';
 import { HoverPopover, TruncationTooltip } from './HoverPopover.tsx';
 import { MiniHoverToolbar } from './MiniHoverToolbar.tsx';
 import { ContextSizeTooltip, SessionTimeTooltip } from './PanelHeaderTooltips.tsx';
+import { ReportIssueModal } from './ReportIssueModal.tsx';
 import { StatusLight } from './StatusLight.tsx';
 import { SvgGlyph } from './SvgGlyph.tsx';
 import { ThreadedReplyLightbox } from './ThreadedReplyLightbox.tsx';
@@ -676,15 +677,28 @@ function PanelHeader({
     </>
   );
 
-  const subtitleNode =
+  const projectNode = panel.cwd ? (
+    <TruncationTooltip text={panel.cwd}>
+      <span className="panel-subtitle panel-subtitle-cwd">
+        {projectLabel(panel.cwd, panel.repo_root)}
+      </span>
+    </TruncationTooltip>
+  ) : null;
+  const agentTypeNode =
     panel.kind === 'subagent' && panel.agent_type ? (
-      <span className="panel-subtitle">{panel.agent_type}</span>
-    ) : panel.cwd ? (
-      <TruncationTooltip text={panel.cwd}>
-        <span className="panel-subtitle panel-subtitle-cwd">
-          {projectLabel(panel.cwd, panel.repo_root)}
-        </span>
-      </TruncationTooltip>
+      <span className="panel-subtitle panel-subtitle-agent">{panel.agent_type}</span>
+    ) : null;
+  const subtitleNode =
+    projectNode || agentTypeNode ? (
+      <>
+        {projectNode}
+        {projectNode && agentTypeNode && (
+          <span className="panel-subtitle panel-subtitle-sep" aria-hidden="true">
+            ·
+          </span>
+        )}
+        {agentTypeNode}
+      </>
     ) : undefined;
 
   // Subtitle row right side: breadcrumb back to parent (if broken-out),
@@ -886,6 +900,17 @@ function PanelToolPalette({
         >
           ⌁
         </ToolChip>
+        {!readOnly && (
+          <ToolChip
+            title="Report an issue with this session — opens a Claude session in the brainhouse repo to troubleshoot it"
+            onClick={(e) => {
+              e.stopPropagation();
+              lightbox.open(<ReportIssueModal panel={panel} />, { theme: panel.theme });
+            }}
+          >
+            ⚑
+          </ToolChip>
+        )}
         {isSubWithParent && onToggleBrokenOut && (
           <ToolChip
             title={brokenOut ? 'Re-dock into the parent session' : 'Promote to a grid panel'}

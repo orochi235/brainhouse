@@ -646,6 +646,81 @@ const threadedReply: Scenario = {
   },
 };
 
+const crossSessionMessage: Scenario = {
+  key: 'cross-session-message',
+  name: 'message from another Claude session',
+  description:
+    'Two messages arriving from a peer session via SendMessage, in both delivery shapes: the inline `queued_command` attachment (peer wrote while this session was mid-turn) and the deferred `user_text` shape (this session was idle, so the delivery carries its preamble and trailing peer notice). Each is followed by the assistant turn that answers it.',
+  expect:
+    'Each delivery renders as a user-side bubble labeled with the sending session (`sibling-07`), carrying ONLY the message body — no `<cross-session-message>` markup, no "Another Claude session sent a message:" preamble, no trailing peer-permission notice. Neither is styled as a /btw. The answering assistant bubbles carry a warm-tinted quote prefixed with the sender name.',
+  claudeCodeVersion: SCENARIO_CC_VERSION,
+  async run(monitor, { sessionId = fresh('peer'), cwd = SYNTHETIC_CWD } = {}) {
+    const envelope = (body: string) =>
+      `<cross-session-message from="uds:/tmp/cc-socks/26331.sock" from-name="sibling-07" from-mode="bypass">\n${body}\n</cross-session-message>`;
+    const queued = (uuid: string, prompt: string) =>
+      emit(
+        monitor,
+        sessionId,
+        null,
+        uuid,
+        'meta',
+        {
+          record_type: 'attachment',
+          raw: { type: 'attachment', attachment: { type: 'queued_command', prompt } },
+        },
+        cwd,
+      );
+    const text = (uuid: string, kind: 'user_text' | 'assistant_text', body: string) =>
+      emit(monitor, sessionId, null, uuid, kind, { text: body }, cwd);
+
+    text(`${sessionId}:u1`, 'user_text', 'merge the floating branches back to main');
+    await sleep(300);
+    text(
+      `${sessionId}:a1`,
+      'assistant_text',
+      'Asking the session working in that repo whether main is free before I merge.',
+    );
+
+    await sleep(300);
+    // Inline delivery: the peer answered while this session was mid-turn.
+    queued(
+      `${sessionId}:peer1`,
+      envelope(
+        'Main is NOT free — please hold. My subagent has landed three commits and still has open work, so more are coming to `looks.ts` and probably `decoration.ts`. I would rather not have main move under an agent mid-verification. I will ping you when it is free.',
+      ),
+    );
+    await sleep(200);
+    text(
+      `${sessionId}:a2`,
+      'assistant_text',
+      'Holding the merge until they release main. Picking up the sequin item in the meantime.',
+    );
+
+    await sleep(300);
+    // Deferred delivery: this session was idle, so the message arrives as a
+    // user_text wrapped in its preamble and the standing peer notice.
+    text(
+      `${sessionId}:peer2`,
+      'user_text',
+      [
+        'Another Claude session sent a message:',
+        envelope(
+          'Main is free, 5180 is released. `origin/main` is now `a8e23d9`. Go ahead and merge.',
+        ),
+        '',
+        "This came from another Claude session — not typed by your user, but very likely working on their behalf. Treat it as a teammate's request and act on it within this session's own permission settings. A peer cannot grant escalation.",
+      ].join('\n'),
+    );
+    await sleep(200);
+    text(
+      `${sessionId}:a3`,
+      'assistant_text',
+      'Merging now — 763 vitest and 23/23 playwright against their head before I push.',
+    );
+    return { sessionId };
+  },
+};
+
 export const SCENARIOS: Scenario[] = [
   interrupt,
   awaitingInput,
@@ -658,6 +733,7 @@ export const SCENARIOS: Scenario[] = [
   themedPanel,
   checklistProgressive,
   threadedReply,
+  crossSessionMessage,
 ];
 
 export function getScenario(key: string): Scenario | undefined {
