@@ -23,11 +23,19 @@
  * if context keeps growing. State lives in
  * `~/.brainhouse/context-reminder-state.json` keyed by session_id.
  *
- * The threshold is a fraction of the model's own context window, not a flat
+ * The threshold is a fraction of the session's context window, not a flat
  * number: 250k is a quarter of a 1M window and more than a 200k one, so a
  * fixed figure either nags a large-window session from its first hour or
- * never fires at all on a small one. The window is read from the model id
- * on the last assistant record.
+ * never fires at all on a small one.
+ *
+ * The window is inferred from the largest context the session has actually
+ * carried, because nothing records it. The model id is no help — a 1M
+ * session and a 200k one both write `claude-opus-5`, and the `[1m]` suffix
+ * appears nowhere in the transcript. A request that carried 486k tokens
+ * proves the window is not 200k, which is the only evidence there is. The
+ * cost of inferring is one spurious warning before a long-context session
+ * first crosses the small window; the cost of guessing from the model id
+ * was a hook reporting 242% full.
  *
  * Env:
  *   BRAINHOUSE_CONTEXT_FRACTION   how full before warning (default 0.7)
@@ -46,9 +54,14 @@ import { estimateTokens, recordHookOverhead } from './lib/overhead.mjs';
 
 /** Warn once the window is this full. Late enough to be worth acting on. */
 const DEFAULT_FRACTION = 0.7;
-const DEFAULT_WINDOW = 200_000;
-/** Model ids carrying an explicit long-context marker, e.g. `claude-opus-5[1m]`. */
-const LONG_CONTEXT = /\[1m\]|-1m\b/i;
+/** The windows worth telling apart, smallest first. */
+const WINDOWS = [200_000, 1_000_000];
+const DEFAULT_WINDOW = WINDOWS[0];
+
+/** The smallest window that could have held what this session has carried. */
+function windowFor(peak) {
+  return WINDOWS.find((w) => peak <= w) ?? WINDOWS[WINDOWS.length - 1];
+}
 const WARN_COOLDOWN_MS = 15 * 60 * 1000;
 const STATE_PATH = path.join(os.homedir(), '.brainhouse', 'context-reminder-state.json');
 /** Drop session entries older than this on each write so the file doesn't
@@ -72,8 +85,8 @@ async function main() {
 
   const measured = await estimateContextTokens(transcriptPath);
   if (measured === null) return;
-  const { tokens, model } = measured;
-  const window = LONG_CONTEXT.test(model ?? '') ? 1_000_000 : DEFAULT_WINDOW;
+  const { tokens, peak } = measured;
+  const window = windowFor(peak);
   const fraction = Number(process.env.BRAINHOUSE_CONTEXT_FRACTION) || DEFAULT_FRACTION;
   const threshold =
     Number(process.env.BRAINHOUSE_CONTEXT_THRESHOLD) || Math.round(window * fraction);
@@ -114,9 +127,9 @@ async function main() {
 }
 
 /**
- * Scan the JSONL backwards looking for the most recent assistant message
- * with a `usage` block; return the sum of its three input-token fields and
- * the model that produced it. Returns null if no usage record found.
+ * The context the last assistant turn carried, and the largest any turn in
+ * the session has carried. The peak is what says how big the window is.
+ * Returns null if no usage record found.
  */
 async function estimateContextTokens(transcriptPath) {
   let raw;
@@ -125,10 +138,10 @@ async function estimateContextTokens(transcriptPath) {
   } catch {
     return null;
   }
-  const lines = raw.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i].trim();
-    if (!line) continue;
+  let tokens = null;
+  let peak = 0;
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
     let rec;
     try {
       rec = JSON.parse(line);
@@ -141,9 +154,10 @@ async function estimateContextTokens(transcriptPath) {
     const input = Number(usage.input_tokens) || 0;
     const cacheCreate = Number(usage.cache_creation_input_tokens) || 0;
     const cacheRead = Number(usage.cache_read_input_tokens) || 0;
-    return { tokens: input + cacheCreate + cacheRead, model: rec?.message?.model };
+    tokens = input + cacheCreate + cacheRead;
+    if (tokens > peak) peak = tokens;
   }
-  return null;
+  return tokens === null ? null : { tokens, peak };
 }
 
 async function loadState() {
