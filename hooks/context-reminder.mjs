@@ -23,8 +23,15 @@
  * if context keeps growing. State lives in
  * `~/.brainhouse/context-reminder-state.json` keyed by session_id.
  *
+ * The threshold is a fraction of the model's own context window, not a flat
+ * number: 250k is a quarter of a 1M window and more than a 200k one, so a
+ * fixed figure either nags a large-window session from its first hour or
+ * never fires at all on a small one. The window is read from the model id
+ * on the last assistant record.
+ *
  * Env:
- *   BRAINHOUSE_CONTEXT_THRESHOLD  override token threshold (default 150000)
+ *   BRAINHOUSE_CONTEXT_FRACTION   how full before warning (default 0.7)
+ *   BRAINHOUSE_CONTEXT_THRESHOLD  absolute override, skips the fraction
  *   BRAINHOUSE_HOOK_DEBUG         if set, append parse errors to
  *                                 ~/.brainhouse/dispatcher.log
  *
@@ -37,7 +44,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { estimateTokens, recordHookOverhead } from './lib/overhead.mjs';
 
-const DEFAULT_THRESHOLD = 250_000;
+/** Warn once the window is this full. Late enough to be worth acting on. */
+const DEFAULT_FRACTION = 0.7;
+const DEFAULT_WINDOW = 200_000;
+/** Model ids carrying an explicit long-context marker, e.g. `claude-opus-5[1m]`. */
+const LONG_CONTEXT = /\[1m\]|-1m\b/i;
 const WARN_COOLDOWN_MS = 15 * 60 * 1000;
 const STATE_PATH = path.join(os.homedir(), '.brainhouse', 'context-reminder-state.json');
 /** Drop session entries older than this on each write so the file doesn't
@@ -59,9 +70,14 @@ async function main() {
   if (typeof transcriptPath !== 'string') return;
   const sessionId = payload?.session_id ?? payload?.sessionId;
 
-  const threshold = Number(process.env.BRAINHOUSE_CONTEXT_THRESHOLD) || DEFAULT_THRESHOLD;
-  const tokens = await estimateContextTokens(transcriptPath);
-  if (tokens === null || tokens < threshold) return;
+  const measured = await estimateContextTokens(transcriptPath);
+  if (measured === null) return;
+  const { tokens, model } = measured;
+  const window = LONG_CONTEXT.test(model ?? '') ? 1_000_000 : DEFAULT_WINDOW;
+  const fraction = Number(process.env.BRAINHOUSE_CONTEXT_FRACTION) || DEFAULT_FRACTION;
+  const threshold =
+    Number(process.env.BRAINHOUSE_CONTEXT_THRESHOLD) || Math.round(window * fraction);
+  if (tokens < threshold) return;
 
   // Throttle: don't re-nag within the cooldown window. First crossing
   // always warns; subsequent ones only after WARN_COOLDOWN_MS elapses.
@@ -75,7 +91,8 @@ async function main() {
   }
 
   const message =
-    `⚠️ Context is high (~${formatThousands(tokens)} tokens, threshold ${formatThousands(threshold)}). ` +
+    `⚠️ Context is ${Math.round((tokens / window) * 100)}% full ` +
+    `(~${formatThousands(tokens)} of a ${formatThousands(window)} window; warns at ${formatThousands(threshold)}). ` +
     'If this prompt is starting a substantial new chunk of work (a multi-step task, a new feature, a fresh plan) ' +
     'AND prior conversation context isn\'t needed, suggest the user run `/clear` (or `/branch` to fork). ' +
     'For trivial questions, quick follow-ups, status checks, or anything continuing in-flight work, ' +
@@ -98,8 +115,8 @@ async function main() {
 
 /**
  * Scan the JSONL backwards looking for the most recent assistant message
- * with a `usage` block; return the sum of its three input-token fields.
- * Returns null if no usage record found.
+ * with a `usage` block; return the sum of its three input-token fields and
+ * the model that produced it. Returns null if no usage record found.
  */
 async function estimateContextTokens(transcriptPath) {
   let raw;
@@ -124,7 +141,7 @@ async function estimateContextTokens(transcriptPath) {
     const input = Number(usage.input_tokens) || 0;
     const cacheCreate = Number(usage.cache_creation_input_tokens) || 0;
     const cacheRead = Number(usage.cache_read_input_tokens) || 0;
-    return input + cacheCreate + cacheRead;
+    return { tokens: input + cacheCreate + cacheRead, model: rec?.message?.model };
   }
   return null;
 }
