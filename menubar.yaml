@@ -1,0 +1,109 @@
+# The brainhouse menu bar helper. `perch install` from this directory builds it
+# and hands it to launchd; `perch run` puts it in the foreground to look at.
+#
+# Banner delivery is not here. It is menubar/Sources/Alerts.swift, because a
+# notification fires on a transition rather than on a condition holding, and the
+# cursor that makes it fire once is state no when: can name.
+
+app:
+  name: brainhouse
+  id: com.brainhouse.menubar
+  icon: brain
+  interval: 5s
+  # UNUserNotificationCenter grants against the bundle's code identity, so an
+  # ad-hoc signature would move the cdhash on every build and lose the grant.
+  sign: perch local signing
+
+watch:
+  # launchd's side: whether the agent is installed and whether it holds. The
+  # server answering is a different question, and the gap between them is the
+  # state worth naming.
+  server:
+    launchagent: com.brainhouse
+  # /health is not polled: this is the same signal and carries the count too.
+  summary:
+    http: http://localhost:8765/api/summary
+    json: true
+    shape:
+      live: int
+      awaiting_input: int
+  # Read for `enabled` alone. The alerts it also returns are Alerts.swift's,
+  # which keeps its own cursor; after=-1 reads the feed without moving anything.
+  notifications:
+    http: "http://localhost:8765/api/alerts?after=-1"
+    json: true
+    shape:
+      enabled: bool
+  chrome:
+    exists: /Applications/Google Chrome.app
+
+# The ServiceState enum, ordered so each state excludes the ones above it.
+# `wedged` is an agent launchd has started that is not answering — which the old
+# helper reported as "not running", because a refused connection was all it saw.
+state:
+  - uninstalled: "!server.installed"
+  - stopped: "!server.loaded"
+  - wedged: "!summary.ok"
+  - up:
+
+status:
+  - when: wedged
+    icon: exclamationmark.triangle
+  - when: "uninstalled || stopped"
+    dim: true
+  - badge: "summary.data.awaiting_input > 0 ? string(summary.data.awaiting_input) : ''"
+
+menu:
+  # Two read-only lines: is the server answering, and does launchd hold the
+  # agent. They can disagree, and that difference decides which actions below
+  # make sense.
+  - text: "Server: running on :8765 — {{summary.data.awaiting_input}} awaiting input"
+    when: "up && summary.data.awaiting_input > 0"
+  - text: "Server: running on :8765"
+    when: "up && summary.data.awaiting_input == 0"
+  - text: "Server: not responding on :8765"
+    when: wedged
+  - text: "Server: not running"
+    when: "uninstalled || stopped"
+  - text: "Service: not installed"
+    when: uninstalled
+  - text: "Service: installed, not loaded"
+    when: stopped
+  - text: "Service: loaded"
+    when: "!uninstalled && !stopped"
+  - separator
+  # Chrome by bundle id so a copy already running is raised rather than a second
+  # one launched beside it; the default browser where there is no Chrome.
+  - text: Open Dashboard
+    when: "chrome.ok"
+    run: [open, -b, com.google.Chrome, "http://localhost:8765/"]
+  - text: Open Dashboard
+    when: "!chrome.ok"
+    open: http://localhost:8765/
+  # The master toggle, which flips notifications.muteAll on the server and so
+  # silences the web client too. Two items rather than one checkmark, because
+  # the schema has no checkmark and the verb reads better than the state.
+  - text: Mute notifications
+    when: "notifications.ok && notifications.data.enabled"
+    post: {url: "http://localhost:8765/api/notifications", body: {enabled: false}}
+  - text: Unmute notifications
+    when: "notifications.ok && !notifications.data.enabled"
+    post: {url: "http://localhost:8765/api/notifications", body: {enabled: true}}
+  - separator
+  - text: "Install with: npm run service:install"
+    when: uninstalled
+  # start bootstraps, which fails on a job launchd already holds — so a wedged
+  # agent gets restart, whose bootout-wait-bootstrap is the way back up.
+  - text: Start Service
+    when: stopped
+    agent: server.start
+  - text: Restart Service
+    when: "up || wedged"
+    agent: server.restart
+  - text: Stop Service
+    when: "up || wedged"
+    agent: server.stop
+  - text: Open Logs
+    open: ~/Library/Logs/brainhouse
+  - separator
+  - {text: Quit, quit: true}

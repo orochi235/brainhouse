@@ -705,8 +705,11 @@ UI/server is meant to uphold. New entries go at the bottom.
   delivery arm: it polls `GET /api/alerts?after=<cursor>` on its existing
   5s cadence, seeds the cursor silently on its first poll (helper
   restarts never replay), and posts via `UNUserNotificationCenter`
-  (which requires the helper's `.app` bundle identity — see
-  `scripts/install-menubar.sh`). `notifications.muteAll` gates every
+  (which requires the helper's `.app` bundle identity, which `perch
+  install` builds and signs — see `menubar.yaml`). The delivery arm is
+  `menubar/Sources/Alerts.swift`, hand-written because perch's schema
+  cannot say "fire once on a transition".
+  `notifications.muteAll` gates every
   channel — server queue and client channels alike — and is flippable
   from both the prefs modal and the helper's menu toggle
   (`POST /api/notifications`), which share the prefs file and therefore

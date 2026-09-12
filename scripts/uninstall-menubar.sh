@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
-# Quit the brainhouse menu bar helper and remove its LaunchAgent and binary.
+# Quit the brainhouse menu bar helper and remove its LaunchAgent and app.
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
-LABEL="com.brainhouse.menubar"
-PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-BIN="$HOME/Library/Application Support/brainhouse/BrainhouseMenuBar"
+if command -v perch >/dev/null; then
+  perch uninstall
+else
+  # perch is what wrote these; removing them by hand is the fallback for a
+  # machine that no longer has it.
+  launchctl bootout "gui/$(id -u)/com.brainhouse.menubar" 2>/dev/null || true
+  rm -f "$HOME/Library/LaunchAgents/com.brainhouse.menubar.plist"
+  rm -rf "$HOME/Applications/brainhouse.app"
+fi
 
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-rm -f "$PLIST" "$BIN"
+# Left behind by installs older than the perch port.
+rm -rf "$HOME/Library/Application Support/brainhouse/BrainhouseMenuBar.app"
+rm -f "$HOME/Library/Application Support/brainhouse/BrainhouseMenuBar"
+
 echo "brainhouse menu bar helper uninstalled"
