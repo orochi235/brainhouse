@@ -25,3 +25,10 @@ snap-*.yml
 
 # scan-transforms discovery output (transient triage fodder)
 scripts/.scan-out/
+
+# Brainstorm mockups + session state from the superpowers skills
+.superpowers/
+
+# Backup copies left beside a file by patch/mergetool
+*.orig
+CLAUDE.local.md
