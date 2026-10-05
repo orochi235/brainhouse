@@ -66,7 +66,8 @@ export function isImageRef(value: unknown): value is ImageRef {
  * classifier keeps that change isolated to this file.
  *
  *   dialogue       — strict: direct user↔agent text only. `user_text`
- *                    (without `artifact` / `meta`) + `assistant_text`.
+ *                    (without `artifact` / `meta`, and not system-injected)
+ *                    + `assistant_text`.
  *                    Excludes `thinking` (agent's internal monologue),
  *                    tool calls, sidechannel records.
  *   tool           — `tool_use` or `tool_result`.
@@ -137,6 +138,10 @@ export type Event =
         /** When present, this user_text was produced by the named tool_use
          * (e.g. Skill prelude → the Skill tool_use_id). */
         source_tool_use_id?: string;
+        /** True when Claude Code queued this prompt itself rather than the
+         * user typing it: a background-task notification, a peer session's
+         * message (`promptSource: 'system'` / a non-human `origin.kind`). */
+        injected?: boolean;
       };
     })
   | (EventBase & { kind: 'assistant_text'; payload: { text: string } })
@@ -254,7 +259,7 @@ function tagEvent(ev: Event, isSidechain: boolean): void {
       }
       if (isMeta) tags.push('meta');
       // Strict dialogue: direct user-typed text only.
-      if (!isArtifact && !isMeta) tags.push('dialogue');
+      if (!isArtifact && !isMeta && !ev.payload.injected) tags.push('dialogue');
       break;
     }
     case 'assistant_text':
@@ -305,8 +310,14 @@ function parseLineInner(
     const content = (msg as Raw).content;
     const isMeta = rtype === 'user' && raw.isMeta === true;
     const srcToolUseId = rtype === 'user' ? asString(raw.sourceToolUseID) : null;
-    const userMetaExtras: { is_meta?: boolean; source_tool_use_id?: string } = {};
+    const originKind = asString((raw.origin as Raw | undefined)?.kind);
+    const injected =
+      rtype === 'user' &&
+      (raw.promptSource === 'system' || (originKind !== null && originKind !== 'human'));
+    const userMetaExtras: { is_meta?: boolean; source_tool_use_id?: string; injected?: boolean } =
+      {};
     if (isMeta) userMetaExtras.is_meta = true;
+    if (injected) userMetaExtras.injected = true;
     if (srcToolUseId) userMetaExtras.source_tool_use_id = srcToolUseId;
 
     // Emit a resource_usage event for every assistant message that carries

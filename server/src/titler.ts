@@ -45,7 +45,7 @@
  * bucket from `hook_overhead_tokens`. Rolled up in the Stats view.
  */
 
-import type { Event } from './parser.js';
+import { type Event, hasTag } from './parser.js';
 import type { Panel } from './session.js';
 
 const PLACEHOLDER_TURN_THRESHOLD = 2;
@@ -56,8 +56,6 @@ const ASSISTANT_TEXT_FLOOR = 40;
 const DEBOUNCE_MS = 30_000;
 const COOLDOWN_MS_ON_FAILURE = 2 * 60_000;
 const NETWORK_RETRY_DELAY_MS = 1_000;
-
-const ARTIFACT_RE = /^<(local-command-(caveat|stdout)|command-(name|message|args))>/;
 
 const SYSTEM_PROMPT =
   'You are brainhouse session-titler. You produce a concise session title from the' +
@@ -515,9 +513,11 @@ export function extractTurns(events: Event[]): Turns {
   const assistant: string[] = [];
   for (const ev of events) {
     if (ev.kind === 'user_text') {
-      const text = ((ev.payload as { text?: string }).text ?? '').trim();
+      // `dialogue` = typed by the user: no slash-command scaffolding, skill
+      // bodies, task notifications or peer-session messages.
+      if (!hasTag(ev, 'dialogue')) continue;
+      const text = (ev.payload.text ?? '').trim();
       if (!text) continue;
-      if (ARTIFACT_RE.test(text)) continue;
       user.push(text);
     } else if (ev.kind === 'assistant_text') {
       const text = ((ev.payload as { text?: string }).text ?? '').trim();
@@ -554,9 +554,14 @@ export function buildUserMessage(panel: Panel, turns: Turns): string {
   return lines.join('\n');
 }
 
+const FENCED_CODE_RE = /^ {0,3}(```|~~~)[^\n]*\n[\s\S]*?(?:^ {0,3}\1[^\n]*$|(?![\s\S]))/gm;
+
+/** Fenced code is dropped before the length cap: it spends the budget on
+ * text that says little about what the session is for. Inline spans stay. */
 function clip(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return `${s.slice(0, max - 1)}…`;
+  const prose = s.replace(FENCED_CODE_RE, '[code omitted]').trim();
+  if (prose.length <= max) return prose;
+  return `${prose.slice(0, max - 1)}…`;
 }
 
 /** Floor on `assistant_text` length before treating it as a substantive
@@ -564,13 +569,4 @@ function clip(s: string, max: number): string {
 export function isSubstantiveAssistantText(text: string | undefined): boolean {
   if (!text) return false;
   return text.trim().length >= ASSISTANT_TEXT_FLOOR;
-}
-
-/** True when the text is a real user prompt (not a slash-command
- * artifact). Re-exported for the session.ts call site. */
-export function isRealUserText(text: string | undefined): boolean {
-  if (!text) return false;
-  const t = text.trim();
-  if (!t) return false;
-  return !ARTIFACT_RE.test(t);
 }

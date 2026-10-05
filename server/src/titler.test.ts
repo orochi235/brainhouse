@@ -4,9 +4,10 @@
  * is driven by deterministic fake timers and a manual `now()` clock.
  */
 import { describe, expect, it } from 'vitest';
-import type { Event } from './parser.js';
+import { type Event, parseLine } from './parser.js';
 import type { Panel } from './session.js';
 import {
+  buildUserMessage,
   extractTurns,
   sanitizeProposal,
   shouldFire,
@@ -232,15 +233,38 @@ describe('shouldFire', () => {
 });
 
 describe('extractTurns', () => {
-  it('skips slash-command artifacts in user_text', () => {
+  it('counts only prompts the user typed', () => {
+    const user = (uuid: string, content: string, extra: Record<string, unknown> = {}) =>
+      parseLine({ type: 'user', uuid, sessionId: 'S', message: { role: 'user', content }, ...extra });
     const events = [
-      ev('user_text', '<command-name>clear</command-name>'),
-      ev('user_text', 'real prompt'),
+      ...user('u1', '<command-name>clear</command-name>'),
+      ...user('u2', 'real prompt', { origin: { kind: 'human' } }),
+      ...user('u3', '<task-notification>done</task-notification>', {
+        promptSource: 'system',
+        origin: { kind: 'task-notification' },
+      }),
+      ...user('u4', 'Another Claude session sent a message: hi', {
+        isMeta: true,
+        origin: { kind: 'peer' },
+      }),
+      ...user('u5', 'Base directory for this skill: /x', { isMeta: true, sourceToolUseID: 't1' }),
       ev('assistant_text', 'a reply'),
     ];
     const t = extractTurns(events);
     expect(t.user).toEqual(['real prompt']);
     expect(t.assistant).toEqual(['a reply']);
+  });
+});
+
+describe('buildUserMessage', () => {
+  it('omits fenced code but keeps inline code', () => {
+    const msg = buildUserMessage(makePanel(), {
+      user: ['fix this:\n```ts\nconst x = 1;\n```\nthanks'],
+      assistant: ['Done.\n~~~diff\n-a\n+b\n~~~\nAlso `writeLater` grows.', 'Unclosed:\n```\nlet y = 2;'],
+    });
+    expect(msg).not.toMatch(/const x|-a|\+b|let y/);
+    expect(msg).toContain('`writeLater`');
+    expect(msg.match(/\[code omitted\]/g)).toHaveLength(3);
   });
 });
 

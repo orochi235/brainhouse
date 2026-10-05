@@ -16,14 +16,14 @@ import { findDirByInode } from './findRenamed.js';
 import { defaultEventsDir, type HookEvent, HookEventWatcher } from './hookEvents.js';
 import { stashEventImages } from './images.js';
 import { BackgroundIndexer } from './indexer.js';
-import type { Event } from './parser.js';
+import { type Event, hasTag } from './parser.js';
 import type { Discovery } from './prefs.js';
 import type { ProcessTracker } from './processes/index.js';
 import { deriveAccountLabel } from './roots.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
 import { type PanelTheme, readPanelTheme } from './theme.js';
-import { isRealUserText, isSubstantiveAssistantText, Titler } from './titler.js';
+import { isSubstantiveAssistantText, Titler } from './titler.js';
 import { makeCliTitlerClient } from './titlerCli.js';
 import { TranscriptWatcher } from './watcher.js';
 
@@ -626,8 +626,8 @@ export class TranscriptMonitor {
     for (const delta of this.store.apply(event, { accountLabel })) this.broadcast(delta);
     // Out-of-band auto-titler trigger sites.
     if (event.kind === 'user_text') {
-      const text = (event.payload as { text?: string }).text;
-      if (isRealUserText(text)) this.titler.scheduleEvaluation(event.session_id, 'user_text');
+      if (hasTag(event, 'dialogue') && event.payload.text.trim())
+        this.titler.scheduleEvaluation(event.session_id, 'user_text');
     } else if (event.kind === 'assistant_text') {
       const text = (event.payload as { text?: string }).text;
       if (isSubstantiveAssistantText(text))
