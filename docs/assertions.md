@@ -858,3 +858,7 @@ UI/server is meant to uphold. New entries go at the bottom.
   warning glyph beside its ✕, and the batch kill button names how many of the
   checked rows are serving, so nothing is quietly excluded from a reclaim
   total on the user's behalf.
+- A top-widget project chip takes its color from that project's `.hued`,
+  read server-side and stamped on the process row, whether or not any panel
+  for the project is loaded. Only a project with no `.hued` falls back to the
+  name hash. `.hued` values ignore anything after the value (`#fa8072  # salmon`).

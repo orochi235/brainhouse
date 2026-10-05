@@ -50,6 +50,9 @@ export interface ProcessRow {
    * shows this as a project chip in the Session column when session_id is
    * null. */
   project: string | null;
+  /** `.hued` background for {@link project}, stamped by the tracker each tick
+   * so the chip is colored even when no panel for the project is loaded. */
+  project_theme_bg: string | null;
   /** Account label this row should be attributed to. Set when the
    * spawning Claude session's hook carries a CLAUDE_CONFIG_DIR we can
    * resolve to a prefs root, or via brainhouse's own self-stamp for
@@ -439,6 +442,7 @@ export class Reconciler {
       rss_kb: p.rss_kb,
       bash_id: null,
       project: null,
+      project_theme_bg: null,
       account_label: null,
       iterm_session_id: null,
       original_ancestors: originalAncestors,

@@ -53,6 +53,12 @@ describe('readPanelTheme', () => {
     expect(theme?.background).toBe('#112233');
   });
 
+  it('ignores an inline comment after the value', async () => {
+    await writeHued('foreground=black\nbackground=#ffff00  # yellow\n');
+    const theme = await readPanelTheme(dir);
+    expect(theme).toEqual({ background: '#ffff00', foreground: '#000000' });
+  });
+
   it('expands 3-digit hex shorthand', async () => {
     await writeHued('background=#123\n');
     const theme = await readPanelTheme(dir);

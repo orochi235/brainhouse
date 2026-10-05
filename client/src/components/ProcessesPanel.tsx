@@ -272,18 +272,6 @@ export function ProcessesPanel({
 }) {
   const all = useProcesses();
 
-  // Project-path → badge color lookup. Built from any panel whose
-  // repo_root or cwd matches the project; we pull the configured
-  // theme.background and pass it through badgeColor() which preserves
-  // the hue but lifts saturation/lightness to chip-friendly floors
-  // (themes are usually too dark to read on a small badge).
-  const projectThemes = new Map<string, string>();
-  for (const p of allPanels.values()) {
-    const key = p.repo_root ?? p.cwd;
-    if (!key || !p.theme) continue;
-    // Cap saturation so vivid themes read as muted chips, not neon.
-    if (!projectThemes.has(key)) projectThemes.set(key, badgeColor(p.theme.background, 45, 32, 45));
-  }
   // Show the Account column only when more than one distinct label
   // appears across panels OR rows — counting row.account_label here
   // catches the brainhouse self-stamp case (it's a synthetic label
@@ -771,7 +759,7 @@ export function ProcessesPanel({
                   viewMode={viewMode}
                   showAccount={showAccount}
                   panel={row.session_id ? (allPanels.get(row.session_id) ?? null) : null}
-                  projectColor={row.project ? (projectThemes.get(row.project) ?? null) : null}
+                  projectColor={row.project_theme_bg ? badgeColor(row.project_theme_bg, 45, 32, 45) : null}
                   accountColor={(() => {
                     const panelLabel = row.session_id
                       ? allPanels.get(row.session_id)?.account_label

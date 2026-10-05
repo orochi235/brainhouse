@@ -32,6 +32,9 @@ export type ProcessRow = {
    * Mutually exclusive with session_id in the natural sense — both
    * can be set simultaneously, but the UI prefers session_id. */
   project: string | null;
+  /** `.hued` background of `project`, stamped server-side. Mirrors the
+   * server `ProcessRow` field. */
+  project_theme_bg: string | null;
   /** Server-stamped account label. Set when a Claude session hook
    * resolved to a prefs root, or via brainhouse's own self-stamp
    * (synthetic "brainhouse" label for its own pid + descendants).

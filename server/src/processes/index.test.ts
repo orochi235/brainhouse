@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { ProcessTracker } from './index.js';
 
 describe('ProcessTracker', () => {
@@ -18,6 +21,26 @@ describe('ProcessTracker', () => {
     t.handleHookRecord({ kind: 'session_pid', session_id: 's1', pid: 50, ppid: 1, cwd: '/p', start_ts: 0, ts: 0 } as any);
     await t.tickOnce();
     expect(events.some(e => e.kind === 'upsert' && e.r.framework === 'vite')).toBe(true);
+  });
+
+  it("stamps the project's .hued background on its rows", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'bh-proj-'));
+    try {
+      await writeFile(path.join(dir, '.hued'), 'background=#fa8072  # salmon\n');
+      const t = new ProcessTracker({
+        listProcesses: async () => [{ pid: 50, ppid: 1, start_ts: 0, comm: 'node', command: 'claude' }] as any,
+        listListeningPorts: async () => [],
+        listCwds: async () => new Map(),
+        now: () => 10,
+      });
+      const rows: any[] = [];
+      t.on('upsert', (r) => rows.push(r));
+      t.handleHookRecord({ kind: 'session_pid', session_id: 's1', pid: 50, cwd: dir } as any);
+      await t.tickOnce();
+      expect(rows[0]?.project_theme_bg).toBe('#fa8072');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('keeps known ports when an lsof sweep transiently fails', async () => {

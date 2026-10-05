@@ -5,6 +5,7 @@
  *   # https://github.com/orochi235/hued
  *   background=#320053     ← hex, or a CSS color name (e.g. goldenrod, cyan)
  *   foreground=black       ← optional; auto-picked by luminance when absent
+ *   background=#ffff00  # yellow   ← anything after the value is ignored
  *
  * Returns null if the file is missing, malformed, or lacks a `background`
  * key. Named colors resolve to hex so everything downstream can assume hex.
@@ -100,7 +101,8 @@ async function readThemeFromPath(huedPath: string): Promise<PanelTheme | null> {
     const eq = line.indexOf('=');
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
-    const value = line.slice(eq + 1).trim();
+    // hued spec: everything after the value is a comment (`#ffff00  # yellow`).
+    const value = line.slice(eq + 1).trim().split(/\s/)[0] ?? '';
     if (key === 'background') background = resolveColor(value);
     else if (key === 'foreground') foreground = resolveColor(value);
   }

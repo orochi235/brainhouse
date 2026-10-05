@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { findRepoRoot } from '../session.js';
+import { readPanelTheme } from '../theme.js';
 import { HttpProbe } from './httpProbe.js';
 import { Reconciler, type ProcessRow } from './reconciler.js';
 import {
@@ -126,6 +127,7 @@ export class ProcessTracker extends EventEmitter {
       const [ps, cwds] = await Promise.all([this.listProcesses(), this.listCwds()]);
       const cwdLookup = (pid: number) => cwds.get(pid) ?? null;
       const { upserts, deletes } = this.rec.tick(ps, this.now(), cwdLookup);
+      await stampProjectThemes(upserts);
       for (const r of upserts) this.emit('upsert', r);
       for (const id of deletes) this.emit('delete', id);
     } catch (e) {
@@ -275,4 +277,17 @@ export class ProcessTracker extends EventEmitter {
     setTimeout(() => { void signalProcess(row.pid, 'KILL').catch(() => {}); }, 3000);
     row.ended_reason = 'killed_by_user';
   }
+}
+
+/** One `.hued` read per distinct project; readPanelTheme's mtime cache makes
+ * a steady-state tick one stat per project. */
+async function stampProjectThemes(rows: ProcessRow[]): Promise<void> {
+  const byProject = new Map<string, string | null>();
+  for (const r of rows) if (r.project) byProject.set(r.project, null);
+  await Promise.all(
+    [...byProject.keys()].map(async (project) => {
+      byProject.set(project, (await readPanelTheme(project))?.background ?? null);
+    }),
+  );
+  for (const r of rows) r.project_theme_bg = r.project ? (byProject.get(r.project) ?? null) : null;
 }
