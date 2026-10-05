@@ -21,6 +21,7 @@ function makePanel(overrides: Partial<Panel> = {}): Panel {
     ended: false,
     ended_provenance: null,
     manually_renamed: false,
+    ai_title: null,
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
     context_size: 0,
     hook_overhead_tokens: 0,

@@ -264,6 +264,11 @@ UI/server is meant to uphold. New entries go at the bottom.
   the title in both the grid header and the lightbox title. Once flipped
   the flag never clears — subsequent auto-titles don't affect it, and
   the flag round-trips through the persisted panels row.
+- Auto-titling keeps a session's name current. Claude Code's own
+  `ai-title` names it once; brainhouse's titler rechecks the name after
+  every 15 prompts or 45 minutes (with at least one new prompt), whichever
+  comes first. A repeat of an `ai-title` already adopted never overwrites
+  a later title. A manually renamed panel is never retitled.
 - Timeline view is a third way to look at a slice of activity, parallel
   to Conversation and File. The `<Timeline>` component plots events
   (raw `Event`s) or view-items (coalesced) on a **vertical** time axis

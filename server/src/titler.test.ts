@@ -50,6 +50,7 @@ function makePanel(overrides: Partial<Panel> = {}): Panel {
     ended: false,
     ended_provenance: null,
     manually_renamed: false,
+    ai_title: null,
     tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
     context_size: 0,
     hook_overhead_tokens: 0,
@@ -205,29 +206,28 @@ describe('shouldFire', () => {
   });
   it('subagent_start keeps the recheck cadence once titled', () => {
     const p = makePanel({ title: 'A nice title' });
-    expect(shouldFire(p, 7, 'subagent_start')).toBe(false);
-    expect(shouldFire(p, 20, 'subagent_start')).toBe(true);
+    expect(shouldFire(p, 7, 'subagent_start', { turns: 5, at: 0 }, 1)).toBe(false);
   });
-  it('rechecks every N turns once titled', () => {
+  it('rechecks after 15 prompts once titled', () => {
     const p = makePanel({ title: 'A nice title' });
-    expect(shouldFire(p, 1)).toBe(false);
-    expect(shouldFire(p, 19)).toBe(false);
-    expect(shouldFire(p, 20)).toBe(true);
-    expect(shouldFire(p, 40)).toBe(true);
+    const last = { turns: 5, at: 0 };
+    expect(shouldFire(p, 19, 'stop', last, 60_000)).toBe(false);
+    expect(shouldFire(p, 20, 'stop', last, 60_000)).toBe(true);
+  });
+  it('rechecks after 45 minutes once titled, given a new prompt', () => {
+    const p = makePanel({ title: 'A nice title' });
+    const last = { turns: 5, at: 0 };
+    expect(shouldFire(p, 6, 'stop', last, 44 * 60_000)).toBe(false);
+    expect(shouldFire(p, 6, 'stop', last, 45 * 60_000)).toBe(true);
+    expect(shouldFire(p, 5, 'stop', last, 90 * 60_000)).toBe(false);
+  });
+  it('never rechecks a titled panel without a baseline', () => {
+    const p = makePanel({ title: 'A nice title' });
+    expect(shouldFire(p, 40, 'stop', null, 0)).toBe(false);
   });
   it('never fires on manually-renamed panels', () => {
     const p = makePanel({ title: 'User name', manually_renamed: true });
-    expect(shouldFire(p, 20)).toBe(false);
-  });
-  it('never fires once the transcript carries a built-in ai-title record', () => {
-    const aiTitle = {
-      ...ev('meta', ''),
-      payload: { record_type: 'ai-title', raw: { aiTitle: 'CC title' } },
-    } as Event;
-    const p = makePanel({ title: 'CC title', events: [aiTitle] });
-    expect(shouldFire(p, 2)).toBe(false);
-    expect(shouldFire(p, 20)).toBe(false);
-    expect(shouldFire(p, 1, 'subagent_start')).toBe(false);
+    expect(shouldFire(p, 20, 'stop', { turns: 0, at: 0 }, 0)).toBe(false);
   });
 });
 
@@ -559,6 +559,10 @@ describe('Titler', () => {
       clearTimer: timers.clearTimer,
       logger: () => {},
     });
+    // First sight of a titled panel only sets the recheck baseline.
+    titler.scheduleEvaluation(panel.id, 'stop');
+    await flush();
+    for (let i = 0; i < 15; i++) events.push(ev('user_text', `more ${i}`));
     titler.scheduleEvaluation(panel.id, 'stop');
     await flush();
     client.next().resolveResponse({
@@ -612,6 +616,10 @@ describe('Titler', () => {
     const panel = makePanel({ title: 'Wire titler', events });
     const panels = new Map([[panel.id, panel]]);
     const titler = build({ panels, client, timers });
+    // First sight of a titled panel only sets the recheck baseline.
+    titler.scheduleEvaluation(panel.id, 'stop');
+    await flush();
+    for (let i = 0; i < 15; i++) events.push(ev('user_text', `more ${i}`));
     titler.scheduleEvaluation(panel.id, 'stop');
     await flush();
     client.next().resolve('KEEP');

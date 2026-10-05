@@ -10,6 +10,11 @@
  *     ignores (it only reacts to .jsonl files).
  *   - `configDir` must point at a *logged-in* Claude Code config dir.
  *     Under launchd the CLI default is typically unauthenticated.
+ *   - The lean flags cut a call from ~35k tokens to ~700 (measured
+ *     2026-10-04): `--strict-mcp-config` + `--setting-sources ""` skip the
+ *     user's MCP servers, settings and CLAUDE.md; `--tools ""` drops tool
+ *     definitions; `MAX_THINKING_TOKENS=0` stops ~1k tokens of thinking.
+ *     `--tools` is variadic, so the prompt must come before it.
  *   - The service PATH lacks `~/.local/bin` (where `claude` installs),
  *     so the spawn env appends it rather than requiring a service
  *     reinstall.
@@ -39,11 +44,24 @@ export interface CliTitlerOptions {
   ) => Promise<{ stdout: string }>;
 }
 
-/** Flatten the SDK-shaped request into one prompt string. */
-export function flattenParams(params: TitlerCreateParams): string {
-  const system = params.system.map((s) => s.text).join('\n\n');
-  const user = params.messages.map((m) => m.content).join('\n\n');
-  return `${system}\n\n${user}`;
+/** Build the `claude` argv for one SDK-shaped request. */
+export function buildCliArgs(params: TitlerCreateParams): string[] {
+  return [
+    '-p',
+    params.messages.map((m) => m.content).join('\n\n'),
+    '--system-prompt',
+    params.system.map((s) => s.text).join('\n\n'),
+    '--model',
+    params.model,
+    '--no-session-persistence',
+    '--output-format',
+    'json',
+    '--strict-mcp-config',
+    '--setting-sources',
+    '',
+    '--tools',
+    '',
+  ];
 }
 
 /** Parse `claude -p --output-format json` stdout into the SDK-ish
@@ -88,19 +106,12 @@ export function makeCliTitlerClient(opts: CliTitlerOptions = {}): TitlerAnthropi
         const env: NodeJS.ProcessEnv = {
           ...process.env,
           PATH: `${process.env.PATH ?? ''}:${path.join(os.homedir(), '.local', 'bin')}`,
+          MAX_THINKING_TOKENS: '0',
         };
         if (opts.configDir) env.CLAUDE_CONFIG_DIR = opts.configDir;
         const { stdout } = await exec(
           'claude',
-          [
-            '-p',
-            flattenParams(params),
-            '--model',
-            params.model,
-            '--no-session-persistence',
-            '--output-format',
-            'json',
-          ],
+          buildCliArgs(params),
           {
             timeout: CLI_TIMEOUT_MS,
             // Stable cwd so the CLI's scaffold dir is one predictable,

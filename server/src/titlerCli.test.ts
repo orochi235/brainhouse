@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TitlerCreateParams } from './titler.js';
-import { flattenParams, makeCliTitlerClient, parseCliOutput } from './titlerCli.js';
+import { buildCliArgs, makeCliTitlerClient, parseCliOutput } from './titlerCli.js';
 
 function params(): TitlerCreateParams {
   return {
@@ -11,9 +11,12 @@ function params(): TitlerCreateParams {
   };
 }
 
-describe('flattenParams', () => {
-  it('joins system and user content', () => {
-    expect(flattenParams(params())).toBe('You are the titler.\n\nPropose a title.');
+describe('buildCliArgs', () => {
+  it('passes the system prompt separately and the prompt before the variadic --tools', () => {
+    const args = buildCliArgs(params());
+    expect(args.slice(0, 4)).toEqual(['-p', 'Propose a title.', '--system-prompt', 'You are the titler.']);
+    expect(args.slice(-2)).toEqual(['--tools', '']);
+    expect(args).toContain('--strict-mcp-config');
   });
 });
 
@@ -80,6 +83,7 @@ describe('makeCliTitlerClient', () => {
     expect(captured?.args).toContain('json');
     expect(captured?.env.CLAUDE_CONFIG_DIR).toBe('/tmp/fake-config');
     expect(captured?.env.PATH).toContain('.local/bin');
+    expect(captured?.env.MAX_THINKING_TOKENS).toBe('0');
   });
 
   it('leaves CLAUDE_CONFIG_DIR alone when configDir is null', async () => {

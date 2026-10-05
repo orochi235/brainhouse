@@ -24,7 +24,8 @@
  *   - turn count >= 2 when no custom title exists (>= 1 for
  *     `subagent_start` — a first prompt that fans out into subagents is
  *     worth naming immediately)
- *   - recheck every RECHECK_EVERY_N_TURNS once titled
+ *   - once titled (by us or by Claude Code's `ai-title`), recheck after
+ *     RECHECK_AFTER_TURNS prompts or RECHECK_AFTER_MS, whichever is first
  *
  * Inputs sent to Haiku: the first user_text + the last two substantive
  * dialogue turns + the current title (for KEEP-vs-replace). System
@@ -48,7 +49,8 @@ import type { Event } from './parser.js';
 import type { Panel } from './session.js';
 
 const PLACEHOLDER_TURN_THRESHOLD = 2;
-const RECHECK_EVERY_N_TURNS = 20;
+const RECHECK_AFTER_TURNS = 15;
+const RECHECK_AFTER_MS = 45 * 60_000;
 const TITLE_MAX_WORDS = 14;
 const ASSISTANT_TEXT_FLOOR = 40;
 const DEBOUNCE_MS = 30_000;
@@ -159,6 +161,14 @@ interface PanelState {
   /** True while a request is in-flight for this panel; second concurrent
    * evaluations are dropped (single-flight). */
   inflight: boolean;
+  /** Prompt count and wall-clock ms at the last evaluation, the baseline for
+   * the next recheck. Null until the panel is first seen titled. */
+  lastEval: LastEval | null;
+}
+
+export interface LastEval {
+  turns: number;
+  at: number;
 }
 
 /**
@@ -233,7 +243,7 @@ export class Titler {
   private ensureState(panelId: string): PanelState {
     let s = this.states.get(panelId);
     if (!s) {
-      s = { timer: null, cooldownUntil: 0, inflight: false };
+      s = { timer: null, cooldownUntil: 0, inflight: false, lastEval: null };
       this.states.set(panelId, s);
     }
     return s;
@@ -257,11 +267,22 @@ export class Titler {
     if (panel.binned_at !== null) return;
     if (!this.opts.isAutoTitleEnabled()) return;
     const turns = extractTurns(panel.events);
-    if (!shouldFire(panel, turns.user.length, reason)) return;
+    const turnCount = turns.user.length;
+    const now = this.now();
+    // A panel first seen already titled (Claude Code's ai-title, or state lost
+    // to a restart) starts its recheck clock now rather than firing at once.
+    if (state && !state.lastEval && hasCustomTitle(panel)) {
+      state.lastEval = { turns: turnCount, at: now };
+      return;
+    }
+    if (!shouldFire(panel, turnCount, reason, state?.lastEval ?? null, now)) return;
     const client = this.ensureClient();
     if (!client) return;
 
-    if (state) state.inflight = true;
+    if (state) {
+      state.inflight = true;
+      state.lastEval = { turns: turnCount, at: now };
+    }
     try {
       const proposal = await this.requestProposal(client, panel, turns);
       if (!proposal) return;
@@ -444,28 +465,30 @@ export function sanitizeProposal(raw: string): string | null {
   return text;
 }
 
-/** Eligibility check. Mirrors `auto-title-inline.mjs:shouldFire`. */
-export function shouldFire(panel: Panel, turnCount: number, reason?: EvaluationReason): boolean {
+/** Eligibility check. `lastEval` is the baseline from the previous
+ * evaluation; a titled panel without one never fires (the Titler seeds it). */
+export function shouldFire(
+  panel: Panel,
+  turnCount: number,
+  reason?: EvaluationReason,
+  lastEval: LastEval | null = null,
+  now = Date.now(),
+): boolean {
   // Manually-renamed panels are left alone — once the user authors a
   // title, brainhouse never overwrites it.
   if (panel.manually_renamed) return false;
-  // Claude Code's built-in titler already names this session (`ai-title`
-  // transcript records, adopted by session.ts:maybeProposeAutoTitle) and
-  // keeps regenerating as the conversation moves — don't spend our own
-  // calls duplicating it. Subagent panels never carry ai-title records,
-  // so they still fall through to the gates below.
-  if (hasBuiltInTitle(panel)) return false;
-  // A panel whose title is still the placeholder gates on the
-  // first-real-title threshold; once a custom title exists we recheck
-  // periodically. A subagent kickoff lowers the threshold to the first
-  // prompt: one prompt that fans out into subagents is already a
-  // long-running session worth naming now.
-  const hasCustomTitle = panel.title && panel.title !== initialPlaceholder(panel.id);
-  if (!hasCustomTitle) {
+  // A subagent kickoff lowers the first-title threshold to the first prompt:
+  // one prompt that fans out into subagents is already worth naming.
+  if (!hasCustomTitle(panel)) {
     const threshold = reason === 'subagent_start' ? 1 : PLACEHOLDER_TURN_THRESHOLD;
     return turnCount >= threshold;
   }
-  return turnCount > 0 && turnCount % RECHECK_EVERY_N_TURNS === 0;
+  if (!lastEval || turnCount <= lastEval.turns) return false;
+  return turnCount - lastEval.turns >= RECHECK_AFTER_TURNS || now - lastEval.at >= RECHECK_AFTER_MS;
+}
+
+function hasCustomTitle(panel: Panel): boolean {
+  return !!panel.title && panel.title !== initialPlaceholder(panel.id);
 }
 
 /** Mirrors `session.ts:initialTitle`'s short-id form. Duplicated here to
@@ -474,10 +497,10 @@ function initialPlaceholder(panelId: string): string {
   return panelId.slice(0, 8);
 }
 
-/** True when the panel's transcript carries a Claude Code built-in
- * `ai-title` record. */
-export function hasBuiltInTitle(panel: Panel): boolean {
-  return panel.events.some((ev) => ev.kind === 'meta' && ev.payload.record_type === 'ai-title');
+/** The title text of a Claude Code built-in `ai-title` record, else null. */
+export function aiTitleOf(ev: Event): string | null {
+  if (ev.kind !== 'meta' || ev.payload.record_type !== 'ai-title') return null;
+  return ((ev.payload.raw ?? {}) as { aiTitle?: string }).aiTitle?.trim() || null;
 }
 
 interface Turns {
@@ -508,9 +531,8 @@ export function extractTurns(events: Event[]): Turns {
 /** Build the compact context envelope the model sees. */
 export function buildUserMessage(panel: Panel, turns: Turns): string {
   const lines: string[] = [];
-  const hasCustomTitle = panel.title && panel.title !== initialPlaceholder(panel.id);
   lines.push(
-    hasCustomTitle
+    hasCustomTitle(panel)
       ? `Current title: ${panel.title}\nDecide whether it still fits; reply KEEP if so, otherwise propose a new title.`
       : 'This session has no real title yet. Propose one.',
   );

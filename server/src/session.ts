@@ -14,6 +14,7 @@ import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { type Event, hasTag } from './parser.js';
 import type { EventIndexRow, PanelRow, SessionSummaryRow, Store } from './store.js';
+import { aiTitleOf } from './titler.js';
 
 /**
  * Walk up `cwd` looking for the closest `.git` directory and return that
@@ -196,6 +197,9 @@ export interface Panel {
    * glyph next to the title so a user-authored name is visually
    * distinct from an auto-derived one. */
   manually_renamed: boolean;
+  /** Last Claude Code `ai-title` adopted. Persisted, so its repeats stay
+   * ignored across restarts. */
+  ai_title: string | null;
 }
 
 export interface PanelDto {
@@ -1013,6 +1017,7 @@ export class SessionStore {
       ended: false,
       ended_provenance: null,
       manually_renamed: false,
+      ai_title: null,
       tokens: { input: 0, output: 0, cache_create: 0, cache_read: 0, model: null },
       context_size: 0,
       hook_overhead_tokens: 0,
@@ -1233,9 +1238,8 @@ export class SessionStore {
    *   - Any panel + `meta` with `record_type === 'session-title'`: an
    *     explicit agent-emitted retitle. `raw.title` is the proposal.
    *   - `meta` with `record_type === 'ai-title'`: Claude Code's own
-   *     built-in titler. Adopted as a proposal; `titler.ts:shouldFire`
-   *     then skips panels that have one, so the out-of-band titler
-   *     spends nothing on sessions CC already keeps titled.
+   *     built-in titler, which names a session once. Adopted as the
+   *     starting title; the out-of-band titler rechecks it from there.
    *
    * Returned strings are pre-truncated to the 80-char display cap; the
    * caller routes the proposal through `applyAutoTitle` so the title
@@ -1254,9 +1258,12 @@ export class SessionStore {
       // the first real prompt in maybeUpdateTitle) drops those the same
       // way it drops inherited custom-title records.
       if (panel.clear_title_suppression) return null;
-      const raw = (event.payload.raw ?? {}) as { aiTitle?: string };
-      const proposed = (raw.aiTitle ?? '').trim();
+      const proposed = aiTitleOf(event);
       if (!proposed) return null;
+      // Claude Code names a session once, then re-appends that record dozens
+      // of times; adopting a repeat would undo the titler's later rechecks.
+      if (proposed === panel.ai_title) return null;
+      panel.ai_title = proposed;
       return proposed.length > 80 ? `${proposed.slice(0, 79)}…` : proposed;
     }
     // Inline auto-title marker: the auto-title-inline UserPromptSubmit hook
@@ -1612,6 +1619,7 @@ function panelToRow(p: Panel, now: number): PanelRow {
     ended: p.ended,
     ended_provenance: p.ended_provenance,
     manually_renamed: p.manually_renamed,
+    ai_title: p.ai_title,
     updated_at: now,
   };
 }
@@ -1643,6 +1651,7 @@ function panelRowToPanel(r: PanelRow): Panel {
     ended: r.ended,
     ended_provenance: r.ended_provenance,
     manually_renamed: r.manually_renamed,
+    ai_title: r.ai_title,
     // Tokens aren't persisted to the panels table yet (would require a
     // schema migration). On hydrate we start at zero and re-accumulate
     // as the watcher replays the JSONL. Brief flicker on restart;

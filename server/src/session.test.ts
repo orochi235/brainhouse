@@ -1281,6 +1281,19 @@ describe('SessionStore', () => {
       expect(store.snapshot()[0]?.title).toBe('Wire the adopt path');
     });
 
+    it('ignores a repeated ai-title so a later retitle sticks', () => {
+      const clock = new FakeClock();
+      const store = new SessionStore({ clock: clock.now });
+      const aiTitle = (uuid: string) =>
+        ev('meta', { uuid, payload: { record_type: 'ai-title', raw: { aiTitle: 'First CC title' } } });
+      store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'first prompt' } }));
+      store.apply(aiTitle('u2'));
+      store.applyAutoTitle('S', 'Rechecked title');
+      const deltas = store.apply(aiTitle('u3'));
+      expect(deltas.some((d) => d.op === 'auto_titled')).toBe(false);
+      expect(store.snapshot()[0]?.title).toBe('Rechecked title');
+    });
+
     it('ai-title never overrides a manual rename', () => {
       const clock = new FakeClock();
       const store = new SessionStore({ clock: clock.now });
