@@ -27,8 +27,9 @@
  *   - once titled (by us or by Claude Code's `ai-title`), recheck after
  *     RECHECK_AFTER_TURNS prompts or RECHECK_AFTER_MS, whichever is first
  *
- * Inputs sent to Haiku: the first user_text + the last two substantive
- * dialogue turns + the current title (for KEEP-vs-replace). System
+ * Inputs sent to Haiku: the session's most recent signals (substantive typed
+ * prompts, commit subjects, subagent tasks, assistant verdict lines) + the
+ * current title (for KEEP-vs-replace). System
  * prompt carries `cache_control: ephemeral` so repeated calls land in
  * the prompt cache.
  *
@@ -63,6 +64,8 @@ const SYSTEM_PROMPT =
   ' still a good fit.\n\nRules:\n' +
   `- Maximum ${TITLE_MAX_WORDS} words.\n` +
   '- Sentence case. No quotes. No trailing punctuation.\n' +
+  '- Name the work in progress now. A session that finished one task and moved to another is titled for the newer one.\n' +
+  '- Prefer the concrete nouns of commits and subagent tasks over the wording of an opening question.\n' +
   '- Describe the work, not the tool ("Wire auto-titling hook", not "Helping the user with auto-titling").\n' +
   '- Reply with ONLY the title text or KEEP. No preface, no explanation, no formatting.';
 
@@ -501,17 +504,32 @@ export function aiTitleOf(ev: Event): string | null {
   return ((ev.payload.raw ?? {}) as { aiTitle?: string }).aiTitle?.trim() || null;
 }
 
-interface Turns {
-  user: string[];
-  assistant: string[];
+/** One thing the session did or was asked, in transcript order. `verdict` is
+ * the bolded opening sentence of an assistant reply: the report format puts
+ * the conclusion there. */
+export interface Signal {
+  kind: 'prompt' | 'commit' | 'subagent' | 'verdict' | 'reply';
+  text: string;
 }
 
-/** Pull substantive dialogue turns from a panel's event list. Mirrors
- * the inline hook's transcript parser, minus the JSONL re-read. */
+interface Turns {
+  /** Every typed prompt; its length is the turn count the recheck gates on. */
+  user: string[];
+  signals: Signal[];
+}
+
+const COMMIT_LINE_RE = /^\[[^\]\n]+ [0-9a-f]{7,}\] (.+)$/m;
+const VERDICT_RE = /^\*\*([^*\n]{12,}?)\*\*/;
+const MIN_PROMPT_WORDS = 3;
+
+/** Pull titling signals from a panel's event list: typed prompts, commit
+ * subjects, subagent task descriptions and assistant verdict lines. */
 export function extractTurns(events: Event[]): Turns {
   const user: string[] = [];
-  const assistant: string[] = [];
+  const signals: Signal[] = [];
+  const bashCalls = new Set<string>();
   for (const ev of events) {
+    if (hasTag(ev, 'sidechain')) continue;
     if (ev.kind === 'user_text') {
       // `dialogue` = typed by the user: no slash-command scaffolding, skill
       // bodies, task notifications or peer-session messages.
@@ -519,37 +537,79 @@ export function extractTurns(events: Event[]): Turns {
       const text = (ev.payload.text ?? '').trim();
       if (!text) continue;
       user.push(text);
+      if (isSubstantivePrompt(text)) signals.push({ kind: 'prompt', text });
     } else if (ev.kind === 'assistant_text') {
       const text = ((ev.payload as { text?: string }).text ?? '').trim();
       if (!text) continue;
-      assistant.push(text);
+      const verdict = VERDICT_RE.exec(text)?.[1];
+      signals.push(verdict ? { kind: 'verdict', text: verdict.trim() } : { kind: 'reply', text });
+    } else if (ev.kind === 'tool_use') {
+      const { name, input, tool_use_id } = ev.payload;
+      const i = (input ?? {}) as { command?: string; description?: string };
+      if ((name === 'Agent' || name === 'Task') && i.description) {
+        signals.push({ kind: 'subagent', text: i.description });
+      } else if (name === 'Bash' && /\bgit\b[\s\S]*\bcommit\b/.test(i.command ?? '')) {
+        bashCalls.add(tool_use_id);
+      }
+    } else if (ev.kind === 'tool_result' && bashCalls.has(ev.payload.tool_use_id)) {
+      const subject = COMMIT_LINE_RE.exec(toolResultText(ev.payload.content))?.[1];
+      if (subject) signals.push({ kind: 'commit', text: subject.trim() });
     }
   }
-  return { user, assistant };
+  return { user, signals };
 }
 
-/** Build the compact context envelope the model sees. */
+/** Acknowledgements ("ok", "gogogo", "b") and interruptions say nothing about
+ * the work, and would crowd the substantive prompts out of the window. */
+function isSubstantivePrompt(text: string): boolean {
+  if (text.startsWith('[Request interrupted')) return false;
+  return text.split(/\s+/).length >= MIN_PROMPT_WORDS;
+}
+
+function toolResultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.map((b) => (typeof b?.text === 'string' ? b.text : '')).join('\n');
+}
+
+const SIGNAL_LABEL: Record<Signal['kind'], string> = {
+  prompt: 'User asked',
+  commit: 'Committed',
+  subagent: 'Subagent task',
+  verdict: 'Claude reported',
+  reply: 'Claude said',
+};
+const SIGNAL_CLIP: Record<Signal['kind'], number> = {
+  prompt: 400,
+  commit: 160,
+  subagent: 120,
+  verdict: 240,
+  reply: 300,
+};
+const SIGNAL_WINDOW = 14;
+
+/** Build the compact context envelope the model sees: the session's most
+ * recent signals, newest first. Only the latest plain reply is kept (it often
+ * carries the question waiting on the user); older ones are status chatter. */
 export function buildUserMessage(panel: Panel, turns: Turns): string {
   const lines: string[] = [];
   lines.push(
     hasCustomTitle(panel)
-      ? `Current title: ${panel.title}\nDecide whether it still fits; reply KEEP if so, otherwise propose a new title.`
+      ? `Current title: ${panel.title}\nDecide whether it still names the current work; reply KEEP if so, otherwise propose a new title.`
       : 'This session has no real title yet. Propose one.',
   );
-  if (turns.user.length > 0) {
-    lines.push('', 'First user message:', clip(turns.user[0] ?? '', 800));
-  }
-  // Last 2 substantive turns (interleaved). Walk back through the
-  // combined dialogue, preserving order.
   const recent: string[] = [];
-  const u = turns.user.slice(1);
-  const a = turns.assistant.slice();
-  while (recent.length < 4 && (u.length || a.length)) {
-    if (a.length) recent.push(`Assistant: ${clip(a.pop() ?? '', 400)}`);
-    if (u.length) recent.push(`User: ${clip(u.pop() ?? '', 400)}`);
+  let sawReply = false;
+  for (let i = turns.signals.length - 1; i >= 0 && recent.length < SIGNAL_WINDOW; i--) {
+    const s = turns.signals[i] as Signal;
+    if (s.kind === 'reply') {
+      if (sawReply || recent.length > 0) continue;
+      sawReply = true;
+    }
+    recent.push(`${SIGNAL_LABEL[s.kind]}: ${clip(s.text, SIGNAL_CLIP[s.kind])}`);
   }
   if (recent.length > 0) {
-    lines.push('', 'Recent direction (most recent first):', ...recent);
+    lines.push('', 'Session activity (most recent first):', ...recent);
   }
   return lines.join('\n');
 }

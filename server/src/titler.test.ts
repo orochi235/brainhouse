@@ -235,7 +235,13 @@ describe('shouldFire', () => {
 describe('extractTurns', () => {
   it('counts only prompts the user typed', () => {
     const user = (uuid: string, content: string, extra: Record<string, unknown> = {}) =>
-      parseLine({ type: 'user', uuid, sessionId: 'S', message: { role: 'user', content }, ...extra });
+      parseLine({
+        type: 'user',
+        uuid,
+        sessionId: 'S',
+        message: { role: 'user', content },
+        ...extra,
+      });
     const events = [
       ...user('u1', '<command-name>clear</command-name>'),
       ...user('u2', 'real prompt', { origin: { kind: 'human' } }),
@@ -252,19 +258,87 @@ describe('extractTurns', () => {
     ];
     const t = extractTurns(events);
     expect(t.user).toEqual(['real prompt']);
-    expect(t.assistant).toEqual(['a reply']);
+    expect(t.signals).toEqual([{ kind: 'reply', text: 'a reply' }]);
+  });
+
+  it('collects commits, subagent tasks and verdicts, and skips acks', () => {
+    const tool = (kind: 'tool_use' | 'tool_result', payload: object, tags: string[] = ['tool']) =>
+      ({ ...ev('meta', ''), kind, tags, payload }) as Event;
+    const events = [
+      ev('user_text', 'ok'),
+      ev('user_text', 'make the lightbox links external only'),
+      tool('tool_use', {
+        tool_use_id: 'b1',
+        name: 'Bash',
+        input: { command: 'git add -A && git commit -m "$(cat <<EOF\nx\nEOF\n)"' },
+      }),
+      tool('tool_result', {
+        tool_use_id: 'b1',
+        content: [
+          {
+            type: 'text',
+            text: '[main 57babd8] link the lightbox only to github\n 1 file changed',
+          },
+        ],
+        is_error: false,
+      }),
+      tool('tool_result', {
+        tool_use_id: 'other',
+        content: '[main 1234567] not a commit call',
+        is_error: false,
+      }),
+      tool('tool_use', {
+        tool_use_id: 'a1',
+        name: 'Agent',
+        input: { description: 'Build mix.owns nesting' },
+      }),
+      ev('assistant_text', '**Booking is built and merged.** Details follow.'),
+      { ...ev('user_text', 'subagent prompt text here'), tags: ['dialogue', 'sidechain'] } as Event,
+    ];
+    const t = extractTurns(events);
+    expect(t.user).toEqual(['ok', 'make the lightbox links external only']);
+    expect(t.signals).toEqual([
+      { kind: 'prompt', text: 'make the lightbox links external only' },
+      { kind: 'commit', text: 'link the lightbox only to github' },
+      { kind: 'subagent', text: 'Build mix.owns nesting' },
+      { kind: 'verdict', text: 'Booking is built and merged.' },
+    ]);
   });
 });
 
 describe('buildUserMessage', () => {
   it('omits fenced code but keeps inline code', () => {
     const msg = buildUserMessage(makePanel(), {
-      user: ['fix this:\n```ts\nconst x = 1;\n```\nthanks'],
-      assistant: ['Done.\n~~~diff\n-a\n+b\n~~~\nAlso `writeLater` grows.', 'Unclosed:\n```\nlet y = 2;'],
+      user: [],
+      signals: [
+        { kind: 'prompt', text: 'fix this:\n```ts\nconst x = 1;\n```\nthanks' },
+        { kind: 'prompt', text: 'and this:\n```\nlet y = 2;' },
+        { kind: 'reply', text: 'Done.\n~~~diff\n-a\n+b\n~~~\nAlso `writeLater` grows.' },
+      ],
     });
     expect(msg).not.toMatch(/const x|-a|\+b|let y/);
     expect(msg).toContain('`writeLater`');
     expect(msg.match(/\[code omitted\]/g)).toHaveLength(3);
+  });
+
+  it('lists newest first and keeps only the latest plain reply', () => {
+    const msg = buildUserMessage(makePanel(), {
+      user: [],
+      signals: [
+        { kind: 'reply', text: 'old status chatter' },
+        { kind: 'commit', text: 'add booking' },
+        { kind: 'reply', text: 'mid status chatter' },
+        { kind: 'prompt', text: 'now fix the glossary page' },
+        { kind: 'reply', text: 'Which heading should go?' },
+      ],
+    });
+    expect(msg).not.toMatch(/old status|mid status/);
+    const body = msg.split('\n').slice(-3);
+    expect(body).toEqual([
+      'Claude said: Which heading should go?',
+      'User asked: now fix the glossary page',
+      'Committed: add booking',
+    ]);
   });
 });
 

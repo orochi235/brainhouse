@@ -269,6 +269,12 @@ UI/server is meant to uphold. New entries go at the bottom.
   every 15 prompts or 45 minutes (with at least one new prompt), whichever
   comes first. A repeat of an `ai-title` already adopted never overwrites
   a later title. A manually renamed panel is never retitled.
+- A title names the session's current work, not its opening question.
+  The titler reads the most recent signals, newest first: typed prompts
+  of three words or more, commit subjects, subagent task descriptions,
+  the bolded verdict sentence that opens an assistant reply, and only
+  the latest plain reply. Acks ("ok", "gogogo") and subagent transcripts
+  never reach it.
 - Timeline view is a third way to look at a slice of activity, parallel
   to Conversation and File. The `<Timeline>` component plots events
   (raw `Event`s) or view-items (coalesced) on a **vertical** time axis
@@ -307,12 +313,11 @@ UI/server is meant to uphold. New entries go at the bottom.
   reliably degrades titles instead of improving them. Real re-titling
   needs context (LLM, agent self-report); until that's wired, only the
   explicit `session-title` meta channel re-titles in-band.
-- Auto-titling (beta, gated on `experimental.autoTitle`): a Stop hook
-  shells out to `claude -p` on the user's own CLI auth after each
-  assistant turn. Fires when the panel has no `custom-title` meta yet
-  AND the user has spoken ≥2 turns, OR periodically every 20 turns to
-  catch drift. The model receives the first user prompt + last two
-  turns and replies with either `KEEP` or a new title (≤14 words). On
+- Auto-titling (gated on `display.autoTitle`): the server's titler
+  fires when the panel has no custom title yet AND the user has typed
+  ≥2 prompts, then on the recheck cadence above. The model receives
+  the session's recent activity and replies with either `KEEP` or a
+  new title (≤14 words). On
   accept, the server emits a `panel_upsert` (title), an `event_append`
   with a synthetic meta event (`record_type: 'auto-title'`), and a
   transient `auto_titled` delta that drives a title-flash animation +
