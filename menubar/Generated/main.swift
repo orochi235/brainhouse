@@ -16,6 +16,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
             ) { [weak self] _ in self?.refresh() }
+        MenuGlass.follow { [weak self] in self.flatMap { renderFace($0.results).tint } }
         refresh()
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in

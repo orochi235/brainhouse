@@ -11,7 +11,7 @@ app:
   icon: brain
   interval: 5s
   # purple, not .hued's #320053: a 35% patch of that is invisible on a dark bar.
-  tint: {color: purple, style: chip, wrap: all}
+  tint: {color: purple, style: chip, wrap: all, menu: true}
   # UNUserNotificationCenter grants against the bundle's code identity, so an
   # ad-hoc signature would move the cdhash on every build and lose the grant.
   sign: perch local signing

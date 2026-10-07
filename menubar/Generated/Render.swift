@@ -87,7 +87,7 @@ extension Results {
 }
 
 func renderFace(_ results: Results) -> Face {
-    var face = Face(icon: MenuIcon.symbol("brain"), tint: Tint(color: "purple", alpha: 0.35, style: .chip, size: .small, corner: .bottomRight, wrap: .all))
+    var face = Face(icon: MenuIcon.symbol("brain"), tint: Tint(color: "purple", alpha: 0.35, style: .chip, size: .small, corner: .bottomRight, wrap: .all, menu: true))
     if results.state_wedged {
         face.icon = MenuIcon.symbol("exclamationmark.triangle")
     } else if (results.state_uninstalled || results.state_stopped) {

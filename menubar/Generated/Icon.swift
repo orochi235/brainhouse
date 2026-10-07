@@ -114,14 +114,16 @@ struct Tint {
     var size: Size
     var corner: Corner
     var wrap: Wrap
+    var menu: Bool
 
-    init(color: String, alpha: CGFloat, style: Style, size: Size, corner: Corner, wrap: Wrap = .icon) {
+    init(color: String, alpha: CGFloat, style: Style, size: Size, corner: Corner, wrap: Wrap = .icon, menu: Bool = false) {
         self.name = color
         self.alpha = alpha
         self.style = style
         self.size = size
         self.corner = corner
         self.wrap = wrap
+        self.menu = menu
     }
 
     /// Whether the badge is drawn inside the chip, so the button carries no title.
@@ -205,4 +207,36 @@ struct Tint {
             return true
         })!
     }
+}
+
+// MARK: - MenuGlass
+
+/// Tints the dropdown. AppKit has no API for a menu's color, but on macOS 26
+/// and later a menu's window is drawn on an NSGlassEffectView, whose tintColor
+/// is public. Finding that window goes by its private class name, so a macOS
+/// that renames it leaves the menu untinted rather than broken.
+enum MenuGlass {
+    /// Runs before each menu window first draws, submenus included, so the
+    /// tint never arrives a frame late.
+    static func follow(_ tint: @escaping () -> Tint?) {
+        #if compiler(>=6.2) // the first toolchain with the macOS 26 SDK, where NSGlassEffectView is declared
+        guard #available(macOS 26, *) else { return }
+        NotificationCenter.default.addObserver(forName: NSWindow.didUpdateNotification, object: nil, queue: nil) { note in
+            guard let window = note.object as? NSWindow, String(describing: type(of: window)) == "NSPopupMenuWindow",
+                  let glass = glass(in: window.contentView?.superview ?? window.contentView) else { return }
+            let t = tint()
+            let color = t?.menu == true ? t?.color : nil
+            if glass.tintColor != color { glass.tintColor = color }
+        }
+        #endif
+    }
+
+    #if compiler(>=6.2)
+    @available(macOS 26, *)
+    private static func glass(in view: NSView?) -> NSGlassEffectView? {
+        guard let view else { return nil }
+        if let glass = view as? NSGlassEffectView { return glass }
+        return view.subviews.lazy.compactMap { $0 as? NSGlassEffectView }.first
+    }
+    #endif
 }
