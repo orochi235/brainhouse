@@ -27,7 +27,7 @@ enum MenuIcon {
     /// The status item's image with a tint applied. A tinted image is color,
     /// not a template, so a symbol's own strokes are drawn in the label color
     /// to keep following the bar's appearance.
-    func image(tint: Tint?) -> NSImage? {
+    func image(tint: Tint?, badge: String = "") -> NSImage? {
         guard let tint, let plain = image() else { return image() }
         let colored: NSImage
         switch (self, tint.style) {
@@ -43,7 +43,8 @@ enum MenuIcon {
         case (.asset, _):
             colored = plain
         }
-        return tint.style == .chip ? tint.chip(colored) : tint.dot(colored)
+        guard tint.style == .chip else { return tint.dot(colored) }
+        return tint.chip(colored, badge: tint.wrap == .all ? badge : "")
     }
 
     /// The same icon beside a menu item, where AppKit's own images are 16pt.
@@ -104,6 +105,7 @@ struct Tint {
     enum Corner: String {
         case bottomRight = "bottom-right", bottomLeft = "bottom-left", topRight = "top-right", topLeft = "top-left"
     }
+    enum Wrap: String { case icon, all }
 
     /// One of the system colors' names, or #rrggbb.
     var name: String
@@ -111,14 +113,19 @@ struct Tint {
     var style: Style
     var size: Size
     var corner: Corner
+    var wrap: Wrap
 
-    init(color: String, alpha: CGFloat, style: Style, size: Size, corner: Corner) {
+    init(color: String, alpha: CGFloat, style: Style, size: Size, corner: Corner, wrap: Wrap = .icon) {
         self.name = color
         self.alpha = alpha
         self.style = style
         self.size = size
         self.corner = corner
+        self.wrap = wrap
     }
+
+    /// Whether the badge is drawn inside the chip, so the button carries no title.
+    var wrapsBadge: Bool { style == .chip && wrap == .all }
 
     /// The system colors are dynamic, so they shift between a light and a dark
     /// menu bar; a hex color is the same on both.
@@ -145,7 +152,7 @@ struct Tint {
             default: base = .labelColor
             }
         }
-        return base.withAlphaComponent(alpha)
+        return base.withAlphaComponent(min(max(alpha, 0), 1))
     }
 
     var diameter: CGFloat {
@@ -179,14 +186,22 @@ struct Tint {
         })!
     }
 
-    /// The icon on a rounded patch of the color.
-    func chip(_ icon: NSImage) -> NSImage {
-        let pad = NSSize(width: 4, height: 2), color = color
-        let size = NSSize(width: icon.size.width + 2 * pad.width, height: icon.size.height + 2 * pad.height)
+    /// The icon on a rounded patch of the color, and the badge beside it on the
+    /// same patch when there is one.
+    func chip(_ icon: NSImage, badge: String = "") -> NSImage {
+        let pad = NSSize(width: 4, height: 2), gap: CGFloat = 3, color = color
+        let font = NSFont.menuBarFont(ofSize: 0)
+        let label = NSAttributedString(string: badge, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        let text = badge.isEmpty ? .zero : label.size()
+        let width = icon.size.width + 2 * pad.width + (badge.isEmpty ? 0 : gap + ceil(text.width))
+        let size = NSSize(width: width, height: icon.size.height + 2 * pad.height)
         return Tint.untemplated(NSImage(size: size, flipped: false) { rect in
             color.setFill()
             NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
             icon.draw(in: NSRect(origin: NSPoint(x: pad.width, y: pad.height), size: icon.size))
+            if !badge.isEmpty {
+                label.draw(at: NSPoint(x: pad.width + icon.size.width + gap, y: (rect.height - text.height) / 2))
+            }
             return true
         })!
     }

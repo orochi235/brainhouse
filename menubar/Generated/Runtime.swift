@@ -583,11 +583,12 @@ enum Draw {
     }
 
     static func face(_ face: Face, on button: NSStatusBarButton) {
-        let image = face.icon.image(tint: face.tint)
+        let wrapped = face.tint?.wrapsBadge == true
+        let image = face.icon.image(tint: face.tint, badge: face.badge)
         button.image = image
         button.alphaValue = MenuIcon.alpha(of: image, on: button)
         button.appearsDisabled = face.dim
-        button.title = face.badge.isEmpty ? "" : " " + face.badge
+        button.title = face.badge.isEmpty || wrapped ? "" : " " + face.badge
     }
 
     /// Replaces whatever the menu held: it is rebuilt from the last poll every
