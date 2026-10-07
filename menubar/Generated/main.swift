@@ -5,7 +5,7 @@ import Foundation
 
 final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private var results = Results()
+    fileprivate var results = Results()
     private var timer: Timer?
 
     override init() {
@@ -23,7 +23,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    func poll() {
+    fileprivate func poll() {
         let group = DispatchGroup()
         let sync = DispatchQueue(label: "com.brainhouse.menubar.results")
         var next = Results()

@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if ! command -v perch >/dev/null; then
-  echo "error: perch not found — go install github.com/orochi235/perch/cmd/perch@latest" >&2
+  echo "error: perch not found — go install github.com/orochi235/perch/v2/cmd/perch@latest" >&2
   echo "       (and make sure the directory it installs to is on your PATH)" >&2
   exit 1
 fi

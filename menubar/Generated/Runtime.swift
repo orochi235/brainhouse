@@ -7,61 +7,6 @@
 import AppKit
 import Foundation
 
-// MARK: - MenuIcon
-
-/// What the status item shows. A symbol is drawn as a template, so macOS tints
-/// it for the menu bar's own appearance and for whether the bar is selected. An
-/// asset is artwork the consuming repo drew, which macOS will not tint and
-/// which therefore has to carry its own color.
-enum MenuIcon {
-    case symbol(String)
-    case asset(String)
-
-    func image() -> NSImage? {
-        switch self {
-        case .symbol(let name):
-            let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
-            image?.isTemplate = true
-            return image
-        case .asset(let name):
-            guard let image = MenuIcon.load(name), image.size.height > 0 else { return nil }
-            // Measured off the bar rather than fixed at the 18pt a menu bar used
-            // to be: the bar has been taller than that for several releases, and
-            // artwork sized to the old number sits in the middle of its frame
-            // looking like a mistake. The inset is what keeps it off the edges.
-            let height = max(NSStatusBar.system.thickness - 5, 12)
-            image.size = NSSize(width: height * (image.size.width / image.size.height), height: height)
-            return image
-        }
-    }
-
-    /// How faint to draw, approximating the fade macOS gives a template when the
-    /// menu bar goes inactive and gives artwork not at all. The bar is taken as
-    /// inactive when the item's own screen is not the one holding the active
-    /// menu bar, which is right for the two common cases — another display has
-    /// focus, or a full screen app owns this one — and wrong for anything else
-    /// that dims the bar. A template is left alone: it has already faded, and
-    /// fading it twice is worse than not matching.
-    func alpha(on button: NSStatusBarButton) -> CGFloat {
-        guard case .asset = self else { return 1 }
-        guard let screen = button.window?.screen, let active = NSScreen.main else { return 1 }
-        return screen == active ? 1 : 0.55
-    }
-
-    /// `<name>~dark.png` where the bundle carries one. A template gets its two
-    /// appearances from macOS; artwork that keeps its own color does not, so an
-    /// asset whose outline must read against both menu bars ships both.
-    private static func load(_ name: String) -> NSImage? {
-        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        if dark, let path = Bundle.main.path(forResource: name + "~dark", ofType: "png"),
-           let image = NSImage(contentsOfFile: path) {
-            return image
-        }
-        guard let path = Bundle.main.path(forResource: name, ofType: "png") else { return nil }
-        return NSImage(contentsOfFile: path)
-    }
-}
-
 // MARK: - JSONValue
 
 /// The value an undeclared watch binds. A watch with a `shape:` decodes into a
@@ -365,6 +310,14 @@ enum Act {
         }
     }
 
+    /// Hand-written Swift from menubar/Sources/. It re-polls like every other
+    /// action, and raises no alert: there is no exit status to inspect, so
+    /// reporting a failure belongs to the hook.
+    static func swift(_ body: () -> Void, then repoll: @escaping () -> Void) {
+        body()
+        repoll()
+    }
+
     static func post(_ urlString: String, body: String, then repoll: @escaping () -> Void) {
         guard let url = URL(string: urlString) else {
             alert("POST \(urlString)", "Not a URL.")
@@ -429,6 +382,8 @@ enum Act {
         case .open(let target): open(target)
         case .post(let url, let body): post(url, body: body, then: repoll)
         case .agent(let label, let plist, let verb): agent(label: label, plist: plist, verb: verb, then: repoll)
+        case .swift(let body): swift(body, then: repoll)
+        case .window(let verb): Windows.perform(verb, then: repoll)
         case .quit: NSApp.terminate(nil)
         }
     }
@@ -439,6 +394,86 @@ enum Act {
         a.informativeText = detail.isEmpty ? "No output." : detail
         a.alertStyle = .warning
         a.runModal()
+    }
+}
+
+// MARK: - Quitting
+
+/// One answer in the quit prompt. A nil action just quits.
+struct QuitChoice {
+    let text: String
+    let action: MenuAction?
+}
+
+/// What quitting asks. Cancel is implicit and always last; the first button is
+/// the default.
+struct QuitPrompt {
+    let message: String
+    let detail: String
+    let buttons: [QuitChoice]
+}
+
+enum Quit {
+    /// Quit reasons that mean the machine is going down or the user is walking
+    /// away — nobody is asking this app a question, and nobody is waiting to
+    /// answer one.
+    private static let unattended: Set<OSType> = [
+        OSType(kAELogOut), OSType(kAEReallyLogOut),
+        OSType(kAEShutDown), OSType(kAERestart), OSType(kAEQuitAll),
+    ]
+
+    /// Whether this termination is aimed at this app specifically. An absent
+    /// event or an absent reason means it is: NSApp.terminate from our own
+    /// menus and from the Dock tile carries no quit reason at all.
+    static func isUserInitiated(_ event: NSAppleEventDescriptor?) -> Bool {
+        guard let reason = event?.attributeDescriptor(forKeyword: AEKeyword(kAEQuitReason)) else {
+            return true
+        }
+        return !unattended.contains(reason.enumCodeValue)
+    }
+
+    /// Asks, and reports what to do. A helper that cancels someone's logout is
+    /// worse than one that exits without asking, and a modal raised during
+    /// shutdown is a dialog nobody is there to dismiss — so an unattended quit
+    /// never reaches the alert.
+    static func should(_ prompt: QuitPrompt?,
+                       event: NSAppleEventDescriptor?,
+                       then finish: @escaping (Bool) -> Void) -> NSApplication.TerminateReply {
+        guard let prompt, isUserInitiated(event) else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = prompt.message
+        alert.informativeText = prompt.detail
+        let choices = prompt.buttons.isEmpty ? [QuitChoice(text: "Quit", action: nil)] : prompt.buttons
+        for choice in choices {
+            alert.addButton(withTitle: choice.text)
+        }
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+
+        // The status item does not activate the app, so an unactivated modal can
+        // sit behind another app with nothing to click while runModal blocks.
+        NSApp.activate(ignoringOtherApps: true)
+
+        let picked = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        guard picked >= 0, picked < choices.count else { return .terminateCancel }
+        guard let action = choices[picked].action else { return .terminateNow }
+
+        // Captured strongly on purpose: every path out of this has to reply
+        // exactly once, and a dropped reply hangs termination forever.
+        Act.perform(action) { finish(true) }
+        return .terminateLater
+    }
+}
+
+/// The app's one window, if it declared one. Set at launch by the generated
+/// Controller. A closure rather than a typed reference so Runtime.swift does not
+/// depend on Window.swift, which is emitted only when there is a window.
+enum Windows {
+    static var handler: ((WindowVerb) -> Void)?
+
+    static func perform(_ verb: WindowVerb, then repoll: @escaping () -> Void) {
+        handler?(verb)
+        repoll()
     }
 }
 
@@ -467,6 +502,7 @@ final class ActionItem: NSMenuItem {
 /// What the status item shows, decided from one poll's results.
 struct Face {
     var icon: MenuIcon
+    var tint: Tint? = nil
     var dim = false
     var badge = ""
 }
@@ -487,11 +523,19 @@ enum LaunchAgentVerb: String {
 
 /// What activating a menu item does. It is lowered when the menu is built, so
 /// an item runs what it showed.
+enum WindowVerb {
+    case open
+    case close
+    case reload
+}
+
 enum MenuAction {
     case run([String])
     case open(String)
     case post(url: String, body: String)
     case agent(label: String, plist: String, verb: LaunchAgentVerb)
+    case swift(() -> Void)
+    case window(WindowVerb)
     case quit
 }
 
@@ -499,8 +543,8 @@ enum MenuAction {
 /// which macOS shows disabled.
 enum MenuNode {
     case separator
-    case item(String, MenuAction?)
-    case submenu(String, [MenuNode])
+    case item(String, MenuAction?, icon: MenuIcon? = nil)
+    case submenu(String, [MenuNode], icon: MenuIcon? = nil)
 }
 
 /// Drops separators with nothing beside them: leading, trailing, and every one
@@ -517,8 +561,8 @@ func tidy(_ nodes: [MenuNode]) -> [MenuNode] {
             out.append(node)
             continue
         }
-        if case .submenu(let title, let items) = node {
-            out.append(.submenu(title, tidy(items)))
+        if case .submenu(let title, let items, let icon) = node {
+            out.append(.submenu(title, tidy(items), icon: icon))
             continue
         }
         out.append(node)
@@ -528,9 +572,20 @@ func tidy(_ nodes: [MenuNode]) -> [MenuNode] {
 }
 
 enum Draw {
+    /// macOS 27 hides menu item images unless an item asks otherwise. Set by
+    /// selector so the app still compiles against an SDK older than 27.
+    static func icon(_ icon: MenuIcon?, on item: NSMenuItem) {
+        item.image = icon?.menuImage()
+        let visible = Selector(("setPreferredImageVisibility:"))
+        if item.image != nil, item.responds(to: visible) {
+            item.setValue(1, forKey: "preferredImageVisibility")
+        }
+    }
+
     static func face(_ face: Face, on button: NSStatusBarButton) {
-        button.image = face.icon.image()
-        button.alphaValue = face.icon.alpha(on: button)
+        let image = face.icon.image(tint: face.tint)
+        button.image = image
+        button.alphaValue = MenuIcon.alpha(of: image, on: button)
         button.appearsDisabled = face.dim
         button.title = face.badge.isEmpty ? "" : " " + face.badge
     }
@@ -543,12 +598,17 @@ enum Draw {
             switch node {
             case .separator:
                 menu.addItem(NSMenuItem.separator())
-            case .item(let title, nil):
-                menu.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
-            case .item(let title, let action?):
-                menu.addItem(ActionItem(title: title) { Act.perform(action, then: repoll) })
-            case .submenu(let title, let items):
+            case .item(let title, nil, let icon):
                 let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                Draw.icon(icon, on: item)
+                menu.addItem(item)
+            case .item(let title, let action?, let icon):
+                let item = ActionItem(title: title) { Act.perform(action, then: repoll) }
+                Draw.icon(icon, on: item)
+                menu.addItem(item)
+            case .submenu(let title, let items, let icon):
+                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                Draw.icon(icon, on: item)
                 let sub = NSMenu()
                 Draw.menu(items, into: sub, repoll: repoll)
                 item.submenu = sub

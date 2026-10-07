@@ -80,14 +80,14 @@ extension ChromeResult {
 }
 
 extension Results {
-    var state_uninstalled: Bool { (!(server.installed)) }
-    var state_stopped: Bool { !state_uninstalled && (!(server.loaded)) }
-    var state_wedged: Bool { !state_uninstalled && !state_stopped && (!(summary.ok)) }
-    var state_up: Bool { !state_uninstalled && !state_stopped && !state_wedged }
+    var state_uninstalled: Bool { (!(self.server.installed)) }
+    var state_stopped: Bool { !self.state_uninstalled && (!(self.server.loaded)) }
+    var state_wedged: Bool { !self.state_uninstalled && !self.state_stopped && (!(self.summary.ok)) }
+    var state_up: Bool { !self.state_uninstalled && !self.state_stopped && !self.state_wedged }
 }
 
 func renderFace(_ results: Results) -> Face {
-    var face = Face(icon: MenuIcon.symbol("brain"))
+    var face = Face(icon: MenuIcon.symbol("brain"), tint: Tint(color: "purple", alpha: 0.35, style: .chip, size: .small, corner: .bottomRight))
     if results.state_wedged {
         face.icon = MenuIcon.symbol("exclamationmark.triangle")
     } else if (results.state_uninstalled || results.state_stopped) {
@@ -138,13 +138,13 @@ func renderMenu(_ results: Results) -> [MenuNode] {
     if results.state_uninstalled {
         menu.append(.item("Install with: npm run service:install", nil))
     }
-    if results.state_stopped {
+    if results.state_stopped && (results.server.installed && !(results.server.loaded)) {
         menu.append(.item("Start Service", .agent(label: "com.brainhouse", plist: "~/Library/LaunchAgents/com.brainhouse.plist", verb: .start)))
     }
-    if (results.state_up || results.state_wedged) {
+    if (results.state_up || results.state_wedged) && results.server.installed {
         menu.append(.item("Restart Service", .agent(label: "com.brainhouse", plist: "~/Library/LaunchAgents/com.brainhouse.plist", verb: .restart)))
     }
-    if (results.state_up || results.state_wedged) {
+    if (results.state_up || results.state_wedged) && results.server.loaded {
         menu.append(.item("Stop Service", .agent(label: "com.brainhouse", plist: "~/Library/LaunchAgents/com.brainhouse.plist", verb: .stop)))
     }
     menu.append(.item("Open Logs", .open("~/Library/Logs/brainhouse")))
