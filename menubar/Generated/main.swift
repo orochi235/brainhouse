@@ -7,12 +7,19 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     fileprivate var results = Results()
     private var timer: Timer?
+    private var menuOpen = false
 
     override init() {
         super.init()
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
+        for (name, open) in [(NSMenu.didBeginTrackingNotification, true), (NSMenu.didEndTrackingNotification, false)] {
+            NotificationCenter.default.addObserver(forName: name, object: menu, queue: nil) { [weak self] _ in
+                self?.menuOpen = open
+                self?.refresh()
+            }
+        }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
             ) { [weak self] _ in self?.refresh() }
@@ -75,7 +82,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func refresh() {
         guard let button = statusItem.button else { return }
-        Draw.face(renderFace(results), on: button)
+        Draw.face(renderFace(results), on: button, menuOpen: menuOpen)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {

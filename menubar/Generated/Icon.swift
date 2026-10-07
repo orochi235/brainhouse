@@ -129,32 +129,38 @@ struct Tint {
     /// Whether the badge is drawn inside the chip, so the button carries no title.
     var wrapsBadge: Bool { style == .chip && wrap == .all }
 
+    /// Whether a color named at run time is one this can draw: #rrggbb or a
+    /// system color. menubar.yaml's colors were checked at build.
+    static func draws(_ name: String) -> Bool { base(name) != nil }
+
     /// The system colors are dynamic, so they shift between a light and a dark
     /// menu bar; a hex color is the same on both.
     var color: NSColor {
-        let base: NSColor
-        if name.hasPrefix("#"), let v = UInt32(name.dropFirst(), radix: 16) {
-            base = NSColor(srgbRed: CGFloat(v >> 16 & 0xff) / 255, green: CGFloat(v >> 8 & 0xff) / 255,
+        (Tint.base(name) ?? .labelColor).withAlphaComponent(min(max(alpha, 0), 1))
+    }
+
+    private static func base(_ name: String) -> NSColor? {
+        if name.hasPrefix("#") {
+            guard name.count == 7, let v = UInt32(name.dropFirst(), radix: 16) else { return nil }
+            return NSColor(srgbRed: CGFloat(v >> 16 & 0xff) / 255, green: CGFloat(v >> 8 & 0xff) / 255,
                            blue: CGFloat(v & 0xff) / 255, alpha: 1)
-        } else {
-            switch name {
-            case "red": base = .systemRed
-            case "orange": base = .systemOrange
-            case "yellow": base = .systemYellow
-            case "green": base = .systemGreen
-            case "mint": base = .systemMint
-            case "teal": base = .systemTeal
-            case "cyan": base = .systemCyan
-            case "blue": base = .systemBlue
-            case "indigo": base = .systemIndigo
-            case "purple": base = .systemPurple
-            case "pink": base = .systemPink
-            case "brown": base = .systemBrown
-            case "gray": base = .systemGray
-            default: base = .labelColor
-            }
         }
-        return base.withAlphaComponent(min(max(alpha, 0), 1))
+        switch name {
+        case "red": return .systemRed
+        case "orange": return .systemOrange
+        case "yellow": return .systemYellow
+        case "green": return .systemGreen
+        case "mint": return .systemMint
+        case "teal": return .systemTeal
+        case "cyan": return .systemCyan
+        case "blue": return .systemBlue
+        case "indigo": return .systemIndigo
+        case "purple": return .systemPurple
+        case "pink": return .systemPink
+        case "brown": return .systemBrown
+        case "gray": return .systemGray
+        default: return nil
+        }
     }
 
     var diameter: CGFloat {
@@ -206,6 +212,19 @@ struct Tint {
             }
             return true
         })!
+    }
+}
+
+// MARK: - Prefs
+
+/// The user's own settings, from the app's defaults domain:
+/// `defaults write <app id> tint '#5e2ca5'`. Read on every draw, so a change
+/// shows at the next poll.
+enum Prefs {
+    /// The app tint's color, unless the user has set one macOS can draw.
+    static func tint(or fallback: String) -> String {
+        guard let name = UserDefaults.standard.string(forKey: "tint"), Tint.draws(name) else { return fallback }
+        return name
     }
 }
 
