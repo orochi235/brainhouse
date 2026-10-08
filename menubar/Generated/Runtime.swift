@@ -582,17 +582,9 @@ enum Draw {
         }
     }
 
-    /// While the menu is open a chip draws no patch: macOS puts its own pill
-    /// behind the item then.
     static func face(_ face: Face, on button: NSStatusBarButton, menuOpen: Bool = false) {
-        var face = face
-        if menuOpen, face.tint?.style == .chip { face.tint = nil }
-        let wrapped = face.tint?.wrapsBadge == true
-        let image = face.icon.image(tint: face.tint, badge: face.badge)
-        button.image = image
-        button.alphaValue = MenuIcon.alpha(of: image, on: button)
-        button.appearsDisabled = face.dim
-        button.title = face.badge.isEmpty || wrapped ? "" : " " + face.badge
+        StatusButton.paint(face.icon.image(), tint: face.tint, badge: face.badge, dim: face.dim,
+                           menuOpen: menuOpen, on: button)
     }
 
     /// Replaces whatever the menu held: it is rebuilt from the last poll every
