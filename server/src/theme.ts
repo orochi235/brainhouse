@@ -19,6 +19,7 @@
 
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { blackOrWhite, contrastRatio } from './contrast.js';
 import { CSS_NAMED_COLORS } from './cssColors.js';
 
 export interface PanelTheme {
@@ -102,7 +103,11 @@ async function readThemeFromPath(huedPath: string): Promise<PanelTheme | null> {
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
     // hued spec: everything after the value is a comment (`#ffff00  # yellow`).
-    const value = line.slice(eq + 1).trim().split(/\s/)[0] ?? '';
+    const value =
+      line
+        .slice(eq + 1)
+        .trim()
+        .split(/\s/)[0] ?? '';
     if (key === 'background') background = resolveColor(value);
     else if (key === 'foreground') foreground = resolveColor(value);
   }
@@ -186,10 +191,15 @@ function resolveColor(value: string): string | null {
   return CSS_NAMED_COLORS[value.toLowerCase()] ?? null;
 }
 
+/** Below this, an author's `foreground=` is unreadable on its background
+ * and gets replaced. WCAG's floor for large text, not body text's 4.5:1, so a
+ * deliberate near-miss like white on pure red (4.0:1) survives. */
+const MIN_EXPLICIT_CONTRAST = 3;
+
 /** Build a theme from a resolved-to-hex background. When `explicitForeground`
- * is provided (an author wrote `foreground=...`), use it verbatim and skip
- * the wash-out guard — the author has taken responsibility for contrast.
- * Otherwise auto-pick #000/#fff by luminance and refuse near-white
+ * is provided (an author wrote `foreground=...`), use it and skip the
+ * wash-out guard, unless it fails MIN_EXPLICIT_CONTRAST — then black or
+ * white, whichever reads better. Otherwise auto-pick #000/#fff by luminance and refuse near-white
  * backgrounds that would render auto-white text unreadable. */
 function buildTheme(
   background: string,
@@ -197,7 +207,11 @@ function buildTheme(
 ): PanelTheme | null {
   const rgb = hexToRgb(background);
   if (!rgb) return null;
-  if (explicitForeground) return { background, foreground: explicitForeground };
+  if (explicitForeground) {
+    const ratio = contrastRatio(explicitForeground, background);
+    const readable = ratio === null || ratio >= MIN_EXPLICIT_CONTRAST;
+    return { background, foreground: readable ? explicitForeground : blackOrWhite(background) };
+  }
   const yiq = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
   // Sanity guard: extremely pale colors would wash the white text out and
   // give barely-visible bubbles. Refuse those rather than silently render

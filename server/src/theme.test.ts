@@ -99,6 +99,19 @@ describe('readPanelTheme', () => {
     expect(theme?.foreground).toBe('#000000');
   });
 
+  it('replaces an explicit foreground that is unreadable on its background', async () => {
+    // agnew's pair: cyan text on a near-identical cyan, 1.14:1.
+    await writeHued('foreground=#22d3ee\nbackground=#00e1ff\n');
+    const theme = await readPanelTheme(dir);
+    expect(theme).toEqual({ background: '#00e1ff', foreground: '#000' });
+  });
+
+  it('keeps an explicit foreground that clears 3:1 even under 4.5:1', async () => {
+    await writeHued('foreground=#eeeeee\nbackground=#ff0000\n');
+    const theme = await readPanelTheme(dir);
+    expect(theme?.foreground).toBe('#eeeeee');
+  });
+
   it('still auto-picks foreground when none is given', async () => {
     await writeHued('background=#320053\n');
     const theme = await readPanelTheme(dir);

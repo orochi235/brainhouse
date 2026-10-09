@@ -1119,10 +1119,9 @@ reply, because codebase questions need reads). So it needs the model.
 Start with the free half — `AskUserQuestion` is already structured and
 appears 217× across 200 transcripts, needing no inference at all.
 
-## Project-colored bubbles don't guard contrast
+## Color math is duplicated between client and server
 
-A `has-theme` panel paints its assistant bubbles in the project's `.hued`
-`background` with its `foreground` as text, verbatim. agnew's pair is
-`#00e1ff` on `#22d3ee`, so its replies are cyan on cyan and unreadable in
-every theme. Check contrast and fall back to black or white text when the
-pair measures under ~4.5:1.
+WCAG contrast lives in both `client/src/lib/contrast.ts` and
+`server/src/contrast.ts`, because the two packages share no source. The
+server's auto-picked `.hued` foreground also still uses a YIQ threshold
+rather than WCAG. Give the workspace a shared module and fold both in.
