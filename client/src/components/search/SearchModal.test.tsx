@@ -86,7 +86,7 @@ beforeEach(() => {
 
 async function renderWithResults() {
   render(<SearchModal initialQuery="needle" />);
-  await screen.findByText('Session 1');
+  await screen.findByRole('option', { selected: true });
   return screen.getByRole('combobox');
 }
 
@@ -126,7 +126,7 @@ describe('<SearchModal>', () => {
   it('steps between matches in the reader with n and N, and leaves it with Esc', async () => {
     const input = await renderWithResults();
     fireEvent.keyDown(input, { key: 'Enter' });
-    const reader = screen.getByLabelText('Transcript');
+    const reader = await screen.findByLabelText('Transcript');
     await waitFor(() => expect(reader.querySelectorAll('.search-doc')).toHaveLength(2));
     expect(document.activeElement).toBe(reader);
     act(() => {
