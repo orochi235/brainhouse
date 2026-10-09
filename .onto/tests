@@ -1,0 +1,4 @@
+enlist: 6
+plugin: node
+# npm test chains three vitest runs (server, client, bin), so no runner: line.
+run: npm test
