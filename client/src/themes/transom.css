@@ -1,0 +1,102 @@
+/* The transom theme: the wall's chrome (~/src/transom) worn by brainhouse —
+   Oxanium type, Tektur headings, slate ink on near-black, and sky-blue
+   hairlines. Dark-based: it overrides the dark defaults in app.css. */
+
+/* Vendored so the theme keeps its typography with no network. */
+@font-face {
+  font-family: "Oxanium";
+  src: url("../fonts/oxanium.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: block;
+}
+@font-face {
+  font-family: "Tektur";
+  src: url("../fonts/tektur.woff2") format("woff2");
+  font-weight: 600;
+  font-display: block;
+}
+@font-face {
+  font-family: "Fira Code";
+  src: url("../fonts/fira-code.woff2") format("woff2");
+  font-weight: 600;
+  font-display: block;
+}
+
+:root[data-theme="transom"] {
+  --font-ui: "Oxanium", ui-monospace, monospace;
+  --font-head: "Tektur", "Oxanium", ui-monospace, monospace;
+  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --bg: #0a0a0c;
+  --panel-bg: #000000;
+  --panel-border: color-mix(in srgb, var(--accent) 34%, transparent);
+  --fg: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --live: #38bdf8;
+  --done: #64748b;
+  --mini: #334155;
+  --code-bg: #05060a;
+  --code-block-bg: rgba(0, 0, 0, 0.75);
+  --code-block-fg: #e2e8f0;
+  --header-bg: color-mix(in srgb, var(--accent) 5%, transparent);
+  --tray-bg: rgba(0, 0, 0, 0.3);
+
+  --bubble-user: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  --bubble-user-fg: #e2e8f0;
+  --bubble-assistant: linear-gradient(180deg, #0c4a6e 0%, #082f49 100%);
+  --bubble-assistant-fg: #e0f2fe;
+
+  font-weight: 500;
+}
+
+:root[data-theme="transom"] body {
+  background:
+    radial-gradient(
+      ellipse at 70% 0%,
+      color-mix(in srgb, #2b3f6b 35%, transparent),
+      transparent 60%
+    ),
+    #05060a;
+}
+
+:root[data-theme="transom"] .topbar {
+  background-color: color-mix(in srgb, #000 78%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom-color: var(--panel-border);
+}
+
+:root[data-theme="transom"] .panel,
+:root[data-theme="transom"] .processes-panel {
+  border-color: var(--panel-border);
+  border-radius: 3px;
+}
+
+:root[data-theme="transom"] .processes-panel {
+  background: color-mix(in srgb, #000 78%, transparent);
+}
+
+:root[data-theme="transom"] .panel-title,
+:root[data-theme="transom"] .title-bar-title {
+  font-family: var(--font-head);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Section labels in transom are small, spaced capitals in muted ink. */
+:root[data-theme="transom"] .processes-panel h2,
+:root[data-theme="transom"] .processes-table thead th,
+:root[data-theme="transom"] .debug-section-title {
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="transom"] .theme-toggle,
+:root[data-theme="transom"] .debug-spawn {
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  border-radius: 3px;
+}

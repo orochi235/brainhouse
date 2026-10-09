@@ -1118,3 +1118,11 @@ reply, because codebase questions need reads). So it needs the model.
 
 Start with the free half — `AskUserQuestion` is already structured and
 appears 217× across 200 transcripts, needing no inference at all.
+
+## Project-colored bubbles don't guard contrast
+
+A `has-theme` panel paints its assistant bubbles in the project's `.hued`
+`background` with its `foreground` as text, verbatim. agnew's pair is
+`#00e1ff` on `#22d3ee`, so its replies are cyan on cyan and unreadable in
+every theme. Check contrast and fall back to black or white text when the
+pair measures under ~4.5:1.

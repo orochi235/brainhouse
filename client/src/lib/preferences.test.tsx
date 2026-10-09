@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useBoolPref, useTheme } from './preferences.ts';
+import { nextTheme, useBoolPref, useTheme } from './preferences.ts';
 
 beforeEach(() => {
   localStorage.clear();
@@ -51,5 +51,19 @@ describe('useTheme', () => {
     const { result } = renderHook(() => useTheme());
     act(() => result.current[1]('light'));
     expect(localStorage.getItem('brainhouse-theme')).toBe('light');
+  });
+
+  it('honors a stored transom theme', () => {
+    localStorage.setItem('brainhouse-theme', 'transom');
+    const { result } = renderHook(() => useTheme());
+    expect(result.current[0]).toBe('transom');
+  });
+});
+
+describe('nextTheme', () => {
+  it('cycles light, dark, transom, and back to light', () => {
+    expect(nextTheme('light')).toBe('dark');
+    expect(nextTheme('dark')).toBe('transom');
+    expect(nextTheme('transom')).toBe('light');
   });
 });

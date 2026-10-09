@@ -31,7 +31,7 @@ import {
   usePinnedPanels,
   useWidePanels,
 } from './lib/panelOrder.ts';
-import { useTheme } from './lib/preferences.ts';
+import { nextTheme, type ThemePref, useTheme } from './lib/preferences.ts';
 import { buildProjectRollups } from './lib/projectWidgets.ts';
 import { clearScrollPosition, pruneScrollPositions } from './lib/scrollMemory.ts';
 import { allocateSlots } from './lib/slotAllocator.ts';
@@ -50,6 +50,7 @@ import { pruneToggles } from './transforms/useTransformToggles.ts';
 import { trpc } from './trpc.ts';
 import { type PanelState, useDeltaStream } from './useDeltaStream.ts';
 import './app.css';
+import './themes/transom.css';
 
 /** Topbar brand label. Picks once per app mount from a tiered pool — each
  * tier is `rarityFactor` times as likely as the previous, so common ≫
@@ -143,6 +144,8 @@ const CURRENT_BRAND = pickBrand();
  * a "show N more" toggle. trayPanels is sorted most-recent-first, so the cap
  * always keeps the freshest sessions visible. */
 const DOCK_RENDER_CAP = 50;
+
+const THEME_GLYPH: Record<ThemePref, string> = { light: '☀', dark: '☾', transom: '◈' };
 
 function BrandLabel() {
   const brand = CURRENT_BRAND;
@@ -813,10 +816,10 @@ function AppMain() {
                         <button
                           type="button"
                           className="theme-toggle"
-                          title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-                          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                          title={`Switch to ${nextTheme(theme)}`}
+                          onClick={() => setTheme(nextTheme(theme))}
                         >
-                          {theme === 'dark' ? '☾' : '☀'}
+                          {THEME_GLYPH[theme]}
                         </button>
                         <PrefsButton prefs={prefs} onSaved={refetchPrefs} />
                       </span>

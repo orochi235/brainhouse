@@ -1,7 +1,10 @@
 :root {
   color-scheme: dark;
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-ui);
   font-size: 17px;
+
+  --font-ui: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --bg: #0f0f10;
   --panel-bg: #18181b;
@@ -256,7 +259,7 @@ body {
  * debug tint + tabular figures so the ticking digits don't reflow. */
 .topbar-uptime {
   align-self: center;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   color: var(--debug-color);
@@ -1281,7 +1284,7 @@ body.hide-context .panel-context {
   background: color-mix(in srgb, var(--panel-bg) 28%, transparent);
 }
 .panel-tool-debug {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   opacity: 0.55;
 }
@@ -1975,7 +1978,7 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   padding: 0.08rem 0;
 }
 .checklist .check {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   opacity: 0.55;
   width: 1ch;
 }
@@ -2131,7 +2134,7 @@ body.has-fullscreen-panel .session-dock:not(:has(.fullscreen)) {
   text-underline-offset: 2px;
 }
 .subagent-row .check {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   opacity: 0.55;
   width: 1ch;
 }
@@ -2485,7 +2488,7 @@ body.imessage .event-assistant_text .bubble {
   background: var(--inline-code-bg);
   padding: 0.05em 0.3em;
   border-radius: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.88em;
 }
 .markdown pre {
@@ -2824,7 +2827,7 @@ body.imessage .event-assistant_text .bubble-thread {
   flex-shrink: 0;
 }
 .file-change-path {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -2892,7 +2895,7 @@ body.imessage .event-assistant_text .bubble-thread {
   background: var(--code-bg);
   border-radius: 6px;
   border: 1px solid var(--panel-border);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   line-height: 1.4;
   table-layout: fixed;
@@ -2955,7 +2958,7 @@ body.imessage .event-assistant_text .bubble-thread {
   background: var(--code-bg);
   border-radius: 6px;
   border: 1px solid var(--panel-border);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   white-space: pre-wrap;
 }
@@ -3141,7 +3144,7 @@ body.imessage .event-assistant_text .bubble-thread {
 }
 .transforms-version {
   font-size: 0.65rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   color: var(--muted);
   background: color-mix(in srgb, var(--fg) 8%, transparent);
   padding: 0.05rem 0.4rem;
@@ -3158,7 +3161,7 @@ body.imessage .event-assistant_text .bubble-thread {
   font-variant-numeric: tabular-nums;
 }
 .transforms-source {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--muted);
   margin-top: 0.1rem;
@@ -3297,7 +3300,7 @@ body.imessage .event-assistant_text .bubble-thread {
   text-align: right;
 }
 .trace-row-kind {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
 }
 .trace-row-preview {
@@ -3369,7 +3372,7 @@ body.imessage .event-assistant_text .bubble-thread {
   margin-bottom: 0.4rem;
 }
 .trace-uuid-copy {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   background: transparent;
   border: 0;
@@ -3378,7 +3381,7 @@ body.imessage .event-assistant_text .bubble-thread {
   padding: 0;
 }
 .trace-detail-kind {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--muted);
 }
@@ -3489,7 +3492,7 @@ body.imessage .event-assistant_text .bubble-thread {
 }
 .flows-node-label {
   fill: var(--fg);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   pointer-events: none;
 }
 .flows-links path:hover {
@@ -3506,7 +3509,7 @@ body.imessage .event-assistant_text .bubble-thread {
   font-size: 0.75rem;
   z-index: 100;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .flows-tooltip-arrow {
   color: var(--muted);
@@ -3547,7 +3550,7 @@ body.imessage .event-assistant_text .bubble-thread {
 
 /* ---- ConnTooltip ---- */
 .conn-tooltip {
-  font-family: var(--ui-font, ui-sans-serif, system-ui);
+  font-family: var(--font-ui);
   max-width: 280px;
 }
 .conn-tooltip-title {
@@ -3570,7 +3573,7 @@ body.imessage .event-assistant_text .bubble-thread {
  * Plain narrative explanation popovers. Smaller than the token table
  * popover; share the same outer .hover-popover chrome. */
 .header-tooltip {
-  font-family: var(--ui-font, ui-sans-serif, system-ui);
+  font-family: var(--font-ui);
   max-width: 280px;
 }
 .header-tooltip-title {
@@ -3582,7 +3585,7 @@ body.imessage .event-assistant_text .bubble-thread {
   color: color-mix(in srgb, var(--fg) 85%, var(--muted));
 }
 .header-tooltip-body code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
   padding: 0 0.15em;
   background: color-mix(in srgb, var(--fg) 8%, transparent);
@@ -3599,7 +3602,7 @@ body.imessage .event-assistant_text .bubble-thread {
 
 /* ---- TokenTooltip ---- */
 .token-tooltip {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .token-tooltip-title {
   font-size: 0.7rem;
@@ -3684,7 +3687,7 @@ body.imessage .event-assistant_text .bubble-thread {
 }
 .token-tooltip-cache .cache-note {
   margin: 0.35rem 0 0;
-  font-family: var(--ui-font, ui-sans-serif, system-ui);
+  font-family: var(--font-ui);
   font-size: 0.7rem;
   color: color-mix(in srgb, var(--fg) 80%, var(--muted));
 }
@@ -3692,7 +3695,7 @@ body.imessage .event-assistant_text .bubble-thread {
   margin-top: 0.5rem;
   font-size: 0.65rem;
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 /* Event-type stats — sortable table. Reuses .transforms-modal for the
@@ -3741,7 +3744,7 @@ body.imessage .event-assistant_text .bubble-thread {
   white-space: nowrap;
 }
 .stats-subkey {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
 }
 .stats-subkey .muted {
@@ -3791,7 +3794,7 @@ body.imessage .event-assistant_text .bubble-thread {
  * clock `HH:MM:SS` (~2.4rem) + status glyph (0.85) + inter-gap (0.3) +
  * trailer right offset (0.4) + a little breathing room. */
 .tool-capsule[data-tool-name="Bash"] .tool-label {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .tool-status {
   font-variant-numeric: tabular-nums;
@@ -4004,7 +4007,7 @@ body.view-conversation
 }
 .lightbox-text .lightbox-inner {
   background: var(--code-bg);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -4071,7 +4074,7 @@ body.view-conversation
   margin: 0;
   padding: 0;
   font-size: 0.78rem;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .op-strip-tree li {
   margin: 0;
@@ -4112,7 +4115,7 @@ body.view-conversation
 }
 .op-strip-file-path {
   margin: 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   word-break: break-all;
 }
@@ -4192,7 +4195,7 @@ body.view-conversation
   margin: 0 0 0.4rem;
 }
 .prefs-hint code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
 }
 .prefs-field {
@@ -4279,7 +4282,7 @@ body.view-conversation
   color: var(--fg);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   resize: vertical;
 }
@@ -4404,7 +4407,7 @@ body.view-conversation
   text-overflow: ellipsis;
 }
 .prefs-trash-cwd {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--muted);
   white-space: nowrap;
@@ -4442,7 +4445,7 @@ body.view-conversation
   padding: 0.6rem 0.8rem;
   border-radius: 6px;
   margin: 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   overflow: auto;
   white-space: pre-wrap;
@@ -4450,7 +4453,7 @@ body.view-conversation
 }
 .lightbox-text-content {
   margin: 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   white-space: pre-wrap;
 }
 
@@ -4709,7 +4712,7 @@ body.replay-drop-target::after {
   min-height: 0;
   overflow: auto;
   font-size: 0.72rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   padding: 0.5rem 0.6rem;
 }
 .debug-stack {
@@ -4885,7 +4888,7 @@ body.replay-drop-target::after {
 }
 .debug-tree-branch {
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem;
 }
 .debug-th-sort {
@@ -4922,7 +4925,7 @@ body.replay-drop-target::after {
   margin: 0;
   cursor: pointer;
   color: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   border-radius: 3px;
   transition: background 120ms ease;
 }
@@ -4958,7 +4961,7 @@ body.replay-drop-target::after {
 }
 
 .project-chip {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
   color: color-mix(in srgb, var(--fg) 70%, transparent);
   padding: 1px 4px;
@@ -4986,7 +4989,7 @@ body[data-freeze] .debug-tile * {
 .debug-error {
   color: #c44;
   padding: 0.5rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .debug-tile details > summary {
   cursor: pointer;
@@ -5068,7 +5071,7 @@ body[data-freeze] .debug-tile * {
 }
 .project-widget-path {
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5588,7 +5591,7 @@ body.hide-thinking .event-thought-agent {
   flex-wrap: wrap;
 }
 .timeline-range {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--fg);
   margin-right: auto;
@@ -5635,7 +5638,7 @@ body.hide-thinking .event-thought-agent {
 .timeline-lane-label {
   font-size: 0.62rem;
   fill: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .timeline-lane-rule {
   stroke: color-mix(in srgb, var(--fg) 7%, transparent);
@@ -5649,7 +5652,7 @@ body.hide-thinking .event-thought-agent {
 .timeline-axis-label {
   font-size: 0.6rem;
   fill: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .timeline-mark {
   fill: var(--mark-color, color-mix(in srgb, var(--fg) 55%, transparent));
@@ -5864,11 +5867,11 @@ body.hide-thinking .event-thought-agent {
 .timeline-detail-ts {
   font-size: 0.7rem;
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-weight: 400;
 }
 .timeline-detail-body {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   background: color-mix(in srgb, var(--fg) 4%, transparent);
   padding: 0.5rem 0.7rem;
@@ -6334,7 +6337,7 @@ body.hide-thinking .event-thought-agent {
   overflow: hidden;
   text-overflow: ellipsis;
   color: color-mix(in srgb, var(--fg) 60%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.95em;
 }
 /* Real session titles read as prose, not commands. Match the uptime
@@ -6389,7 +6392,7 @@ body.hide-thinking .event-thought-agent {
 
 .process-info-grid dd {
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   word-break: break-all;
 }
 
@@ -6516,7 +6519,7 @@ body.hide-thinking .event-thought-agent {
   margin: 0;
   padding: 0.4rem 0.6rem;
   font-size: 0.85em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   max-height: 16rem;
   overflow: auto;
   white-space: pre-wrap;
@@ -6665,7 +6668,7 @@ body.hide-thinking .event-thought-agent {
 }
 
 .inspector-list-key {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   color: color-mix(in srgb, var(--fg) 60%, transparent);
   font-size: 0.85em;
 }
@@ -6786,7 +6789,7 @@ body.hide-thinking .event-thought-agent {
 }
 
 .inspector-detail-key {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   color: color-mix(in srgb, var(--fg) 60%, transparent);
   font-size: 0.9em;
 }
@@ -6856,7 +6859,7 @@ body.hide-thinking .event-thought-agent {
 }
 
 .inspector-chip-key {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .inspector-chip-missing .inspector-chip-badge {
@@ -6980,7 +6983,7 @@ body.hide-thinking .event-thought-agent {
 
 .inspector-paste-area {
   min-height: 100px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
 }
 
@@ -7058,7 +7061,7 @@ body.hide-thinking .event-thought-agent {
   border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
   border-radius: 8px;
   padding: 0.4rem 0.6rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   line-height: 1.4;
   max-width: 90%;
@@ -7134,7 +7137,7 @@ body.hide-thinking .event-thought-agent {
   padding: 0.3rem 0.45rem;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem;
   background: color-mix(in srgb, var(--fg) 6%, transparent);
   border-radius: 6px;

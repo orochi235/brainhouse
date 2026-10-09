@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from 'react';
 
-export type ThemePref = 'light' | 'dark';
+export type ThemePref = 'light' | 'dark' | 'transom';
+
+const THEMES: readonly ThemePref[] = ['light', 'dark', 'transom'];
+
+export const nextTheme = (t: ThemePref): ThemePref =>
+  THEMES[(THEMES.indexOf(t) + 1) % THEMES.length];
 
 function readBool(key: string, fallback: boolean): boolean {
   const v = localStorage.getItem(key);
@@ -25,7 +30,7 @@ export function useBoolPref(
 export function useTheme(): readonly [ThemePref, (t: ThemePref) => void] {
   const [theme, setTheme] = useState<ThemePref>(() => {
     const saved = localStorage.getItem('brainhouse-theme');
-    if (saved === 'light' || saved === 'dark') return saved;
+    if (THEMES.includes(saved as ThemePref)) return saved as ThemePref;
     return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   });
   useEffect(() => {
