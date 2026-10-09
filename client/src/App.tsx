@@ -31,7 +31,7 @@ import {
   usePinnedPanels,
   useWidePanels,
 } from './lib/panelOrder.ts';
-import { nextTheme, type ThemePref, useTheme } from './lib/preferences.ts';
+import { nextStyle, useStyle, useTheme } from './lib/preferences.ts';
 import { buildProjectRollups } from './lib/projectWidgets.ts';
 import { clearScrollPosition, pruneScrollPositions } from './lib/scrollMemory.ts';
 import { allocateSlots } from './lib/slotAllocator.ts';
@@ -145,8 +145,6 @@ const CURRENT_BRAND = pickBrand();
  * always keeps the freshest sessions visible. */
 const DOCK_RENDER_CAP = 50;
 
-const THEME_GLYPH: Record<ThemePref, string> = { light: '☀', dark: '☾', transom: '◈' };
-
 function BrandLabel() {
   const brand = CURRENT_BRAND;
   return (
@@ -221,6 +219,7 @@ function AppMain() {
   }, [freezeMode]);
   const { status, panels: allPanels } = useDeltaStream();
   const [theme, setTheme] = useTheme();
+  const [style, setStyle] = useStyle();
   const [processesPanelOpen, setProcessesPanelOpen] = useState<boolean>(() => {
     try {
       return localStorage.getItem('brainhouse:processesPanelOpen') !== '0';
@@ -816,10 +815,19 @@ function AppMain() {
                         <button
                           type="button"
                           className="theme-toggle"
-                          title={`Switch to ${nextTheme(theme)}`}
-                          onClick={() => setTheme(nextTheme(theme))}
+                          title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+                          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                         >
-                          {THEME_GLYPH[theme]}
+                          {theme === 'dark' ? '☾' : '☀'}
+                        </button>
+                        <button
+                          type="button"
+                          className="theme-toggle style-toggle"
+                          aria-pressed={style !== 'default'}
+                          title={`Style: ${style} (switch to ${nextStyle(style)})`}
+                          onClick={() => setStyle(nextStyle(style))}
+                        >
+                          ◈
                         </button>
                         <PrefsButton prefs={prefs} onSaved={refetchPrefs} />
                       </span>

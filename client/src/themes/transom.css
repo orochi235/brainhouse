@@ -1,6 +1,7 @@
-/* The transom theme: the wall's chrome (~/src/transom) worn by brainhouse —
-   Oxanium type, Tektur headings, slate ink on near-black, and sky-blue
-   hairlines. Dark-based: it overrides the dark defaults in app.css. */
+/* The transom style: the wall's chrome (~/src/transom) worn by brainhouse —
+   Oxanium type, Tektur headings, slate ink, and sky-blue hairlines. A style
+   is independent of light/dark: the dark palette below is transom's own, and
+   the light one is its daytime counterpart. */
 
 /* Vendored so the theme keeps its typography with no network. */
 @font-face {
@@ -22,7 +23,7 @@
   font-display: block;
 }
 
-:root[data-theme="transom"] {
+:root[data-style="transom"] {
   --font-ui: "Oxanium", ui-monospace, monospace;
   --font-head: "Tektur", "Oxanium", ui-monospace, monospace;
   --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -46,47 +47,77 @@
   --bubble-user-fg: #e2e8f0;
   --bubble-assistant: linear-gradient(180deg, #0c4a6e 0%, #082f49 100%);
   --bubble-assistant-fg: #e0f2fe;
-
-  font-weight: 500;
-}
-
-:root[data-theme="transom"] body {
-  background:
+  --chrome-scrim: color-mix(in srgb, #000 78%, transparent);
+  --page-bg:
     radial-gradient(
       ellipse at 70% 0%,
       color-mix(in srgb, #2b3f6b 35%, transparent),
       transparent 60%
     ),
     #05060a;
+
+  font-weight: 500;
 }
 
-:root[data-theme="transom"] .topbar {
-  background-color: color-mix(in srgb, #000 78%, transparent);
+:root[data-style="transom"][data-theme="light"] {
+  --bg: #f1f5f9;
+  --panel-bg: #ffffff;
+  --panel-border: color-mix(in srgb, var(--accent) 40%, transparent);
+  --fg: #0f172a;
+  --muted: #64748b;
+  --accent: #0284c7;
+  --live: #0284c7;
+  --done: #94a3b8;
+  --mini: #cbd5e1;
+  --code-bg: #f8fafc;
+  --code-block-bg: #0f172a;
+  --code-block-fg: #e2e8f0;
+  --tray-bg: rgba(15, 23, 42, 0.04);
+  --bubble-user: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+  --bubble-user-fg: #0f172a;
+  --bubble-assistant: linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%);
+  --bubble-assistant-fg: #ffffff;
+  --chrome-scrim: color-mix(in srgb, #fff 78%, transparent);
+  --page-bg:
+    radial-gradient(
+      ellipse at 70% 0%,
+      color-mix(in srgb, #bae6fd 45%, transparent),
+      transparent 60%
+    ),
+    #f1f5f9;
+}
+
+:root[data-style="transom"] body {
+  background: var(--page-bg);
+}
+
+:root[data-style="transom"] .topbar {
+  background-color: var(--chrome-scrim);
   backdrop-filter: blur(6px);
   border-bottom-color: var(--panel-border);
 }
 
-:root[data-theme="transom"] .panel,
-:root[data-theme="transom"] .processes-panel {
+:root[data-style="transom"] .panel,
+:root[data-style="transom"] .processes-panel {
   border-color: var(--panel-border);
   border-radius: 3px;
 }
 
-:root[data-theme="transom"] .processes-panel {
-  background: color-mix(in srgb, #000 78%, transparent);
+:root[data-style="transom"] .processes-panel {
+  background: var(--chrome-scrim);
 }
 
-:root[data-theme="transom"] .panel-title,
-:root[data-theme="transom"] .title-bar-title {
+:root[data-style="transom"] .panel-title,
+:root[data-style="transom"] .title-bar-title {
   font-family: var(--font-head);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 
 /* Section labels in transom are small, spaced capitals in muted ink. */
-:root[data-theme="transom"] .processes-panel h2,
-:root[data-theme="transom"] .processes-table thead th,
-:root[data-theme="transom"] .debug-section-title {
+:root[data-style="transom"] .processes-panel h2,
+:root[data-style="transom"] .processes-table thead th,
+:root[data-style="transom"] .debug-section-title {
   color: var(--muted);
   font-family: var(--font-ui);
   font-size: 0.72rem;
@@ -95,8 +126,8 @@
   text-transform: uppercase;
 }
 
-:root[data-theme="transom"] .theme-toggle,
-:root[data-theme="transom"] .debug-spawn {
+:root[data-style="transom"] .theme-toggle,
+:root[data-style="transom"] .debug-spawn {
   border-color: color-mix(in srgb, var(--accent) 34%, transparent);
   border-radius: 3px;
 }

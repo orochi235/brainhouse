@@ -1,10 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { nextTheme, useBoolPref, useTheme } from './preferences.ts';
+import { nextStyle, useBoolPref, useStyle, useTheme } from './preferences.ts';
 
 beforeEach(() => {
   localStorage.clear();
   delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.style;
 });
 
 describe('useBoolPref', () => {
@@ -52,18 +53,31 @@ describe('useTheme', () => {
     act(() => result.current[1]('light'));
     expect(localStorage.getItem('brainhouse-theme')).toBe('light');
   });
+});
 
-  it('honors a stored transom theme', () => {
+describe('useStyle', () => {
+  it('defaults to the default style', () => {
+    const { result } = renderHook(() => useStyle());
+    expect(result.current[0]).toBe('default');
+  });
+
+  it('sets data-style on documentElement and persists it', () => {
+    const { result } = renderHook(() => useStyle());
+    act(() => result.current[1]('transom'));
+    expect(document.documentElement.dataset.style).toBe('transom');
+    expect(localStorage.getItem('brainhouse-style')).toBe('transom');
+  });
+
+  it('carries a stored transom theme over as dark plus the transom style', () => {
     localStorage.setItem('brainhouse-theme', 'transom');
-    const { result } = renderHook(() => useTheme());
-    expect(result.current[0]).toBe('transom');
+    expect(renderHook(() => useTheme()).result.current[0]).toBe('dark');
+    expect(renderHook(() => useStyle()).result.current[0]).toBe('transom');
   });
 });
 
-describe('nextTheme', () => {
-  it('cycles light, dark, transom, and back to light', () => {
-    expect(nextTheme('light')).toBe('dark');
-    expect(nextTheme('dark')).toBe('transom');
-    expect(nextTheme('transom')).toBe('light');
+describe('nextStyle', () => {
+  it('cycles through the styles', () => {
+    expect(nextStyle('default')).toBe('transom');
+    expect(nextStyle('transom')).toBe('default');
   });
 });
