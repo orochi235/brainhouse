@@ -20,6 +20,8 @@ import { type Event, hasTag } from './parser.js';
 import type { Discovery } from './prefs.js';
 import type { ProcessTracker } from './processes/index.js';
 import { deriveAccountLabel } from './roots.js';
+import type { RootSpec } from './search/ingest.js';
+import type { SearchService } from './search/service.js';
 import { type Delta, encodeCwdToProjectDir, SessionStore } from './session.js';
 import type { Store } from './store.js';
 import { type PanelTheme, readPanelTheme } from './theme.js';
@@ -72,6 +74,9 @@ export interface MonitorOptions {
    * gate and the watcher's bootstrap live-ingest window are both derived
    * from this group so they agree on the recency window. */
   discovery?: Discovery;
+  /** Transcript search. Told about every transcript the watcher reads new
+   * lines from, and about root changes. */
+  search?: SearchService | null;
 }
 
 const DEFAULT_EVENTS_RETENTION_DAYS = 30;
@@ -133,10 +138,12 @@ export class TranscriptMonitor {
   readonly persistStore: import('./store.js').Store | null;
   private readonly discovery: Discovery | null;
   private indexer: BackgroundIndexer | null = null;
+  readonly search: SearchService | null;
 
   constructor(opts: MonitorOptions) {
     this.persistStore = opts.store ?? null;
     this.discovery = opts.discovery ?? null;
+    this.search = opts.search ?? null;
     this.store = new SessionStore({
       idleSeconds: opts.idleSeconds,
       miniSeconds: opts.miniSeconds,
@@ -160,6 +167,7 @@ export class TranscriptMonitor {
         store: opts.store ?? null,
         bootstrapAgeSeconds: opts.discovery?.uiWindowSeconds ?? 172800,
         deferredMaxAgeSeconds: opts.discovery?.backgroundMaxAgeSeconds ?? 0,
+        onTail: (p) => this.search?.touch(p),
       },
     );
     this.tickIntervalMs = opts.tickIntervalMs ?? 5000;
@@ -578,6 +586,15 @@ export class TranscriptMonitor {
     }
   }
 
+  /** The watched roots with the account label each one stamps, for the
+   * search index. */
+  searchRoots(): RootSpec[] {
+    return this.watcher.roots.map((r) => ({
+      path: r,
+      account: this.accountLabels.get(r) ?? deriveAccountLabel(r),
+    }));
+  }
+
   /**
    * Hot-swap the watched roots + account labels without dropping the existing
    * SessionStore, tick interval, or delta subscribers. Used when prefs are
@@ -601,8 +618,10 @@ export class TranscriptMonitor {
         store: this.persistStore,
         bootstrapAgeSeconds: this.discovery?.uiWindowSeconds ?? 172800,
         deferredMaxAgeSeconds: this.discovery?.backgroundMaxAgeSeconds ?? 0,
+        onTail: (p) => this.search?.touch(p),
       },
     );
+    this.search?.setRoots(this.searchRoots());
     await this.watcher.start({ watch: true });
     // A fresh watcher means a fresh deferred-file queue; restart the indexer
     // so files newly out-of-window under the swapped-in roots get summarized

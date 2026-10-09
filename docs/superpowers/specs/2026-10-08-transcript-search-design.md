@@ -1,6 +1,7 @@
 # Transcript search
 
-**Status: designed, not built.**
+**Status: built, except the menu bar item**, which waits for a perch release
+that has `field:` (see [Menu bar](#menu-bar)).
 
 This is for whoever builds transcript search and whoever changes it next. It
 answers: how brainhouse indexes every transcript on disk, how a query runs, and
@@ -8,8 +9,9 @@ what the search modal does.
 
 ## What it does
 
-A search field in the topbar searches every transcript under every `~/.claude…`
-root: all accounts, all history, live sessions included. Results open in a
+A search field in the topbar searches every transcript under the roots
+brainhouse watches (`resolveRoots`: the prefs' roots, or every `~/.claude…/projects`
+when none are set): all history, live sessions included. Results open in a
 modal with the hits on the left and the matching session on the right, scrolled
 to the hit. The menu bar helper has a search field that opens the same modal.
 
@@ -26,9 +28,9 @@ to the 6.3 GB corpus, the index is about 1.07 GB.
 | Piece | Where | Job |
 |---|---|---|
 | Search worker | `server/src/search/worker.ts` (`worker_thread`) | Owns `~/.brainhouse/search.db` (`BRAINHOUSE_SEARCH_DB` overrides). Indexes and answers queries. Works in chunks of about 50 ms and serves waiting queries before the next chunk. |
-| Worker client | `server/src/search/client.ts` | Main-thread handle: posts messages, matches replies by id, drops replies to superseded queries. |
+| Worker handle | `server/src/search/service.ts` | Main-thread handle: posts messages, matches replies by id, restarts a crashed worker. |
 | Query parser | `server/src/search/query.ts` | Pure: query string → terms, phrases, regex, and filters. |
-| Router | `search` in `server/src/trpc.ts` | `query({ q, cursor })`, `transcript({ fileId })`. |
+| Router | `search` in `server/src/trpc.ts` | `query({ q, cursor })`, `transcript({ fileId, highlight })`, `docText({ docId })`, `status()`. |
 | Open route | `POST /api/search/open` in `server/src/index.ts` | Body `{ q }`. Runs `open -b com.google.Chrome http://localhost:8765/?q=<encoded>`, or plain `open` when Chrome is missing. |
 | Topbar field | `client/src/components/search/SearchField.tsx` | ⌘K or `/` focuses it. Typing opens the modal with the text carried over. Remembers recent queries in `localStorage`. |
 | Modal | `client/src/components/search/SearchModal.tsx` | Opens in the lightbox. Query bar and filter chips across the top, results list on the left, reader on the right. |
@@ -118,11 +120,14 @@ and the panels never disagree.
 
 The query runs 150 ms after typing stops. Superseded queries are dropped.
 
-The **reader** fetches a session with `search.transcript`, which reuses the
-`loadJsonlAsPanel` path that `replayJsonl` uses, and renders it with
-`ViewItemList` and the panel's transform pipeline. It scrolls to the hit's
-event and highlights every match with the CSS Custom Highlight API. The client
-keeps the last 8 transcripts it opened.
+The **reader** shows the session's indexed events, read back from the search
+database by `search.transcript`, one row per event with its role and time. It
+does not use the panel's view pipeline: that folds tool output into collapsed
+capsules, and tool output is most of what matches, so a hit would land
+somewhere neither visible nor highlightable. Rows with a match arrive whole,
+with match ranges; other rows are cut to 600 characters and expand on click
+(`search.docText`). The reader centers the first match of the current hit. The
+client keeps the last 8 transcripts it opened.
 
 The **footer** shows hits, sessions, and query time, in tabular figures, with
 the time pinned at the right edge so it doesn't move the counts.
@@ -141,7 +146,8 @@ and results carry a note that they are incomplete.
 `post:` rather than `run: [open, -b, com.google.Chrome, …]`: perch passes
 `{{query}}` to `run:` unencoded, which breaks a URL on `&`, `#` and `%`, while
 it JSON-escapes holes in a `post:` body. `field:` is on perch `main` but not in
-a release (v2.3.1 predates it), so this item waits for one.
+a release (v2.3.1 predates it), so this item waits for one. The server route it
+posts to is built.
 
 ## Testing
 
@@ -153,4 +159,5 @@ a release (v2.3.1 predates it), so this item waits for one.
 - Router: `query` and `transcript` against a fixture corpus.
 - `/api/search/open`: encoding of `a&b c#%`.
 - Modal: keyboard navigation and the reader following the selection.
-- A headless Playwright pass against the deployed service.
+- A headless Playwright pass against the deployed service: the deep link, the
+  topbar field, and the reader landing on a match.

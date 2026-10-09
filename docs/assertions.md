@@ -872,3 +872,12 @@ UI/server is meant to uphold. New entries go at the bottom.
   read server-side and stamped on the process row, whether or not any panel
   for the project is loaded. Only a project with no `.hued` falls back to the
   name hash. `.hued` values ignore anything after the value (`#fa8072  # salmon`).
+- **Transcript search reads the same roots the watcher does.** The search
+  index covers `resolveRoots` and nothing else, so a transcript is searchable
+  exactly when brainhouse could show it as a panel. Its database
+  (`~/.brainhouse/search.db`) is derived data: a schema version change deletes
+  and rebuilds it, and a transcript that disappears from disk is pruned on the
+  next scan.
+- **A search hit is always visible in the reader.** The reader renders indexed
+  events directly, never through the panel view pipeline, because the pipeline
+  folds tool output into capsules and most matches are in tool output.

@@ -11,6 +11,8 @@ import { PrefsStore } from './prefs.js';
 import { runStartupDiscovery } from './processes/discovery.js';
 import { ProcessTracker } from './processes/index.js';
 import { resolveRoots } from './roots.js';
+import { openSearchInBrowser } from './search/openInBrowser.js';
+import { SearchService } from './search/service.js';
 import { resolveAnthropicApiKey } from './secrets.js';
 import { Store } from './store.js';
 import { appRouter } from './trpc.js';
@@ -41,6 +43,7 @@ async function main() {
   const { timings, roots: configuredRoots, storage, workspace, discovery } = prefs.get();
   const store = storage.persistEnabled ? Store.open() : null;
   const tracker = new ProcessTracker();
+  const search = new SearchService();
   const monitor = new TranscriptMonitor({
     roots,
     accounts: configuredRoots,
@@ -65,6 +68,7 @@ async function main() {
       };
     },
     discovery,
+    search,
   });
   // Hydrate persisted panels synchronously, but DON'T start the slow
   // transcript walk / process discovery yet — those run after the HTTP
@@ -107,6 +111,14 @@ async function main() {
   // badge count. Outside the tRPC tree so the Swift URLSession client
   // stays a one-line JSON fetch.
   app.get('/api/summary', async () => monitor.store.menubarSummary());
+
+  // The menu bar's search field posts here; perch JSON-escapes a `post:`
+  // body but passes `run:` arguments raw, so the URL is built on this side.
+  app.post<{ Body: { q?: unknown } }>('/api/search/open', async (req, reply) => {
+    const q = typeof req.body?.q === 'string' ? req.body.q : '';
+    await openSearchInBrowser(`http://localhost:${PORT}`, q);
+    return reply.send({ ok: true });
+  });
 
   // Image bytes lifted out of transcript records. Content-addressed, so the
   // response is immutable and the browser cache does the repeat work.
@@ -239,6 +251,7 @@ async function main() {
   }
 
   app.addHook('onClose', async () => {
+    await search.stop();
     await monitor.stop();
     tracker.stop();
     store?.close();
@@ -251,6 +264,7 @@ async function main() {
   const displayHost = HOST === '::' ? 'localhost' : HOST;
   app.log.info(`brainhouse listening at http://${displayHost}:${PORT}`);
   for (const r of roots) app.log.info(`  watch: ${r}`);
+  search.start(monitor.searchRoots());
 
   // Heavy bootstrap, now that the port is live: walk the transcript roots
   // and discover the process table. Both stream into already-connected

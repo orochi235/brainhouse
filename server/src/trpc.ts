@@ -32,6 +32,8 @@ import {
 import { brainhouseRoot, currentRevision, writeAndLaunch } from './reportIssue.js';
 import { resolveRoots } from './roots.js';
 import { getScenario, listScenarios } from './scenarios.js';
+import { describeGroups } from './search/api.js';
+import type { SearchService } from './search/service.js';
 import type { Delta, PanelDto } from './session.js';
 import type { IntentionsRow, Store } from './store.js';
 
@@ -58,6 +60,16 @@ export type ProcessEvent =
 const t = initTRPC.context<AppContext>().create();
 
 const PanelStatus = z.enum(['live', 'done', 'mini']);
+
+const HighlightSchema = z.object({
+  terms: z.array(z.string()),
+  regex: z.object({ source: z.string(), flags: z.string() }).nullable(),
+});
+
+function requireSearch(monitor: TranscriptMonitor): SearchService {
+  if (!monitor.search) throw new Error('search is not running');
+  return monitor.search;
+}
 
 export type DeltaEvent =
   | { kind: 'snapshot'; panels: Array<PanelDto & { events: unknown[] }> }
@@ -353,6 +365,27 @@ export const appRouter = t.router({
           }),
         };
       }),
+  }),
+
+  /** Transcript search over every transcript on disk. See
+   * docs/superpowers/specs/2026-10-08-transcript-search-design.md. */
+  search: t.router({
+    query: t.procedure
+      .input(z.object({ q: z.string().max(2000), cursor: z.string().nullish() }))
+      .query(async ({ ctx, input }) => {
+        const search = requireSearch(ctx.monitor);
+        const result = await search.query(input.q, { cursor: input.cursor ?? null });
+        return describeGroups(result, ctx.monitor, ctx.store);
+      }),
+    transcript: t.procedure
+      .input(z.object({ fileId: z.number().int(), highlight: HighlightSchema }))
+      .query(({ ctx, input }) =>
+        requireSearch(ctx.monitor).transcript(input.fileId, input.highlight),
+      ),
+    docText: t.procedure
+      .input(z.object({ docId: z.number().int() }))
+      .query(({ ctx, input }) => requireSearch(ctx.monitor).docText(input.docId)),
+    status: t.procedure.query(({ ctx }) => requireSearch(ctx.monitor).status()),
   }),
 
   /** Cross-session event-type frequency counters. Counts every event the

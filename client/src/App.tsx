@@ -12,6 +12,7 @@ import { ProcessesPanel } from './components/ProcessesPanel.tsx';
 import { ProjectWidgetCard, ProjectWidgetChip } from './components/ProjectWidgetCard.tsx';
 import { ScenariosModal } from './components/ScenariosModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
+import { SearchField } from './components/search/SearchField.tsx';
 import { TransformsModal } from './components/TransformsModal.tsx';
 import { UptimeClock } from './components/UptimeClock.tsx';
 import { Layout } from './layout/Layout.tsx';
@@ -725,6 +726,7 @@ function AppMain() {
                       <BrandLabel />
                     </h1>
                     <span className="topbar-controls">
+                      <SearchField />
                       {/* Debug-only buttons clustered at the left so the cluster
                        * reads as one mode-switchable area; muted lime tint
                        * (--debug-color) reinforces the grouping. Neutral

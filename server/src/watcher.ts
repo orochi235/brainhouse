@@ -19,7 +19,7 @@ import path from 'node:path';
 import type { ChokidarOptions } from 'chokidar';
 import { type Event, parseLine } from './parser.js';
 import type { Store } from './store.js';
-import { type Watcher, startWatcher } from './watchBackend.js';
+import { startWatcher, type Watcher } from './watchBackend.js';
 
 export interface PathInfo {
   session_id: string;
@@ -77,6 +77,9 @@ export interface WatcherOptions {
    * to `bootstrap_offsets`; a server restart resumes from where each
    * file's tail left off instead of replaying the trailing N minutes. */
   store?: Store | null;
+  /** Called with a transcript's path each time new complete lines are read
+   * from it. Feeds the search index. */
+  onTail?: (path: string) => void;
 }
 
 export class TranscriptWatcher {
@@ -88,6 +91,7 @@ export class TranscriptWatcher {
   private readonly chokidarOptions: ChokidarOptions;
   private readonly offsets = new Map<string, number>();
   private readonly store: Store | null;
+  private readonly onTail: ((path: string) => void) | null;
   private watcher: Watcher | null = null;
   private processing: Promise<void> = Promise.resolve();
 
@@ -98,6 +102,7 @@ export class TranscriptWatcher {
     this.deferredMaxAgeSeconds = opts.deferredMaxAgeSeconds ?? 0;
     this.chokidarOptions = opts.chokidarOptions ?? {};
     this.store = opts.store ?? null;
+    this.onTail = opts.onTail ?? null;
   }
 
   async start({ watch = true }: { watch?: boolean } = {}): Promise<void> {
@@ -412,6 +417,7 @@ export class TranscriptWatcher {
     const newOffset = offset + lastNewline + 1;
     this.offsets.set(p, newOffset);
     this.store?.setBootstrapOffset(p, newOffset);
+    this.onTail?.(p);
 
     for (const line of complete.toString('utf8').split('\n')) {
       if (!line.trim()) continue;
