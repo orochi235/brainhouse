@@ -253,11 +253,13 @@ enum StatusButton {
 
     /// Calls back as the menu opens and closes, and when another app becomes
     /// active: an image's inactive-bar fade is worked out at draw time, so it
-    /// has to be redrawn when the thing it is worked out from moves.
-    static func follow(_ menu: NSMenu, _ redraw: @escaping (_ menuOpen: Bool) -> Void) {
+    /// has to be redrawn when the thing it is worked out from moves. The menu
+    /// is asked for each time, so one attached later is still followed.
+    static func follow(_ menu: @escaping () -> NSMenu?, _ redraw: @escaping (_ menuOpen: Bool) -> Void) {
         var open = false
         for (name, isOpen) in [(NSMenu.didBeginTrackingNotification, true), (NSMenu.didEndTrackingNotification, false)] {
-            NotificationCenter.default.addObserver(forName: name, object: menu, queue: nil) { _ in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { note in
+                guard let tracked = note.object as? NSMenu, tracked === menu() else { return }
                 open = isOpen
                 redraw(open)
             }

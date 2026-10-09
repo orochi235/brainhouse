@@ -1,18 +1,5 @@
 # brainhouse — project todos
 
-## Transcript search — menu bar item
-
-Waits on a perch release with `field:` (on perch `main` after v2.3.1). Then add
-to `menubar.yaml`, rebuild with `npm run menubar:install`:
-
-```yaml
-  - field: Search transcripts
-    post: {url: "http://localhost:8765/api/search/open", body: {q: "{{query}}"}}
-```
-
-`/api/search/open` is already built. See
-`docs/superpowers/specs/2026-10-08-transcript-search-design.md`.
-
 ## Page load — residual polish (bulk fixed 2026-08-12)
 
 The bootstrap payload was the whole story: 52.8 MB of docked-mini event

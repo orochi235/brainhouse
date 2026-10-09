@@ -310,6 +310,31 @@ enum Act {
         }
     }
 
+    /// Text as the inside of a JSON string, for a hole in a post: body.
+    static func jsonEscaped(_ s: String) -> String {
+        var out = ""
+        for u in s.unicodeScalars {
+            switch u {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case _ where u.value < 0x20: out += String(format: "\\u%04x", u.value)
+            default: out.unicodeScalars.append(u)
+            }
+        }
+        return out
+    }
+
+    /// Typed text as one query component. urlQueryAllowed leaves & + = alone,
+    /// which would split the text into several parameters.
+    static func urlQuery(_ s: String) -> String {
+        let unreserved = CharacterSet(charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        return s.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
+    }
+
     /// Hand-written Swift from menubar/Sources/. It re-polls like every other
     /// action, and raises no alert: there is no exit status to inspect, so
     /// reporting a failure belongs to the hook.
@@ -545,6 +570,7 @@ enum MenuNode {
     case separator
     case item(String, MenuAction?, icon: MenuIcon? = nil)
     case submenu(String, [MenuNode], icon: MenuIcon? = nil)
+    case field(String, (String) -> MenuAction)
 }
 
 /// Drops separators with nothing beside them: leading, trailing, and every one
@@ -610,6 +636,10 @@ enum Draw {
                 Draw.menu(items, into: sub, repoll: repoll)
                 item.submenu = sub
                 menu.addItem(item)
+            case .field(let placeholder, let make):
+                menu.addItem(FieldItem(placeholder: placeholder) { text in
+                    Act.perform(make(text), then: repoll)
+                })
             }
         }
     }

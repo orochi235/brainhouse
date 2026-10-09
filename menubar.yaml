@@ -82,6 +82,11 @@ menu:
   - text: Open Dashboard
     when: "!chrome.ok"
     open: http://localhost:8765/
+  # post: rather than run: [open, …], because perch passes {{query}} to run:
+  # unencoded, which breaks the URL on & # %, and JSON-escapes it in a body.
+  - field: Search transcripts
+    when: up
+    post: {url: "http://localhost:8765/api/search/open", body: {q: "{{query}}"}}
   # The master toggle, which flips notifications.muteAll on the server and so
   # silences the web client too. Two items rather than one checkmark, because
   # the schema has no checkmark and the verb reads better than the state.

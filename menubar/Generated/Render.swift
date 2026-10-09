@@ -128,6 +128,9 @@ func renderMenu(_ results: Results) -> [MenuNode] {
     if !(results.chrome.ok) {
         menu.append(.item("Open Dashboard", .open("http://localhost:8765/")))
     }
+    if results.state_up {
+        menu.append(.field("Search transcripts", { query1 in .post(url: "http://localhost:8765/api/search/open", body: "{\"q\":\"\(Act.jsonEscaped(query1))\"}") }))
+    }
     if (results.notifications.ok && results.notifications.data.enabled) {
         menu.append(.item("Mute notifications", .post(url: "http://localhost:8765/api/notifications", body: "{\"enabled\":false}")))
     }

@@ -1,7 +1,6 @@
 # Transcript search
 
-**Status: built, except the menu bar item**, which waits for a perch release
-that has `field:` (see [Menu bar](#menu-bar)).
+**Status: built.**
 
 This is for whoever builds transcript search and whoever changes it next. It
 answers: how brainhouse indexes every transcript on disk, how a query runs, and
@@ -145,9 +144,8 @@ and results carry a note that they are incomplete.
 
 `post:` rather than `run: [open, -b, com.google.Chrome, …]`: perch passes
 `{{query}}` to `run:` unencoded, which breaks a URL on `&`, `#` and `%`, while
-it JSON-escapes holes in a `post:` body. `field:` is on perch `main` but not in
-a release (v2.3.1 predates it), so this item waits for one. The server route it
-posts to is built.
+it JSON-escapes holes in a `post:` body. The item needs perch 2.4.0 or later,
+the first release with `field:`.
 
 ## Testing
 
