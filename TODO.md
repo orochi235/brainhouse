@@ -1126,15 +1126,17 @@ WCAG contrast lives in both `client/src/lib/contrast.ts` and
 server's auto-picked `.hued` foreground also still uses a YIQ threshold
 rather than WCAG. Give the workspace a shared module and fold both in.
 
-## [HIGH] Archive transcripts before Claude Code deletes them
+## [HIGH] Search sessions that live only in the icehouse
 
-Unbuilt. Claude Code deletes a session transcript once it is older than
-`cleanupPeriodDays`. That was the 30-day default until 2026-10-10, when
-all three harness settings files were raised to 90 as a stopgap, so the
-oldest transcript on disk (2026-09-09) is deleted around 2026-12-08
-unless an archiver lands first. Measured that day: 6.6 GB on disk,
-growing about 6 GB a month, 4.1x smaller under `zstd -19`.
+Unbuilt. `~/src/icehouse` now copies every session's files into a
+compressed store before Claude Code deletes the originals, but brainhouse
+does not read it: `prune` in `server/src/search/ingest.ts` still drops a
+session from the search index once its live file is gone, so a deleted
+session leaves search even though its transcript is kept.
 
-Needs: a destination, a job that compresses and copies each finished
-transcript there, and a way for search to read archived sessions. Once
-it runs, drop `cleanupPeriodDays` back so the local copy stays bounded.
+Index stored sessions too. `icehouse ls` lists every session, live or
+stored, and `icehouse cat <session-id>` prints its JSONL either way; the
+functions behind them are `listSessions` and `openTranscript` in
+icehouse's `src/sessions.ts`. Key index rows on session and agent ID
+rather than file path, so a session keeps its rows when it moves from
+live to stored.
