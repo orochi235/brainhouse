@@ -74,6 +74,7 @@ interface PrefsDraft {
   storage: {
     persistEnabled: boolean;
     eventsIndexRetentionDays: number;
+    searchIndexMaxGb: number;
   };
   editor: {
     urlTemplate: string;
@@ -727,6 +728,13 @@ function StorageSection({ draft, setDraft }: SectionProps) {
         value={draft.storage.eventsIndexRetentionDays}
         min={1}
         onChange={(v) => set({ eventsIndexRetentionDays: v })}
+      />
+      <NumberField
+        label="Search index size cap (GB)"
+        hint="Past this, sessions Claude Code has deleted leave search, oldest first. They stay in icehouse, and live transcripts are always indexed."
+        value={draft.storage.searchIndexMaxGb}
+        min={1}
+        onChange={(v) => set({ searchIndexMaxGb: v })}
       />
     </Section>
   );

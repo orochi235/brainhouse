@@ -210,6 +210,10 @@ export const StorageSchema = z.object({
    * summaries are forever; per-event rows beyond this window are pruned
    * to keep DB footprint bounded. */
   eventsIndexRetentionDays: z.number().int().positive().default(30),
+  /** The most the transcript search index (~/.brainhouse/search.db) may
+   * hold. Past it, sessions Claude Code has deleted leave search, oldest
+   * first; they stay in icehouse. Live transcripts are always indexed. */
+  searchIndexMaxGb: z.number().positive().default(20),
 });
 export type Storage = z.infer<typeof StorageSchema>;
 

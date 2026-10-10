@@ -264,7 +264,7 @@ async function main() {
   const displayHost = HOST === '::' ? 'localhost' : HOST;
   app.log.info(`brainhouse listening at http://${displayHost}:${PORT}`);
   for (const r of roots) app.log.info(`  watch: ${r}`);
-  search.start(monitor.searchRoots());
+  search.start(monitor.searchRoots(), storage.searchIndexMaxGb);
 
   // Heavy bootstrap, now that the port is live: walk the transcript roots
   // and discover the process table. Both stream into already-connected

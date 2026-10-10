@@ -37,6 +37,14 @@ export class SearchIndex {
     return { files: n('SELECT COUNT(*) n FROM files'), docs: n('SELECT COUNT(*) n FROM docs') };
   }
 
+  /** Bytes of the database in use. Deleting rows frees pages without
+   * shrinking the file, so the file's own size would never come back down. */
+  usedBytes(): number {
+    const n = (pragma: string) =>
+      Number(Object.values(this.db.prepare(`PRAGMA ${pragma}`).get() as object)[0]);
+    return (n('page_count') - n('freelist_count')) * n('page_size');
+  }
+
   close(): void {
     this.db.close();
   }

@@ -873,11 +873,22 @@ UI/server is meant to uphold. New entries go at the bottom.
   for the project is loaded. Only a project with no `.hued` falls back to the
   name hash. `.hued` values ignore anything after the value (`#fa8072  # salmon`).
 - **Transcript search reads the same roots the watcher does.** The search
-  index covers `resolveRoots` and nothing else, so a transcript is searchable
-  exactly when brainhouse could show it as a panel. Its database
+  index covers `resolveRoots` and nothing else. Its database
   (`~/.brainhouse/search.db`) is derived data: a schema version change deletes
-  and rebuilds it, and a transcript that disappears from disk is pruned on the
-  next scan.
+  and rebuilds it.
+- **A transcript Claude Code deleted stays searchable while icehouse holds
+  it.** Its rows are pruned only when the store is readable and has no copy,
+  or when icehouse is not set up at all. A store that is set up and cannot be
+  reached (the drive is unplugged) prunes nothing.
+- **One transcript is one search result, wherever its file sits.** A session
+  whose files moved to another project directory is indexed from the live
+  path alone, even though the store still holds the old one.
+- **The search index is capped, and only deleted sessions pay for it.** Past
+  `storage.searchIndexMaxGb`, stored-only sessions leave search oldest first.
+  A live transcript is never dropped, and nothing brainhouse does removes a
+  file from the store.
+- **brainhouse holds no file open on the icehouse store between calls,** so
+  the drive can always be ejected.
 - **A search hit is always visible in the reader.** The reader renders indexed
   events directly, never through the panel view pipeline, because the pipeline
   folds tool output into capsules and most matches are in tool output.

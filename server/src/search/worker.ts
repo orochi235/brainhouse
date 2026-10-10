@@ -4,11 +4,12 @@
  * are read between steps, so a query waits at most one step behind a build.
  */
 
-import { statSync } from 'node:fs';
 import { parentPort, workerData } from 'node:worker_threads';
 import { listTranscripts, type RootSpec } from './ingest.js';
+import { enforceCap, planScan, stepFile } from './scan.js';
 import type { HighlightSpec, QueryOptions } from './search.js';
 import { SearchIndex } from './searchIndex.js';
+import { type ArchiveState, StoredTranscripts } from './stored.js';
 
 export type WorkerRequest =
   | { type: 'query'; id: number; q: string; opts?: QueryOptions }
@@ -19,6 +20,7 @@ export type WorkerRequest =
 export type WorkerMessage =
   | WorkerRequest
   | { type: 'roots'; roots: RootSpec[] }
+  | { type: 'cap'; bytes: number }
   | { type: 'touch'; path: string };
 
 export type WorkerReply =
@@ -32,6 +34,8 @@ export interface IndexStatus {
   pending: number;
   /** True until the first pass over every root has finished. */
   building: boolean;
+  /** Whether icehouse's store of deleted transcripts can be read. */
+  archive: ArchiveState;
 }
 
 /** Bytes per indexing step. Reading and indexing 1 MB takes tens of
@@ -40,11 +44,14 @@ const STEP_BYTES = 1024 * 1024;
 /** Backstop rescan for files the watcher never reported. */
 const RESCAN_MS = 10 * 60 * 1000;
 
-const { dbPath } = workerData as { dbPath: string };
+const { dbPath, capBytes } = workerData as { dbPath: string; capBytes: number };
 if (!parentPort) throw new Error('search worker must run in a worker thread');
 const port = parentPort;
 
 const index = new SearchIndex(dbPath);
+const stored = new StoredTranscripts();
+let cap = capBytes;
+const overCap = () => index.usedBytes() > cap;
 let roots: RootSpec[] = [];
 /** Touched by the watcher: indexed before anything in `cold`. */
 const hot = new Set<string>();
@@ -60,20 +67,17 @@ function rootFor(p: string): RootSpec | null {
 
 async function scan(): Promise<void> {
   const listed = await listTranscripts(roots);
-  index.ingest.prune(new Set(listed.map((l) => l.path)));
-  const stale: Array<{ path: string; mtime: number }> = [];
-  for (const { path: p } of listed) {
-    if (!index.ingest.needsWork(p)) continue;
-    let mtime = 0;
-    try {
-      mtime = statSync(p).mtimeMs;
-    } catch {
-      continue;
-    }
-    stale.push({ path: p, mtime });
-  }
-  stale.sort((a, b) => b.mtime - a.mtime);
-  cold = stale.map((s) => s.path);
+  const was = stored.state;
+  await stored.refresh();
+  if (stored.state !== was) console.error(`[search] icehouse store: ${stored.state}`);
+  cold = planScan(
+    index.ingest,
+    listed.map((l) => l.path),
+    stored,
+    (p) => rootFor(p)?.path ?? null,
+  );
+  const shelved = enforceCap(index.ingest, stored, overCap);
+  if (shelved) console.error(`[search] over the index cap: ${shelved} stored sessions left search`);
   poke();
 }
 
@@ -84,7 +88,12 @@ function answer(req: WorkerRequest): void {
     else if (req.type === 'transcript') value = index.transcript(req.fileId, req.highlight);
     else if (req.type === 'docText') value = index.docText(req.docId);
     else
-      value = { ...index.stats(), pending: hot.size + cold.length, building } satisfies IndexStatus;
+      value = {
+        ...index.stats(),
+        pending: hot.size + cold.length,
+        building,
+        archive: stored.state,
+      } satisfies IndexStatus;
     port.postMessage({ id: req.id, ok: true, value } satisfies WorkerReply);
   } catch (err) {
     port.postMessage({
@@ -107,6 +116,8 @@ port.on('message', (msg: WorkerMessage) => {
     void scan().then(() => {
       if (cold.length === 0 && hot.size === 0) building = false;
     });
+  } else if (msg.type === 'cap') {
+    cap = msg.bytes;
   } else if (msg.type === 'touch') {
     if (rootFor(msg.path)) hot.add(msg.path);
   } else {
@@ -130,7 +141,7 @@ function step(): boolean {
   let done = true;
   if (root) {
     try {
-      done = index.ingest.step(p, root, STEP_BYTES);
+      done = stepFile(index.ingest, stored, p, root, STEP_BYTES, overCap);
     } catch (err) {
       console.error(`[search] indexing ${p} failed:`, err);
     }

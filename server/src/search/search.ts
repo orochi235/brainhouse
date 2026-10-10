@@ -4,6 +4,7 @@
  * each in JS where SQL `LIKE` can't be trusted, and groups hits by transcript.
  */
 
+import { existsSync } from 'node:fs';
 import type { DB, DocRow, FileRow } from './db.js';
 import type { Doc } from './extract.js';
 import { type ParsedQuery, parseQuery, type Role, requiredLiterals } from './query.js';
@@ -33,6 +34,8 @@ export interface SearchGroup {
   lastTs: number | null;
   latestHitTs: number;
   hitCount: number;
+  /** Claude Code has deleted the transcript; the index kept its rows. */
+  stored: boolean;
   hits: SearchHit[];
 }
 
@@ -372,6 +375,7 @@ export class Searcher {
       lastTs: f.last_ts,
       latestHitTs: latest,
       hitCount: n,
+      stored: !existsSync(f.path),
       hits: rows.map((r) => ({
         docId: r.id,
         eventUuid: r.event_uuid,

@@ -24,6 +24,7 @@ const group = (fileId: number, hits: ReturnType<typeof hit>[]) => ({
   lastTs: 1_790_000_100,
   latestHitTs: 1_790_000_100,
   hitCount: hits.length,
+  stored: fileId === 2,
   hits,
   title: `Session ${fileId}`,
   agentType: null,
@@ -96,6 +97,13 @@ describe('<SearchModal>', () => {
   it('selects the first hit when results arrive', async () => {
     await renderWithResults();
     expect(selectedText()).toContain('needle one');
+  });
+
+  it('marks only the session whose transcript Claude Code has deleted', async () => {
+    await renderWithResults();
+    const marks = screen.getAllByText('stored');
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.closest('header')?.textContent).toContain('Session 2');
   });
 
   it('moves through hits and across sessions with the arrow keys', async () => {

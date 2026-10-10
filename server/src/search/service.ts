@@ -16,6 +16,7 @@ import type { IndexStatus, WorkerMessage, WorkerReply, WorkerRequest } from './w
 export type { IndexStatus } from './worker.js';
 
 const RESTART_DELAY_MS = 5000;
+const GB = 1024 ** 3;
 
 /** A worker request without its id, kept as a union. */
 type RequestBody = WorkerRequest extends infer R
@@ -36,12 +37,14 @@ export class SearchService {
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
   private roots: RootSpec[] = [];
+  private capBytes = Number.POSITIVE_INFINITY;
   private stopped = false;
 
   constructor(private readonly dbPath: string = defaultSearchDbPath()) {}
 
-  start(roots: RootSpec[]): void {
+  start(roots: RootSpec[], maxGb: number): void {
     this.roots = roots;
+    this.capBytes = maxGb * GB;
     this.spawn();
   }
 
@@ -50,7 +53,9 @@ export class SearchService {
     // worker inherits the parent's loader through execArgv either way.
     const here = fileURLToPath(import.meta.url);
     const workerFile = path.join(path.dirname(here), `worker${path.extname(here)}`);
-    const w = new Worker(workerFile, { workerData: { dbPath: this.dbPath } });
+    const w = new Worker(workerFile, {
+      workerData: { dbPath: this.dbPath, capBytes: this.capBytes },
+    });
     this.worker = w;
     w.on('message', (reply: WorkerReply) => {
       const p = this.pending.get(reply.id);
@@ -89,6 +94,13 @@ export class SearchService {
   setRoots(roots: RootSpec[]): void {
     this.roots = roots;
     this.send({ type: 'roots', roots });
+  }
+
+  /** The most the index may hold before stored sessions start leaving it;
+   * enforced on the worker's next scan. */
+  setCap(maxGb: number): void {
+    this.capBytes = maxGb * GB;
+    this.send({ type: 'cap', bytes: this.capBytes });
   }
 
   /** The watcher read new bytes from this transcript. */

@@ -10,7 +10,9 @@ what the search modal does.
 
 A search field in the topbar searches every transcript under the roots
 brainhouse watches (`resolveRoots`: the prefs' roots, or every `~/.claude…/projects`
-when none are set): all history, live sessions included. Results open in a
+when none are set): all history, live sessions included, and sessions Claude
+Code has since deleted, for as long as icehouse (`~/src/icehouse`) holds a
+copy. Results open in a
 modal with the hits on the left and the matching session on the right, scrolled
 to the hit. The menu bar helper has a search field that opens the same modal.
 
@@ -27,6 +29,9 @@ to the 6.3 GB corpus, the index is about 1.07 GB.
 | Piece | Where | Job |
 |---|---|---|
 | Search worker | `server/src/search/worker.ts` (`worker_thread`) | Owns `~/.brainhouse/search.db` (`BRAINHOUSE_SEARCH_DB` overrides). Indexes and answers queries. Works in chunks of about 50 ms and serves waiting queries before the next chunk. |
+| Scan rules | `server/src/search/scan.ts` | Which transcripts a scan keeps, drops, and queues; where one file's next bytes come from; what leaves when the index is over its cap. |
+| Byte sources | `server/src/search/reader.ts` | Complete lines from an offset, out of a live file or a decompressed stored copy. |
+| Stored transcripts | `server/src/search/stored.ts` | What icehouse holds, keyed by the path each file had when live. Loads the `icehouse` package with a dynamic `import()`. |
 | Worker handle | `server/src/search/service.ts` | Main-thread handle: posts messages, matches replies by id, restarts a crashed worker. |
 | Query parser | `server/src/search/query.ts` | Pure: query string → terms, phrases, regex, and filters. |
 | Router | `search` in `server/src/trpc.ts` | `query({ q, cursor })`, `transcript({ fileId, highlight })`, `docText({ docId })`, `status()`. |
@@ -61,8 +66,7 @@ it.
 
 - **Boot:** walk every root from `resolveRoots`. For each `.jsonl`, compare
   size and mtime with its `files` row, and index from the stored `offset` to the
-  last complete line. A file that shrank is reindexed from zero. A file that is
-  gone has its rows deleted.
+  last complete line. A file that shrank is reindexed from zero.
 - **Live:** whenever the watcher reads new bytes from a file, the monitor tells
   the worker that path. The worker indexes it on its next chunk, so new lines
   are searchable within about a second.
@@ -70,8 +74,58 @@ it.
   with it.
 - **Cost:** the first build is about 75 s of one core (scaled up from the
   sample); after that, only appended bytes are indexed.
-- **Disk bound:** the database tracks the corpus. Deleted transcripts are
-  pruned on every scan, and nothing else accumulates.
+
+## Deleted sessions
+
+Claude Code deletes a transcript once it has sat idle past
+`cleanupPeriodDays`. icehouse copies each one first into `~/.icehouse`, a
+symlink to an external drive, as one zstd file per original plus a SQLite
+manifest. A scan decides what happens to a transcript whose live file is gone:
+
+| icehouse store | In its manifest | The scan |
+|---|---|---|
+| open | yes | keeps the rows; reads from the store only bytes it never indexed |
+| open | no | deletes the rows |
+| set up but unreachable (drive unplugged) | unknown | keeps the rows, reads nothing |
+| not set up (`~/.icehouse` does not exist) | none | deletes the rows |
+
+- **Keys are paths.** A stored file is indexed under the path it had when
+  live, which icehouse rebuilds from its own key (`sourcePath`), and only when
+  that path is under a watched root. The rows a live file produced are the
+  rows it keeps after deletion.
+- **A moved session is one transcript.** Claude Code moves a session's files
+  when its project directory changes, and the store keeps the copy it made at
+  the old path. A stored path is ignored while the same root, session, and
+  agent is live anywhere, and of several stored copies only the newest counts.
+- **The store is read rarely.** Most deleted sessions were indexed while live.
+  The store supplies bytes after a rebuild from nothing, or for a transcript
+  written and deleted while brainhouse was down. The worker decompresses that
+  one file whole, holds it until it is caught up, and steps through it 1 MB
+  at a time like a live file. A stored copy never grows, so its last line
+  counts even without a newline.
+- **No handle outlives a call.** The manifest is opened read-only and closed
+  again on every scan and every read, so the drive can be ejected.
+- **`icehouse` is an optional dependency** (`file:../../icehouse`). It runs as
+  TypeScript; `tsc` checks against the `.d.ts` files its `prepare` script
+  emits. A failed import behaves as "not set up".
+- A result whose live file is gone carries `stored: true`, and the list shows
+  "stored" beside its project.
+
+## Disk bound
+
+The index tracks the live corpus plus everything icehouse holds, and icehouse
+only adds. Measured on 2026-10-10: 1.09 GB of index for 6.4 GB of transcripts
+spanning 31 days.
+
+`storage.searchIndexMaxGb` (20 by default, under Storage in Preferences) caps
+the bytes the database has in use, which is its page count less its free
+pages: deleting rows frees pages without shrinking the file. After a scan,
+while the index is over the cap, the stored-only transcript that ended longest
+ago is shelved: its docs go and its `files` row stays with `offset` set to its
+size, so the next scan does not read it back. During a rebuild, a stored
+transcript is shelved unread once the index is over. A live transcript is
+never shelved. Raising the cap does not bring a shelved session back; deleting
+`search.db` rebuilds from the store, newest first.
 
 ## Querying
 
@@ -154,6 +208,9 @@ the first release with `field:`.
   thrown.
 - Indexer: append, partial trailing line, truncation, deletion, root change,
   and schema-version rebuild, against a temp directory and temp database.
+- Deleted sessions (`stored.test.ts`), against a temp home and a real icehouse
+  store: each row of the scan table, a moved session, a rebuild read from the
+  store across several steps, and the cap.
 - Router: `query` and `transcript` against a fixture corpus.
 - `/api/search/open`: encoding of `a&b c#%`.
 - Modal: keyboard navigation and the reader following the selection.

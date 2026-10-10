@@ -22,6 +22,9 @@
     "ws": "^8.20.1",
     "zod": "^4.4.3"
   },
+  "optionalDependencies": {
+    "icehouse": "file:../../icehouse"
+  },
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/ws": "^8.18.1",

@@ -71,6 +71,7 @@ export interface ClientPrefs {
   storage: {
     persistEnabled: boolean;
     eventsIndexRetentionDays: number;
+    searchIndexMaxGb: number;
   };
   editor: {
     urlTemplate: string;
@@ -132,7 +133,7 @@ const DEFAULT_PREFS: ClientPrefs = {
     layoutIdleSeconds: 3,
   },
   roots: [],
-  storage: { persistEnabled: false, eventsIndexRetentionDays: 30 },
+  storage: { persistEnabled: false, eventsIndexRetentionDays: 30, searchIndexMaxGb: 20 },
   editor: { urlTemplate: 'cursor://file/{path}:{line}' },
   notifications: {
     tabTitleFlash: true,

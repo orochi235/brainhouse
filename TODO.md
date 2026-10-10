@@ -1126,20 +1126,9 @@ WCAG contrast lives in both `client/src/lib/contrast.ts` and
 server's auto-picked `.hued` foreground also still uses a YIQ threshold
 rather than WCAG. Give the workspace a shared module and fold both in.
 
-## [HIGH] Search sessions that live only in the icehouse
+## `npm run check` fails on files nobody is editing
 
-Unbuilt; designed in
-`docs/superpowers/specs/2026-10-10-search-stored-sessions-design.md`, which
-keeps the file path as the index key rather than the IDs proposed below.
-`~/src/icehouse` now copies every session's files into a
-compressed store before Claude Code deletes the originals, but brainhouse
-does not read it: `prune` in `server/src/search/ingest.ts` still drops a
-session from the search index once its live file is gone, so a deleted
-session leaves search even though its transcript is kept.
-
-Index stored sessions too. `icehouse ls` lists every session, live or
-stored, and `icehouse cat <session-id>` prints its JSONL either way; the
-functions behind them are `listSessions` and `openTranscript` in
-icehouse's `src/sessions.ts`. Key index rows on session and agent ID
-rather than file path, so a session keeps its rows when it moves from
-live to stored.
+`biome check` reports format errors in `client/.ladle/components.tsx` and
+`client/src/ReplayView.tsx`, and an empty-title error on
+`client/src/assets/icons/jq.svg`. Seen 2026-10-10 on a clean tree. Fix them or
+exclude them, so the check means something again.

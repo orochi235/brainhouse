@@ -3,7 +3,7 @@
  * the last read stopped.
  */
 
-import { closeSync, openSync, readSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { type Event, parseLine } from '../parser.js';
@@ -11,16 +11,13 @@ import { findRepoRoot } from '../session.js';
 import { classifyPath } from '../watcher.js';
 import { type DB, parseTs } from './db.js';
 import { eventToDoc } from './extract.js';
+import { liveSource, type Source } from './reader.js';
 
 export interface RootSpec {
   path: string;
   /** Account label (`CC`, `PW`, …) stamped on every file under this root. */
   account: string | null;
 }
-
-/** A line can be a multi-megabyte image paste; never read more than this
- * looking for one newline. */
-const MAX_LINE_BYTES = 64 * 1024 * 1024;
 
 /** Every transcript under the roots, with the root it came from. */
 export async function listTranscripts(
@@ -61,16 +58,27 @@ export class Ingester {
     return !row || row.size !== st.size || row.mtime !== st.mtimeMs;
   }
 
+  /** True when a stored transcript holds bytes the index hasn't read. */
+  needsStored(p: string, size: number): boolean {
+    const row = this.db.prepare('SELECT offset FROM files WHERE path = ?').get(p) as
+      | { offset: number }
+      | undefined;
+    return !row || row.offset < size;
+  }
+
   /**
    * Index the next stretch of one file: about `maxBytes`, more only when a
    * single line is longer. Returns true once the file is caught up. One
-   * transaction per call, so a crash never leaves half a chunk indexed.
+   * transaction per call, so a crash never leaves half a chunk indexed. The
+   * bytes come from `src`; with none, the file is gone and its rows go too.
    */
-  step(p: string, root: RootSpec, maxBytes = 4 * 1024 * 1024): boolean {
-    let st: { size: number; mtimeMs: number };
-    try {
-      st = statSync(p);
-    } catch {
+  step(
+    p: string,
+    root: RootSpec,
+    maxBytes = 4 * 1024 * 1024,
+    src: Source | null = liveSource(p),
+  ): boolean {
+    if (!src) {
       this.removeFile(p);
       return true;
     }
@@ -90,7 +98,7 @@ export class Ingester {
     let lastTs = row.last_ts;
     this.db.exec('BEGIN');
     try {
-      if (st.size < offset) {
+      if (src.size < offset) {
         // Truncated or rewritten: start over.
         this.deleteDocs(fileId);
         this.db
@@ -99,9 +107,9 @@ export class Ingester {
         offset = 0;
         lastTs = null;
       }
-      const { buf, sawEnd } = readCompleteLines(p, offset, st.size, maxBytes);
+      const { buf, sawEnd } = src.read(offset, maxBytes);
       if (buf) {
-        this.indexLines(fileId, info, buf.toString('utf8'), row.cwd, lastTs, st.mtimeMs / 1000);
+        this.indexLines(fileId, info, buf.toString('utf8'), row.cwd, lastTs, src.mtimeMs / 1000);
         offset += buf.length;
       }
       const caughtUp = sawEnd;
@@ -109,7 +117,7 @@ export class Ingester {
       // answering yes while a big file is part way through.
       this.db
         .prepare('UPDATE files SET offset = ?, size = ?, mtime = ? WHERE id = ?')
-        .run(offset, caughtUp ? st.size : -1, caughtUp ? st.mtimeMs : -1, fileId);
+        .run(offset, caughtUp ? src.size : -1, caughtUp ? src.mtimeMs : -1, fileId);
       this.db.exec('COMMIT');
       return caughtUp;
     } catch (err) {
@@ -200,6 +208,44 @@ export class Ingester {
     this.db.exec('COMMIT');
   }
 
+  /**
+   * Take a transcript out of search without forgetting it: its docs go, and
+   * its row stays, marked as read through `size`, so a scan does not read the
+   * stored copy back in.
+   */
+  shelve(p: string, root: RootSpec | null, size: number): void {
+    const info = classifyPath(p);
+    if (!info || info.is_meta) return;
+    this.db.exec('BEGIN');
+    try {
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO files (path, session_id, agent_id, account) VALUES (?, ?, ?, ?)',
+        )
+        .run(p, info.session_id, info.agent_id, root?.account ?? null);
+      const { id } = this.db.prepare('SELECT id FROM files WHERE path = ?').get(p) as {
+        id: number;
+      };
+      this.deleteDocs(id);
+      this.db.prepare('UPDATE files SET offset = ?, size = ? WHERE id = ?').run(size, size, id);
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
+  /** Paths of the files that still have docs, the one that ended longest ago first. */
+  indexedOldestFirst(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT f.path FROM files f WHERE EXISTS (SELECT 1 FROM docs d WHERE d.file_id = f.id)
+         ORDER BY f.last_ts`,
+      )
+      .all() as Array<{ path: string }>;
+    return rows.map((r) => r.path);
+  }
+
   /** Drop every indexed file not in `keep`: deleted, or under a root that is
    * no longer configured. Returns how many went. */
   prune(keep: Set<string>): number {
@@ -211,35 +257,5 @@ export class Ingester {
       n++;
     }
     return n;
-  }
-}
-
-/** Bytes from `offset` through the last newline, reading at most `maxBytes`
- * unless one line is longer; `buf` is null when there is no complete line
- * yet. `sawEnd` says the read reached end of file, so nothing after `buf`
- * is ready. */
-function readCompleteLines(
-  p: string,
-  offset: number,
-  size: number,
-  maxBytes: number,
-): { buf: Buffer | null; sawEnd: boolean } {
-  if (size <= offset) return { buf: null, sawEnd: true };
-  const fd = openSync(p, 'r');
-  try {
-    let want = Math.min(size - offset, maxBytes);
-    for (;;) {
-      const buf = Buffer.alloc(want);
-      const n = readSync(fd, buf, 0, want, offset);
-      const nl = buf.subarray(0, n).lastIndexOf(0x0a);
-      const sawEnd = offset + n >= size;
-      if (nl !== -1) return { buf: buf.subarray(0, nl + 1), sawEnd };
-      // A line longer than MAX_LINE_BYTES is skipped rather than wedging the file.
-      if (want >= MAX_LINE_BYTES) return { buf: buf.subarray(0, n), sawEnd };
-      if (sawEnd) return { buf: null, sawEnd };
-      want = Math.min(size - offset, want * 4, MAX_LINE_BYTES);
-    }
-  } finally {
-    closeSync(fd);
   }
 }

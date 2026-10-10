@@ -118,6 +118,14 @@ function GroupHeader({ group: g }: { group: SearchGroupView }) {
   return (
     <header className="search-group-header">
       {g.live && <span className="search-live-dot" title="Live session" />}
+      {g.stored && (
+        <span
+          className="search-stored"
+          title="Claude Code deleted this transcript; icehouse kept it"
+        >
+          stored
+        </span>
+      )}
       <span className="search-project">{project}</span>
       {g.agentId && <span className="search-subagent">{g.agentType ?? 'subagent'}</span>}
       <span className="search-title">

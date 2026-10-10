@@ -262,6 +262,9 @@ export const appRouter = t.router({
       if (!sameList(beforeRoots, afterRoots) || rootLabelsChanged(before.roots, updated.roots)) {
         await ctx.monitor.setRoots(afterRoots, updated.roots);
       }
+      if (before.storage.searchIndexMaxGb !== updated.storage.searchIndexMaxGb) {
+        ctx.monitor.search?.setCap(updated.storage.searchIndexMaxGb);
+      }
       // Hot-swap lifecycle timings if any changed. The next `tick()` picks
       // up the new values; reschedule the tick interval if it changed too.
       const a = before.timings;
