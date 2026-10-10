@@ -1128,7 +1128,10 @@ rather than WCAG. Give the workspace a shared module and fold both in.
 
 ## [HIGH] Search sessions that live only in the icehouse
 
-Unbuilt. `~/src/icehouse` now copies every session's files into a
+Unbuilt; designed in
+`docs/superpowers/specs/2026-10-10-search-stored-sessions-design.md`, which
+keeps the file path as the index key rather than the IDs proposed below.
+`~/src/icehouse` now copies every session's files into a
 compressed store before Claude Code deletes the originals, but brainhouse
 does not read it: `prune` in `server/src/search/ingest.ts` still drops a
 session from the search index once its live file is gone, so a deleted
