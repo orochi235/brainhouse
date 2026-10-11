@@ -5,18 +5,21 @@ import Foundation
 struct SummaryData: Decodable {
     var live: Int = 0
     var awaiting_input: Int = 0
+    var archive_warning: String = ""
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
         case live
         case awaiting_input
+        case archive_warning
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.live = (try? c.decode(Int.self, forKey: .live)) ?? 0
         self.awaiting_input = (try? c.decode(Int.self, forKey: .awaiting_input)) ?? 0
+        self.archive_warning = (try? c.decode(String.self, forKey: .archive_warning)) ?? ""
     }
 }
 

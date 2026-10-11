@@ -5,7 +5,7 @@
  * posts whatever it's handed, and reports clicks. Everything else lives
  * here: the grace window (an awaiting panel only alerts if still
  * awaiting when the timer fires), per-episode dedupe, wait-clear
- * cancellation, turn-complete triggering, and expiry.
+ * cancellation, turn-complete triggering, the banner's wording, and expiry.
  *
  * Cancellation is validation, not plumbing: awaiting can clear from
  * transcript activity without any hook reaching this module, so both
@@ -17,12 +17,14 @@ import type { Panel } from './session.js';
 
 export interface Alert {
   id: number;
-  panel_id: string;
+  /** Null for a notice, which belongs to no panel. */
+  panel_id: string | null;
   title: string;
+  body: string;
   project: string | null;
   account: string | null;
   iterm_session_id: string | null;
-  reason: 'awaiting' | 'turn_complete';
+  reason: 'awaiting' | 'turn_complete' | 'notice';
   /** Unix seconds. */
   ts: number;
 }
@@ -65,9 +67,7 @@ export class AlertQueue {
   onAwaiting(panelId: string, awaiting: boolean): void {
     if (!awaiting) {
       this.cancelTimer(panelId);
-      this.alerts = this.alerts.filter(
-        (a) => !(a.panel_id === panelId && a.reason === 'awaiting'),
-      );
+      this.alerts = this.alerts.filter((a) => !(a.panel_id === panelId && a.reason === 'awaiting'));
       return;
     }
     const prefs = this.opts.getNotificationPrefs();
@@ -99,16 +99,37 @@ export class AlertQueue {
     const cutoff = this.now() - EXPIRY_MS;
     this.alerts = this.alerts.filter((a) => {
       if (a.ts * 1000 < cutoff) return false;
-      if (a.reason === 'awaiting' && !this.opts.getPanel(a.panel_id)?.awaiting_input) return false;
+      if (a.reason === 'awaiting' && !this.panelOf(a)?.awaiting_input) return false;
       return true;
     });
     return this.alerts.filter((a) => a.id > after);
+  }
+
+  /** A banner about the system rather than a session, such as a stopped archive. */
+  notice(title: string, body: string): void {
+    const prefs = this.opts.getNotificationPrefs();
+    if (prefs.muteAll || !prefs.macNative) return;
+    this.alerts.push({
+      id: this.nextId++,
+      panel_id: null,
+      title,
+      body,
+      project: null,
+      account: null,
+      iterm_session_id: null,
+      reason: 'notice',
+      ts: this.now() / 1000,
+    });
   }
 
   /** Drop pending state for a reaped panel. Idempotent. */
   dispose(panelId: string): void {
     this.cancelTimer(panelId);
     this.alerts = this.alerts.filter((a) => a.panel_id !== panelId);
+  }
+
+  private panelOf(alert: Alert): Panel | undefined {
+    return alert.panel_id === null ? undefined : this.opts.getPanel(alert.panel_id);
   }
 
   private cancelTimer(panelId: string): void {
@@ -119,7 +140,7 @@ export class AlertQueue {
     }
   }
 
-  private fire(panelId: string, reason: Alert['reason']): void {
+  private fire(panelId: string, reason: 'awaiting' | 'turn_complete'): void {
     const prefs = this.opts.getNotificationPrefs();
     if (prefs.muteAll || !prefs.macNative) return;
     const panel = this.opts.getPanel(panelId);
@@ -130,6 +151,10 @@ export class AlertQueue {
       id: this.nextId++,
       panel_id: panelId,
       title: panel.title,
+      body:
+        reason === 'turn_complete'
+          ? 'Turn finished — ready for your next prompt'
+          : 'Waiting for your input',
       project: projectPath ? path.basename(projectPath) : null,
       account: panel.account_label,
       iterm_session_id: panel.iterm_session_id ?? null,

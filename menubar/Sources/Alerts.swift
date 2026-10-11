@@ -73,10 +73,7 @@ final class AlertDelivery: NSObject {
         let content = UNMutableNotificationContent()
         content.title = alert["title"] as? String ?? "brainhouse session"
         if let project = alert["project"] as? String { content.subtitle = project }
-        let reason = alert["reason"] as? String ?? "awaiting"
-        content.body = reason == "turn_complete"
-            ? "Turn finished — ready for your next prompt"
-            : "Waiting for your input"
+        content.body = alert["body"] as? String ?? ""
         content.sound = .default
         if let guid = alert["iterm_session_id"] as? String { content.userInfo = ["guid": guid] }
         let id = "brainhouse-alert-\(alert["id"] as? Int ?? 0)"

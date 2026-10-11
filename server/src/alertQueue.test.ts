@@ -255,4 +255,30 @@ describe('AlertQueue', () => {
     timers.advance(30_000);
     expect(q.list(-1)).toHaveLength(0);
   });
+
+  it('delivers a notice that belongs to no panel, unless notifications are muted', () => {
+    const timers = new FakeTimers();
+    const q = build({ panels: new Map(), timers });
+    q.notice('icehouse needs attention', 'no run since 2026-10-01');
+    expect(q.list(-1)).toMatchObject([
+      { panel_id: null, reason: 'notice', body: 'no run since 2026-10-01' },
+    ]);
+
+    const muted = build({
+      panels: new Map(),
+      timers,
+      prefs: () => ({ ...defaultPrefs(), muteAll: true }),
+    });
+    muted.notice('icehouse needs attention', 'no run since 2026-10-01');
+    expect(muted.list(-1)).toHaveLength(0);
+  });
+
+  it('words the banner for a waiting panel', () => {
+    const timers = new FakeTimers();
+    const panel = makePanel({ awaiting_input: true });
+    const q = build({ panels: new Map([[panel.id, panel]]), timers });
+    q.onAwaiting(panel.id, true);
+    timers.advance(30_000);
+    expect(q.list(-1)[0].body).toBe('Waiting for your input');
+  });
 });

@@ -92,6 +92,9 @@ func renderFace(_ results: Results) -> Face {
         face.icon = MenuIcon.symbol("exclamationmark.triangle")
     } else if (results.state_uninstalled || results.state_stopped) {
         face.dim = true
+    } else if (results.state_up && (results.summary.data.archive_warning != "")) {
+        face.icon = MenuIcon.symbol("snowflake")
+        face.badge = ((results.summary.data.awaiting_input > 0) ? String(results.summary.data.awaiting_input) : "")
     } else {
         face.badge = ((results.summary.data.awaiting_input > 0) ? String(results.summary.data.awaiting_input) : "")
     }
@@ -111,6 +114,9 @@ func renderMenu(_ results: Results) -> [MenuNode] {
     }
     if (results.state_uninstalled || results.state_stopped) {
         menu.append(.item("Server: not running", nil))
+    }
+    if (results.state_up && (results.summary.data.archive_warning != "")) {
+        menu.append(.item("icehouse: \(results.summary.data.archive_warning)", nil))
     }
     if results.state_uninstalled {
         menu.append(.item("Service: not installed", nil))

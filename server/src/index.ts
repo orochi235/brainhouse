@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import Fastify from 'fastify';
+import { ArchiveHealth } from './archiveHealth.js';
 import { resolveImageFile } from './images.js';
 import { TranscriptMonitor } from './monitor.js';
 import { checkOnboarding, ONBOARDING_WARNING_LINES } from './onboarding.js';
@@ -110,7 +111,16 @@ async function main() {
   // it polls this every few seconds and shows `awaiting_input` as the
   // badge count. Outside the tRPC tree so the Swift URLSession client
   // stays a one-line JSON fetch.
-  app.get('/api/summary', async () => monitor.store.menubarSummary());
+  // `archive_warning` is empty unless icehouse's hourly runs have stopped.
+  const archiveHealth = new ArchiveHealth({
+    notify: (title, body) => monitor.alertQueue.notice(title, body),
+  });
+  void archiveHealth.check();
+  setInterval(() => void archiveHealth.check(), 60_000).unref();
+  app.get('/api/summary', async () => ({
+    ...monitor.store.menubarSummary(),
+    archive_warning: archiveHealth.warning,
+  }));
 
   // The menu bar's search field posts here; perch JSON-escapes a `post:`
   // body but passes `run:` arguments raw, so the URL is built on this side.

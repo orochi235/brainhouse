@@ -29,6 +29,8 @@ watch:
     shape:
       live: int
       awaiting_input: int
+      # icehouse's own words for why its archive runs have stopped; empty while they have not.
+      archive_warning: string
   # Read for `enabled` alone. The alerts it also returns are Alerts.swift's,
   # which keeps its own cursor; after=-1 reads the feed without moving anything.
   notifications:
@@ -53,6 +55,9 @@ status:
     icon: exclamationmark.triangle
   - when: "uninstalled || stopped"
     dim: true
+  - when: "up && summary.data.archive_warning != ''"
+    icon: snowflake
+    badge: "summary.data.awaiting_input > 0 ? string(summary.data.awaiting_input) : ''"
   - badge: "summary.data.awaiting_input > 0 ? string(summary.data.awaiting_input) : ''"
 
 menu:
@@ -67,6 +72,8 @@ menu:
     when: wedged
   - text: "Server: not running"
     when: "uninstalled || stopped"
+  - text: "icehouse: {{summary.data.archive_warning}}"
+    when: "up && summary.data.archive_warning != ''"
   - text: "Service: not installed"
     when: uninstalled
   - text: "Service: installed, not loaded"

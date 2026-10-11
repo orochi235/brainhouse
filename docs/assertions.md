@@ -724,6 +724,16 @@ UI/server is meant to uphold. New entries go at the bottom.
   from both the prefs modal and the helper's menu toggle
   (`POST /api/notifications`), which share the prefs file and therefore
   never disagree.
+- **A stopped icehouse archive shows on the menu bar item and sends one
+  banner.** icehouse records each hourly run in a file off its store's drive
+  and owns the rule for when that record means trouble; `ArchiveHealth`
+  (`server/src/archiveHealth.ts`) reads its verdict once a minute and never
+  opens the store. While it warns, `/api/summary` carries the reason in
+  `archive_warning`, and `menubar.yaml` swaps the status item's icon for a
+  snowflake and adds an "icehouse: …" menu line. A warning that has held ten
+  minutes sends one banner per episode through `AlertQueue.notice`, the one
+  alert with no panel; `notifications.muteAll` silences it like any other.
+  The server words every banner (`body`), so the helper chooses none.
 - **Notification clicks raise the iTerm window without stealing focus.**
   Click → `POST /api/reveal` → `revealItermSession(guid, {focus:false})`:
   the same window/tab/pane `select` walk as the focusing variant, then a
