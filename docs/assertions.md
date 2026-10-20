@@ -826,8 +826,8 @@ UI/server is meant to uphold. New entries go at the bottom.
   marker, or untagged but invoking a script from the repo's `hooks/` dir —
   then re-adds the canonical table, so a legacy install de-duplicates
   instead of stacking. The corollary is that a hook script with no registry
-  row gets deleted and never comes back: `hooks/handoff-resume.mjs` was
-  tagged but unregistered and vanished on every run. Adding a script to
+  row gets deleted and never comes back: a tagged but unregistered
+  `handoff-resume.mjs` vanished on every run. Adding a script to
   `hooks/` means adding its row to `hookRegistry`.
 - **The panel checklist needs the task-list tools turned on.** Claude Code
   gates `TaskCreate`/`TaskUpdate` off for an allowlist of model versions

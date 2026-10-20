@@ -62,19 +62,18 @@ describe('applyEnv', () => {
   });
 });
 
-describe('hookRegistry: handoff-resume', () => {
-  it('is registered on SessionStart with the `clear` matcher', () => {
-    const entry = hookRegistry('/x/hooks').find((r) => r.role === 'handoff-resume');
-    expect(entry).toBeDefined();
-    expect(entry?.event).toBe('SessionStart');
-    expect(entry?.matcher).toBe('clear');
-  });
-
+describe('hookRegistry', () => {
   it('every hook script in the table has a registry row, so init never strips one it cannot re-add', () => {
     const roles = new Set(hookRegistry('/x/hooks').map((r) => r.role));
-    for (const role of ['dispatcher', 'handoff-resume', 'context-reminder']) {
+    for (const role of ['dispatcher', 'session-procs-reminder']) {
       expect(roles).toContain(role);
     }
+  });
+
+  it('leaves the handoff hooks to the claude-handoff plugin', () => {
+    const roles = new Set(hookRegistry('/x/hooks').map((r) => r.role));
+    expect(roles).not.toContain('handoff-resume');
+    expect(roles).not.toContain('context-reminder');
   });
 });
 

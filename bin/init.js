@@ -54,20 +54,9 @@ export function hookRegistry(hooksDir) {
       command: `node ${quote(dispatcher)} ${kind}`,
     });
   }
-  entries.push({
-    role: 'handoff-resume',
-    event: 'SessionStart',
-    matcher: 'clear',
-    command: `node ${quote(path.join(hooksDir, 'handoff-resume.mjs'))}`,
-  });
   // UserPromptSubmit hooks: piggyback small instructions onto the live
   // session's context, paying near-zero token cost instead of spawning
   // fresh `claude -p` subprocesses.
-  entries.push({
-    role: 'context-reminder',
-    event: 'UserPromptSubmit',
-    command: `node ${quote(path.join(hooksDir, 'context-reminder.mjs'))}`,
-  });
   entries.push({
     role: 'session-procs-reminder',
     event: 'UserPromptSubmit',
