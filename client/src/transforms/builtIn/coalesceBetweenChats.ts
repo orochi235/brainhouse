@@ -17,7 +17,7 @@ export const coalesceBetweenChats: Stage2Transform = {
   key: 'built-in.coalesce-between-chats',
   name: 'coalesceBetweenChats',
   description:
-    'A run of ≥2 non-bubble items (tool calls, file-changes, thinking) between two bubbles compresses into an `op-strip` row; click expands the lightbox.',
+    'A run of ≥2 non-bubble items (tool calls, file-changes, thinking) between two bubbles (or peer notices, which stay visible) compresses into an `op-strip` row; click expands the lightbox.',
   views: ['conversation'],
   run(items) {
     const out: ViewItem[] = [];
@@ -43,7 +43,7 @@ export const coalesceBetweenChats: Stage2Transform = {
     };
 
     for (const item of items) {
-      if (item.type === 'bubble') {
+      if (item.type === 'bubble' || item.type === 'peer-notice') {
         flush();
         out.push(item);
         continue;

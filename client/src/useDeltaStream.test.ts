@@ -21,6 +21,7 @@ function panelDto(overrides: Partial<PanelDto> = {}): PanelDto {
     cwd: null,
     repo_root: null,
     theme: null,
+    peer: null,
     binned_at: null,
     awaiting_input: false,
     ended: false,

@@ -17,13 +17,19 @@
  *
  * Runs ahead of `tagBtwUserText`, which would otherwise classify the inline
  * shape as a `/btw` interjection and render the raw envelope markup.
+ *
+ * `crossSessionNotice` handles the harness's idle-watch traffic the same way:
+ * the watcher's `[Cross-session idle notice]` prompt, and the watched
+ * session's system notice that someone asked to be told when it goes idle.
  */
 
 import type { Event } from '@server/parser.ts';
+import { pidFromAddress } from '../../lib/peers.tsx';
 import type { Stage1Transform } from '../types.ts';
 
 interface PeerMessage {
   from: string;
+  fromPid: number | null;
   body: string;
 }
 
@@ -37,7 +43,8 @@ function parseEnvelope(text: string): PeerMessage | null {
   const attrs = m[1] ?? '';
   const from = attrs.match(/\bfrom-name="([^"]*)"/)?.[1] ?? attrs.match(/\bfrom="([^"]*)"/)?.[1];
   if (!from) return null;
-  return { from, body: (m[2] ?? '').trim() };
+  const addr = attrs.match(/\bfrom="([^"]*)"/)?.[1];
+  return { from, fromPid: pidFromAddress(addr), body: (m[2] ?? '').trim() };
 }
 
 export const crossSessionMessage: Stage1Transform = {
@@ -65,6 +72,7 @@ export const crossSessionMessage: Stage1Transform = {
       role: 'user',
       parts: [{ kind: 'text', text: peer.body }],
       from: peer.from,
+      fromPid: peer.fromPid,
     });
     ctx.scratch.pendingReply = {
       kind: 'agent',
@@ -87,3 +95,53 @@ function deliveredText(event: Event): string | null {
   if (!att || typeof att !== 'object' || att.type !== 'queued_command') return null;
   return typeof att.prompt === 'string' ? att.prompt : null;
 }
+
+const IDLE_NOTICE =
+  /^\[Cross-session idle notice\] "([^"]+)"[^—]*— it finished a turn at ([0-9:]+)\.(?:[^«]*«([\s\S]*?)»)?/;
+const WATCH_NOTICE =
+  /^A process claiming the address (\S+) asked to be told when this session is next idle/;
+
+export const crossSessionNotice: Stage1Transform = {
+  kind: 'view',
+  stage: 1,
+  key: 'built-in.cross-session-notice',
+  name: 'peer idle-watch notices → attributed one-liners',
+  description:
+    'Turns the `[Cross-session idle notice]` prompt (either delivery shape) into a one-line peer notice naming the session that went idle, with its harness summary, and sets pendingReply { kind: "agent" } so the answering turn quotes it. Turns the watched side\'s "asked to be told when this session is next idle" system notice into a one-liner attributed by socket pid.',
+  matches: ['meta.any', 'user-text.any', 'system.any'],
+  run(event, items, ctx) {
+    if (event.kind === 'system') {
+      const m = event.payload.content?.match(WATCH_NOTICE);
+      if (!m) return false;
+      items.push({
+        type: 'peer-notice',
+        event,
+        peer: { name: null, pid: pidFromAddress(m[1]) },
+        text: 'asked to hear when this session goes idle',
+        detail: null,
+      });
+      return true;
+    }
+    const text = deliveredText(event);
+    const m = text?.match(IDLE_NOTICE);
+    if (!text || !m?.[1]) return false;
+    const idx = ctx.scratch.pendingBtw.indexOf(text.trim());
+    if (idx >= 0) ctx.scratch.pendingBtw.splice(idx, 1);
+    const detail = m[3]?.trim() || null;
+    items.push({
+      type: 'peer-notice',
+      event,
+      peer: { name: m[1], pid: null },
+      text: `went idle at ${m[2]}`,
+      detail,
+    });
+    ctx.scratch.pendingReply = {
+      kind: 'agent',
+      from: m[1],
+      quote: detail ? `idle — ${detail}` : 'idle',
+      refUuid: event.uuid,
+    };
+    ctx.scratch.pendingReplyHolder = null;
+    return true;
+  },
+};

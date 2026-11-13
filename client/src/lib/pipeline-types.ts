@@ -9,6 +9,7 @@
  */
 
 import type { Event, ImageRef } from '@server/parser.ts';
+import type { PeerRef } from './peers.tsx';
 import type { ToolResultPayload, ToolUsePayload } from './tools.ts';
 
 export type BubblePart =
@@ -121,6 +122,19 @@ export interface BubbleItem {
   /** Sending session, when this user-side bubble is a message delivered from
    * another Claude Code session rather than something the user typed. */
   from?: string;
+  /** The sender's pid, from its socket address; pins `from` to one session. */
+  fromPid?: number | null;
+}
+
+/** One-line harness notice about another Claude Code session: it went idle,
+ * or it asked to be told when this one does. */
+export interface PeerNoticeItem {
+  type: 'peer-notice';
+  event: Event;
+  peer: PeerRef;
+  text: string;
+  /** The idle session's own one-line summary, when the harness sent one. */
+  detail: string | null;
 }
 
 /** Compact, dimmed stand-in for a background-task `<task-notification>`
@@ -141,6 +155,7 @@ export type ViewItem =
   | TerminalItem
   | OpStripItem
   | NotificationAnchorItem
+  | PeerNoticeItem
   | { type: 'thinking'; event: Event; canceled?: boolean }
   | { type: 'system'; event: Event }
   | { type: 'meta'; event: Event }

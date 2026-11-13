@@ -1,0 +1,41 @@
+/* A peer's project color, darkened so its own foreground stays readable and
+   the bubble sits back from the user's own messages. */
+.bubble.from-peer.has-peer-theme {
+  background: color-mix(in srgb, var(--peer-bg) 70%, black);
+  color: var(--peer-fg);
+  border-color: color-mix(in srgb, var(--peer-fg) 30%, transparent);
+}
+
+.peer-name {
+  font: inherit;
+  padding: 0 0.35em;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+}
+.peer-name.is-themed {
+  background: color-mix(in srgb, var(--peer-bg) 70%, black);
+  color: var(--peer-fg);
+}
+.peer-name.is-link {
+  cursor: pointer;
+}
+.peer-name.is-link:hover {
+  text-decoration: underline;
+}
+.peer-from .peer-name {
+  padding: 0;
+  background: none;
+}
+
+.peer-notice {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.peer-notice-text,
+.peer-notice-detail {
+  opacity: 0.6;
+}

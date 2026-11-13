@@ -40,6 +40,7 @@ function panel(overrides: Partial<PanelState> = {}): PanelState {
     event_count: 0,
     cwd: '/Users/mike/src/brainhouse',
     theme: null,
+    peer: null,
     binned_at: null,
     awaiting_input: false,
     ended: false,

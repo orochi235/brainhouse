@@ -10,17 +10,23 @@
  * Time comes from an injectable clock so tests are deterministic.
  */
 
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { type Event, hasTag } from './parser.js';
+import type { PeerIdentity } from './peerRegistry.js';
 import type { EventIndexRow, PanelRow, SessionSummaryRow, Store } from './store.js';
 import { aiTitleOf } from './titler.js';
 
 /**
- * Walk up `cwd` looking for the closest `.git` directory and return that
- * ancestor's path. Used to stamp `repo_root` on a panel so widgets can
- * group every session for the same repo together, regardless of which
- * subdirectory the user ran Claude Code from.
+ * Walk up `cwd` looking for the closest `.git` and return the repo it belongs
+ * to. Used to stamp `repo_root` on a panel so widgets can group every session
+ * for the same repo together, regardless of which subdirectory the user ran
+ * Claude Code from.
+ *
+ * A linked worktree resolves to its main checkout: its `.git` is a file whose
+ * `gitdir:` points at `<main>/.git/worktrees/<name>`. A worktree-isolated
+ * subagent then labels as the repo that spawned it, not as its worktree dir.
+ * The worktree itself stays visible through `cwd` (the client's worktree chip).
  *
  * Cached per input so a busy directory tree doesn't re-stat on every
  * new panel. Returns `null` when no `.git` is found before the
@@ -37,11 +43,11 @@ export function findRepoRoot(cwd: string | null | undefined): string | null {
     try {
       const git = path.join(cur, '.git');
       if (existsSync(git)) {
-        // `.git` can be a dir (normal repo) or a file (worktree). Both count.
         const s = statSync(git);
-        if (s.isDirectory() || s.isFile()) {
-          repoRootCache.set(cwd, cur);
-          return cur;
+        const root = s.isDirectory() ? cur : s.isFile() ? (mainCheckoutOf(git) ?? cur) : null;
+        if (root) {
+          repoRootCache.set(cwd, root);
+          return root;
         }
       }
     } catch {
@@ -54,6 +60,16 @@ export function findRepoRoot(cwd: string | null | undefined): string | null {
   }
   repoRootCache.set(cwd, null);
   return null;
+}
+
+/** Main checkout of a linked worktree, from its `.git` file. Null when the file
+ * isn't a `gitdir:` pointer into some `<repo>/.git/worktrees/<name>`. */
+function mainCheckoutOf(dotGitFile: string): string | null {
+  const m = readFileSync(dotGitFile, 'utf8').match(/^gitdir:\s*(.+)$/m);
+  if (!m?.[1]) return null;
+  const gitdir = path.resolve(path.dirname(dotGitFile), m[1].trim());
+  const w = gitdir.match(/^(.*)\/\.git\/worktrees\/[^/]+\/?$/);
+  return w?.[1] ?? null;
 }
 
 export type PanelKind = 'parent' | 'subagent';
@@ -126,6 +142,10 @@ export interface Panel {
    * those still produce a widget keyed by the cwd's last segment. */
   repo_root: string | null;
   theme: PanelTheme | null;
+  /** The name and pid Claude Code's session registry gives this session, the
+   * handle other sessions' messages use for it. Not persisted: the registry
+   * re-supplies it for live sessions. */
+  peer: PeerIdentity | null;
   events: Event[];
   /** Soft-delete timestamp. Non-null = the panel is in the trash bin: it
    * doesn't appear in the main snapshot or progress through lifecycle
@@ -223,6 +243,7 @@ export interface PanelDto {
    * `Panel.repo_root`. Null for non-repo cwds. */
   repo_root: string | null;
   theme: PanelTheme | null;
+  peer: PeerIdentity | null;
   binned_at: number | null;
   awaiting_input: boolean;
   ended: boolean;
@@ -551,6 +572,19 @@ export class SessionStore {
     panel.theme = theme;
     this.persistPanel(panel);
     return [{ op: 'panel_upsert', panel: this.toDto(panel) }];
+  }
+
+  /** Stamp the session-registry identity onto each listed panel. Sticky: a
+   * session missing from the registry has exited and keeps its last identity. */
+  setPeers(peers: Map<string, PeerIdentity>): Delta[] {
+    const deltas: Delta[] = [];
+    for (const [id, peer] of peers) {
+      const panel = this.panels.get(id);
+      if (!panel || (panel.peer?.name === peer.name && panel.peer.pid === peer.pid)) continue;
+      panel.peer = peer;
+      deltas.push({ op: 'panel_upsert', panel: this.toDto(panel) });
+    }
+    return deltas;
   }
 
   /** Re-point a session at a new working directory after its original cwd was
@@ -1038,6 +1072,7 @@ export class SessionStore {
       cwd: event.cwd,
       repo_root: findRepoRoot(event.cwd),
       theme: null,
+      peer: null,
       events: [],
     };
     this.panels.set(id, panel);
@@ -1304,6 +1339,7 @@ export class SessionStore {
       cwd: p.cwd,
       repo_root: p.repo_root,
       theme: p.theme,
+      peer: p.peer,
       awaiting_input: p.awaiting_input,
       ended: p.ended,
       ended_provenance: p.ended_provenance,
@@ -1641,10 +1677,12 @@ function panelRowToPanel(r: PanelRow): Panel {
     last_event_at: r.last_event_at,
     status_changed_at: r.status_changed_at,
     cwd: r.cwd,
-    // Repo root was persisted on the previous run; if missing (old row
-    // pre-migration), fall back to a live filesystem walk.
-    repo_root: r.repo_root ?? findRepoRoot(r.cwd),
+    // Re-resolved rather than trusted: rows persisted before worktrees
+    // resolved to their main checkout carry the worktree dir. The persisted
+    // value covers a cwd that has since vanished from disk.
+    repo_root: findRepoRoot(r.cwd) ?? r.repo_root,
     theme: r.theme_bg && r.theme_fg ? { background: r.theme_bg, foreground: r.theme_fg } : null,
+    peer: null,
     events: [], // hydrated lazily — JSONL on disk is canonical
     binned_at: r.binned_at,
     awaiting_input: r.awaiting_input,

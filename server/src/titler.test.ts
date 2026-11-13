@@ -63,6 +63,7 @@ function makePanel(overrides: Partial<Panel> = {}): Panel {
     cwd: null,
     repo_root: null,
     theme: null,
+    peer: null,
     events: [],
     ...overrides,
   };

@@ -14,6 +14,7 @@
  *     - clearMarker            `/clear` artifacts → "prior session cleared" divider; drops caveat/stdout noise
  *     - attachSkillPrelude     SKILL.md meta-text → attached to its Skill capsule (lightbox-only)
  *     - crossSessionMessage    `<cross-session-message>` delivery (either shape) → bubble attributed to the sending session
+ *     - crossSessionNotice     idle-watch notices (`[Cross-session idle notice]`, "asked to be told when … idle") → peer one-liner
  *     - tagBtwUserText         /btw queue-operation meta + background-task `<task-notification>` queued_command attachments → bubble (marks next assistant btw:true)
  *     - bashTerminal           user_text with `<bash-*>` blocks → coalesced terminal item
  *     - userTextBubble         default user_text → bubble (handles interrupted-followup sawtooth)
@@ -37,7 +38,7 @@ import { bashTerminal } from './builtIn/bashTerminal.ts';
 import { clearMarker } from './builtIn/clearMarker.ts';
 import { coalesceBetweenChats } from './builtIn/coalesceBetweenChats.ts';
 import { coalesceFileOps } from './builtIn/coalesceFileOps.ts';
-import { crossSessionMessage } from './builtIn/crossSessionMessage.ts';
+import { crossSessionMessage, crossSessionNotice } from './builtIn/crossSessionMessage.ts';
 import { defaultEventItem } from './builtIn/defaultEventItem.ts';
 import { inlineImages } from './builtIn/inlineImages.ts';
 import { insertDayDividers } from './builtIn/insertDayDividers.ts';
@@ -66,6 +67,7 @@ export const VIEW_TRANSFORMS: ViewTransform[] = [
   clearMarker,
   attachSkillPrelude,
   crossSessionMessage,
+  crossSessionNotice,
   tagBtwUserText,
   bashTerminal,
   userTextBubble,

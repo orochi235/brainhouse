@@ -243,7 +243,8 @@ UI/server is meant to uphold. New entries go at the bottom.
   helper) — newly out-of-window files get summarized immediately instead of
   waiting for the next process restart.
 - Each panel carries a `repo_root` field: the closest ancestor of its
-  `cwd` containing a `.git` directory (or file, for worktrees).
+  `cwd` containing a `.git` directory, or, for a linked worktree, the main
+  checkout its `.git` file points to.
   Resolved server-side via `findRepoRoot()` at panel creation and
   cached. Persisted in the panels table so a restart preserves it.
   Project widgets key on `repo_root` first so sessions run from
@@ -453,6 +454,21 @@ UI/server is meant to uphold. New entries go at the bottom.
   body**, labeled with the sending session's name. The delivery preamble,
   the envelope markup and the trailing peer-message notice are stripped, and
   the bubble is never mistaken for a `/btw` the user typed.
+- A peer bubble wears the **sending session's `.hued` color, darkened**
+  (background mixed 70% toward black, `.hued` foreground for text). The
+  sender's name is a link that opens its panel. The sender is found through
+  the panel's `peer` identity, which the server stamps from Claude Code's
+  session registry (`<config>/sessions/<pid>.json`) on the 10s theme poll;
+  a sender never seen registered falls back to the project color matched by
+  name stem (`emilia` from `emilia-93`), with no link. (2026-11-13)
+- Idle-watch traffic between sessions renders as a one-line **peer notice**,
+  never a user bubble: the watcher's `[Cross-session idle notice]` prompt reads
+  "`<name>` went idle at HH:MM — `<harness summary>`", and the watched side's
+  "asked to be told when this session is next idle" system record reads
+  "`<name>` asked to hear when this session goes idle". Peer notices are not
+  folded into op-strips. (2026-11-13)
+- A linked worktree's `repo_root` is its **main checkout**, so a
+  worktree-isolated subagent labels as the repo that spawned it. (2026-11-13)
 - An assistant turn triggered by a side channel (a `/btw` interjection, a
   `<task-notification>` completion, or a peer session's message) shows a
   small, dimmed single-line quote of what it is replying to, directly above

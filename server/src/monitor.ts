@@ -18,6 +18,7 @@ import { stashEventImages } from './images.js';
 import { BackgroundIndexer } from './indexer.js';
 import { type Event, hasTag } from './parser.js';
 import type { Discovery } from './prefs.js';
+import { readPeerRegistry } from './peerRegistry.js';
 import type { ProcessTracker } from './processes/index.js';
 import { deriveAccountLabel } from './roots.js';
 import type { RootSpec } from './search/ingest.js';
@@ -932,6 +933,9 @@ export class TranscriptMonitor {
     // child_process/fs ops at once — exactly the kind of spawn pile-up the
     // single-permit gate exists to prevent. A serial walk keeps the poll cheap
     // and steady; each loadThemeFor is sub-millisecond once its caches are warm.
+    for (const delta of this.store.setPeers(await readPeerRegistry(this.watcher.roots))) {
+      this.emitter.emit('delta', delta);
+    }
     const panels = this.store.snapshot();
     for (const p of panels) {
       if (!p.cwd) continue;

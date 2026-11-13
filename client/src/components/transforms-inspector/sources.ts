@@ -43,6 +43,7 @@ export const TRANSFORM_SOURCE: Record<string, string> = {
   'built-in.clear-marker': clearMarkerSrc,
   'built-in.attach-skill-prelude': attachSkillPreludeSrc,
   'built-in.cross-session-message': crossSessionMessageSrc,
+  'built-in.cross-session-notice': crossSessionMessageSrc,
   'built-in.tag-btw-user-text': tagBtwUserTextSrc,
   'built-in.bash-terminal': bashTerminalSrc,
   'built-in.user-text-bubble': userTextBubbleSrc,

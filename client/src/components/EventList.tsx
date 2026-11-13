@@ -27,6 +27,7 @@ import { FileChangeLightbox } from './FileChangeLightbox.tsx';
 import { InlineImage } from './InlineImage.tsx';
 import { Markdown } from './Markdown.tsx';
 import { OpStripLightbox } from './OpStripLightbox.tsx';
+import { PeerName, PeerNotice, usePeerLook } from './PeerViews.tsx';
 import { SvgGlyph } from './SvgGlyph.tsx';
 import { TerminalCard } from './TerminalCard.tsx';
 import { ThoughtBubble } from './ThoughtBubble.tsx';
@@ -131,6 +132,7 @@ function Item({
     );
   if (item.type === 'notification-anchor')
     return <NotificationAnchor item={item} startedAt={startedAt} />;
+  if (item.type === 'peer-notice') return <PeerNotice item={item} startedAt={startedAt} />;
   if (item.type === 'tool') return <ToolCapsule item={item} startedAt={startedAt} />;
   if (item.type === 'file-change') return <FileChangeRow item={item} startedAt={startedAt} />;
   if (item.type === 'terminal') return <TerminalCard item={item} startedAt={startedAt} />;
@@ -176,8 +178,12 @@ function Bubble({
   onReplyJump?: (refUuid: string) => void;
 }) {
   const reply = item.replyTo;
+  const { peer, style: peerStyle, themed } = usePeerLook(
+    item.from ? { name: item.from, pid: item.fromPid ?? null } : null,
+  );
   const body = (
     <div
+      style={peerStyle}
       className={classNames(
         'bubble',
         reply && 'has-reply',
@@ -185,9 +191,14 @@ function Bubble({
         reply?.kind === 'task' && 'is-task',
         reply?.kind === 'agent' && 'is-agent',
         item.from && 'from-peer',
+        themed && 'has-peer-theme',
       )}
     >
-      {item.from ? <div className="peer-from">{item.from}</div> : null}
+      {item.from ? (
+        <div className="peer-from">
+          <PeerName label={item.from} peer={peer} />
+        </div>
+      ) : null}
       {item.parts.map((part, i) => (
         <BubblePartView key={`${item.event.uuid}-${i}`} part={part} escape={item.role === 'user'} />
       ))}

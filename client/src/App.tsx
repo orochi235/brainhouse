@@ -23,6 +23,7 @@ import { useGridLayout } from './lib/gridLayout.ts';
 import { usePanelDismissal } from './lib/hiddenPanels.ts';
 import { useHiddenWidgets } from './lib/hiddenWidgets.ts';
 import { LightboxProvider } from './lib/lightbox.tsx';
+import { PeerProvider } from './lib/peers.tsx';
 import { useLightbox } from './lib/lightboxContext.ts';
 import {
   sortByOrder,
@@ -712,7 +713,8 @@ function AppMain() {
 
   return (
     <SelectorStoreProvider>
-      <LightboxProvider>
+      <PeerProvider panels={panels} open={openSessionFromWidget}>
+        <LightboxProvider>
         <LayoutGroup>
           <Layout
             slots={{
@@ -1103,7 +1105,8 @@ function AppMain() {
             }}
           />
         </LayoutGroup>
-      </LightboxProvider>
+        </LightboxProvider>
+      </PeerProvider>
     </SelectorStoreProvider>
   );
 }

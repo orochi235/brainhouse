@@ -34,6 +34,7 @@ function makePanel(overrides: Partial<Panel> = {}): Panel {
     repo_root: null,
     iterm_session_id: null,
     theme: null,
+    peer: null,
     events: [],
     ...overrides,
   } as Panel;
