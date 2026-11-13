@@ -1,14 +1,5 @@
 # brainhouse — project todos
 
-## Client typecheck fails at bb0c63e (found 2026-10-20)
-
-`npm run build` stops at the client's `tsc -b`; the service is unaffected because
-`start:watch` builds the client with vite alone. The three errors:
-
-- `src/components/ProcessesPanel.test.tsx(21,7)`: fixture lacks `project_theme_bg`, now required on `ProcessRow`.
-- `src/lib/preferences.ts(13,3)`: `StylePref | undefined` assigned to `StylePref`.
-- `src/lib/processMemory.test.ts(10,5)`: `pid` specified twice in one object literal.
-
 ## Page load — residual polish (bulk fixed 2026-08-12)
 
 The bootstrap payload was the whole story: 52.8 MB of docked-mini event

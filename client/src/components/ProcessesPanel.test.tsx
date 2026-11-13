@@ -42,6 +42,7 @@ const FIXTURE_ROW: ProcessRow = {
   rss_kb: 831488,
   bash_id: null,
   project: null,
+  project_theme_bg: null,
   account_label: null,
   iterm_session_id: null,
   original_ancestors: [],
