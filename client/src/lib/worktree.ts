@@ -6,6 +6,7 @@
  *   <repo-root>/.claude/worktrees/<name>            ← Claude Code's worktree convention
  *   <repo-root>/.worktrees/<name>
  *   <repo-root>-worktrees/<name>                    ← sibling-dir convention
+ *   <repo-root>-wt/<name>
  *   <repo-root>/worktrees/<name>                    ← generic fallback
  *
  * Returns null when the cwd doesn't look like a worktree (treat as "main
@@ -28,6 +29,7 @@ const PATTERNS: Array<{ re: RegExp }> = [
   { re: /^(.*?)\/\.claude\/worktrees\/([^/]+)(?:\/|$)/ },
   { re: /^(.*?)\/\.worktrees\/([^/]+)(?:\/|$)/ },
   { re: /^(.*?)-worktrees\/([^/]+)(?:\/|$)/ },
+  { re: /^(.*?)-wt\/([^/]+)(?:\/|$)/ },
   { re: /^(.*?)\/worktrees\/([^/]+)(?:\/|$)/ },
 ];
 

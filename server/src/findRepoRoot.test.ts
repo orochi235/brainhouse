@@ -30,6 +30,11 @@ describe('findRepoRoot', () => {
     expect(findRepoRoot(path.join(repo, '.claude', 'worktrees', 'agent-gone'))).toBe(repo);
   });
 
+  it('resolves a deleted sibling-dir worktree to the repo beside it', () => {
+    expect(findRepoRoot(path.join(tmp, 'weasel-wt', 'release-icons'))).toBe(repo);
+    expect(findRepoRoot(path.join(tmp, 'weasel-worktrees', 'x', 'src'))).toBe(repo);
+  });
+
   it('keeps a .git file it cannot read as a pointer as its own root', () => {
     const odd = path.join(tmp, 'odd');
     mkdirSync(odd);

@@ -244,7 +244,9 @@ UI/server is meant to uphold. New entries go at the bottom.
   waiting for the next process restart.
 - Each panel carries a `repo_root` field: the closest ancestor of its
   `cwd` containing a `.git` directory, or, for a linked worktree, the main
-  checkout its `.git` file points to.
+  checkout its `.git` file points to. A sibling-dir worktree that no longer
+  exists (`<repo>-wt/<name>`, `<repo>-worktrees/<name>`) resolves to `<repo>`
+  when that is a repo.
   Resolved server-side via `findRepoRoot()` at panel creation and
   cached. Persisted in the panels table so a restart preserves it.
   Project widgets key on `repo_root` first so sessions run from

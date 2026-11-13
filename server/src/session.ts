@@ -58,8 +58,12 @@ export function findRepoRoot(cwd: string | null | undefined): string | null {
     if (parent === cur) break;
     cur = parent;
   }
-  repoRootCache.set(cwd, null);
-  return null;
+  // A sibling-dir worktree that has since been deleted leaves nothing to walk;
+  // its path still names the repo beside it.
+  const sibling = cwd.match(/^(.*)-(?:wt|worktrees)\/[^/]+(?:\/|$)/)?.[1];
+  const root = sibling ? findRepoRoot(sibling) : null;
+  repoRootCache.set(cwd, root);
+  return root;
 }
 
 /** Main checkout of a linked worktree, from its `.git` file. Null when the file
