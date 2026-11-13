@@ -1,17 +1,18 @@
-/* A peer's project color, darkened so its own foreground stays readable and
-   the bubble sits back from the user's own messages. */
+/* A peer's project color, muted and darkened under white text so the bubble
+   sits back from the user's own messages. Lightness is capped because a
+   light `.hued` background would otherwise wash the white text out. */
 .bubble.from-peer.has-peer-theme {
   --peer-shade: color-mix(in srgb, var(--peer-bg) 70%, black);
   /* Gray at top-left, the sender's color pooled at 4:30; the 72% hint keeps
      most of the bubble gray. */
   background: linear-gradient(
     135deg,
-    oklch(from var(--peer-shade) calc(l * 0.8) calc(c * 0.12) h) 0%,
+    oklch(from var(--peer-shade) min(calc(l * 0.6), 0.3) calc(c * 0.08) h) 0%,
     72%,
-    oklch(from var(--peer-shade) l calc(c * 0.6) h) 100%
+    oklch(from var(--peer-shade) min(calc(l * 0.75), 0.4) calc(c * 0.35) h) 100%
   );
-  color: var(--peer-fg);
-  border-color: color-mix(in srgb, var(--peer-fg) 30%, transparent);
+  color: #fff;
+  border-color: rgb(255 255 255 / 0.15);
 }
 
 .peer-name {
@@ -35,6 +36,7 @@
 .peer-from .peer-name {
   padding: 0;
   background: none;
+  color: inherit;
 }
 
 .peer-notice {
