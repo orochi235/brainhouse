@@ -1,7 +1,13 @@
 /* A peer's project color, darkened so its own foreground stays readable and
    the bubble sits back from the user's own messages. */
 .bubble.from-peer.has-peer-theme {
-  background: color-mix(in srgb, var(--peer-bg) 70%, black);
+  --peer-shade: color-mix(in srgb, var(--peer-bg) 70%, black);
+  /* Fades toward gray at the bottom, matching the vertical sheen of user bubbles. */
+  background: linear-gradient(
+    180deg,
+    var(--peer-shade) 0%,
+    oklch(from var(--peer-shade) calc(l * 0.94) calc(c * 0.45) h) 100%
+  );
   color: var(--peer-fg);
   border-color: color-mix(in srgb, var(--peer-fg) 30%, transparent);
 }
