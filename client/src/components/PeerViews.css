@@ -2,10 +2,12 @@
    the bubble sits back from the user's own messages. */
 .bubble.from-peer.has-peer-theme {
   --peer-shade: color-mix(in srgb, var(--peer-bg) 70%, black);
-  /* Gray at top-left, the sender's color pooled at 4:30. */
+  /* Gray at top-left, the sender's color pooled at 4:30; the 72% hint keeps
+     most of the bubble gray. */
   background: linear-gradient(
     135deg,
     oklch(from var(--peer-shade) calc(l * 0.8) calc(c * 0.12) h) 0%,
+    72%,
     oklch(from var(--peer-shade) l calc(c * 0.6) h) 100%
   );
   color: var(--peer-fg);
