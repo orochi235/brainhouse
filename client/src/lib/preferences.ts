@@ -10,7 +10,7 @@ export type StylePref = 'default' | 'transom';
 const STYLES: readonly StylePref[] = ['default', 'transom'];
 
 export const nextStyle = (s: StylePref): StylePref =>
-  STYLES[(STYLES.indexOf(s) + 1) % STYLES.length];
+  STYLES[(STYLES.indexOf(s) + 1) % STYLES.length] ?? 'default';
 
 function readBool(key: string, fallback: boolean): boolean {
   const v = localStorage.getItem(key);

@@ -7,7 +7,6 @@ function row(over: Partial<ProcessRow> & { pid: number }): ProcessRow {
   return {
     process_id: `p${over.pid}`,
     host: 'local',
-    pid: over.pid,
     ppid: 0,
     start_ts: 0,
     command: 'x',
