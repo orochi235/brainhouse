@@ -23,7 +23,8 @@ export function usePeerLook(ref: PeerRef | null) {
   return { peer, style: peerVars(peer?.theme), themed: !!peer?.theme };
 }
 
-/** The sender's name; a button that opens its panel when it resolves to one. */
+/** The sender's project as a pill in its own `.hued` colors, then its session
+ * name; a button that opens its panel when it resolves to one. */
 export function PeerName({
   label,
   peer,
@@ -33,9 +34,17 @@ export function PeerName({
   peer: ReturnType<typeof usePeer>;
   className?: string;
 }) {
-  const cls = classNames('peer-name', peer?.theme && 'is-themed', className);
+  const cls = classNames('peer-name', className);
   const open = peer?.open;
-  if (!open) return <span className={cls}>{label}</span>;
+  const content = (
+    <>
+      {peer?.project ? (
+        <span className={classNames('peer-project', peer.theme && 'is-themed')}>{peer.project}</span>
+      ) : null}
+      <span className="peer-session">{label}</span>
+    </>
+  );
+  if (!open) return <span className={cls}>{content}</span>;
   return (
     <button
       type="button"
@@ -46,7 +55,7 @@ export function PeerName({
         open();
       }}
     >
-      {label}
+      {content}
     </button>
   );
 }

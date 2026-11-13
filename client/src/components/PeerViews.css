@@ -16,27 +16,32 @@
 }
 
 .peer-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
   font: inherit;
-  padding: 0 0.35em;
+  padding: 0;
   border: none;
-  border-radius: 4px;
   background: none;
   color: inherit;
-}
-.peer-name.is-themed {
-  background: color-mix(in srgb, var(--peer-bg) 70%, black);
-  color: var(--peer-fg);
 }
 .peer-name.is-link {
   cursor: pointer;
 }
-.peer-name.is-link:hover {
+.peer-name.is-link:hover .peer-session {
   text-decoration: underline;
 }
-.peer-from .peer-name {
-  padding: 0;
-  background: none;
-  color: inherit;
+
+/* The project in its native `.hued` colors, unmuted, so it reads as the
+   same project tag the panel header and sidebar use. */
+.peer-project {
+  padding: 0 0.4em;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.peer-project.is-themed {
+  background: var(--peer-bg);
+  color: var(--peer-fg);
 }
 
 .peer-notice {

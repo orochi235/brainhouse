@@ -29,6 +29,7 @@ describe('resolvePeer', () => {
     expect(resolvePeer([olderEmilia, emilia], { name: 'emilia-93', pid: null })).toEqual({
       panelId: 'e1',
       theme: theme('#123'),
+      project: 'emilia',
     });
     expect(resolvePeer([emilia], { name: null, pid: 28469 })?.panelId).toBe('e1');
   });
@@ -37,6 +38,7 @@ describe('resolvePeer', () => {
     expect(resolvePeer([olderEmilia], { name: 'emilia-12', pid: null })).toEqual({
       panelId: null,
       theme: theme('#456'),
+      project: 'emilia',
     });
   });
 
