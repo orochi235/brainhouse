@@ -22,8 +22,6 @@ export interface PeerMatch {
   /** Null when only the project matched, not a particular session. */
   panelId: string | null;
   theme: PanelTheme | null;
-  /** The sender's repo name, e.g. `emilia`. */
-  project: string | null;
 }
 
 interface PeerDirectory {
@@ -72,10 +70,8 @@ export function resolvePeer(panels: Iterable<PanelState>, ref: PeerRef): PeerMat
       if (!project || p.last_event_at > project.last_event_at) project = p;
     }
   }
-  if (exact) {
-    return { panelId: exact.id, theme: exact.theme ?? project?.theme ?? null, project: repoLeaf(exact) };
-  }
-  if (project) return { panelId: null, theme: project.theme, project: stem };
+  if (exact) return { panelId: exact.id, theme: exact.theme ?? project?.theme ?? null };
+  if (project) return { panelId: null, theme: project.theme };
   return null;
 }
 
