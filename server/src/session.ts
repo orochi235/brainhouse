@@ -272,9 +272,17 @@ export type Delta =
    * normally seeds events skips binned panels. All other upsert emitters
    * omit it and the client preserves any events it already has. */
   | { op: 'panel_upsert'; panel: PanelDto; events?: Event[] }
-  | { op: 'panel_status'; panel_id: string; status: PanelStatus }
+  /** Carries the server's timestamps so a late or replayed delta can't make
+   * the panel look more recent than it is. */
+  | {
+      op: 'panel_status';
+      panel_id: string;
+      status: PanelStatus;
+      status_changed_at: number;
+      last_event_at: number;
+    }
   | { op: 'panel_remove'; panel_id: string }
-  | { op: 'event_append'; panel_id: string; event: Event }
+  | { op: 'event_append'; panel_id: string; event: Event; last_event_at: number }
   /** Transient: drives the title flash + toast on the client when the
    * auto-title hook proposes a new name. Not persisted, not part of
    * panel state — it's a one-shot UX cue. */
@@ -507,7 +515,7 @@ export class SessionStore {
         if (panel.status !== 'live') {
           panel.status = 'live';
           panel.status_changed_at = panel.last_event_at;
-          deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'live' });
+          deltas.push(statusDelta(panel));
         }
       } else if (panel.status !== 'live') {
         // Stale event — a cold-start replay catch-up, not real activity. Settle
@@ -517,18 +525,23 @@ export class SessionStore {
         // `live` by a fresher event in the same replay batch is left alone — a
         // later stale straggler shouldn't demote it; the tick handles that.)
         const settled = this.settledState(panel.last_event_at, now);
+        panel.status_changed_at = settled.changed_at;
         if (panel.status !== settled.status) {
           panel.status = settled.status;
-          deltas.push({ op: 'panel_status', panel_id: panel.id, status: settled.status });
+          deltas.push(statusDelta(panel));
         }
-        panel.status_changed_at = settled.changed_at;
       }
     }
     const titleBefore = panel.title;
     this.maybeUpdateTitle(panel, event, deltas);
     this.maybeJoinSubagentTitle(panel, event, deltas);
     this.maybeAdoptCwd(panel, event, deltas);
-    deltas.push({ op: 'event_append', panel_id: panel.id, event });
+    deltas.push({
+      op: 'event_append',
+      panel_id: panel.id,
+      event,
+      last_event_at: panel.last_event_at,
+    });
     // Auto-title proposals from in-band events (substantive follow-up
     // prompts, agent-emitted `session-title` meta). Skipped on the same
     // event that just set the first-prompt title, since that already
@@ -631,7 +644,7 @@ export class SessionStore {
         // Stamp when the panel *actually* went idle so a bootstrap-replayed
         // session shows "done 2h ago" instead of "done 0s ago".
         panel.status_changed_at = Math.min(t, panel.last_event_at + this.idleSeconds);
-        deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'done' });
+        deltas.push(statusDelta(panel));
         this.persistPanel(panel);
         // Materialize the session summary on the live→done transition so
         // it's available in SQLite as soon as the session goes idle — even
@@ -641,7 +654,7 @@ export class SessionStore {
       } else if (panel.status === 'done' && t - panel.status_changed_at >= this.miniSeconds) {
         panel.status = 'mini';
         panel.status_changed_at = Math.min(t, panel.status_changed_at + this.miniSeconds);
-        deltas.push({ op: 'panel_status', panel_id: panel.id, status: 'mini' });
+        deltas.push(statusDelta(panel));
         this.persistPanel(panel);
       } else if (
         panel.status === 'mini' &&
@@ -764,7 +777,7 @@ export class SessionStore {
         },
       ];
     }
-    return [{ op: 'panel_status', panel_id: panelId, status }];
+    return [statusDelta(panel)];
   }
 
   /** Toggle the "this panel is blocking on user input" flag. Emits an upsert
@@ -1468,7 +1481,12 @@ export class SessionStore {
     panel.events.push(syntheticEvent);
     return [
       { op: 'panel_upsert', panel: this.toDto(panel) },
-      { op: 'event_append', panel_id: panelId, event: syntheticEvent },
+      {
+        op: 'event_append',
+        panel_id: panelId,
+        event: syntheticEvent,
+        last_event_at: panel.last_event_at,
+      },
       { op: 'auto_titled', panel_id: panelId, prev_title: prev, new_title: next },
     ];
   }
@@ -1579,6 +1597,16 @@ function extractLastChecklistItems(text: string): Array<{ done: boolean; text: s
  * encoding and we only use this for equality comparison). */
 export function encodeCwdToProjectDir(cwd: string): string {
   return cwd.replace(/[/.]/g, '-');
+}
+
+function statusDelta(panel: Panel): Delta {
+  return {
+    op: 'panel_status',
+    panel_id: panel.id,
+    status: panel.status,
+    status_changed_at: panel.status_changed_at,
+    last_event_at: panel.last_event_at,
+  };
 }
 
 function parseEventTs(ts: string): number | null {

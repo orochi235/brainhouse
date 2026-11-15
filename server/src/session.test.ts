@@ -334,8 +334,27 @@ describe('SessionStore', () => {
     clock.advance(30);
     expect(store.tick()).toEqual([]);
     clock.advance(31);
-    expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
+    expect(store.tick()).toMatchObject([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
     expect(store.panel('S')?.status).toBe('done');
+  });
+
+  it('status and event deltas carry the server timestamps, not delivery time', () => {
+    const clock = new FakeClock();
+    const store = new SessionStore({ idleSeconds: 60, miniSeconds: 600, clock: clock.now });
+    const [append] = store
+      .apply(ev('user_text', { payload: { text: 'hi' } }))
+      .filter((d) => d.op === 'event_append');
+    const panel = store.panel('S');
+    expect(append).toMatchObject({ last_event_at: panel?.last_event_at });
+    clock.advance(500);
+    const [done] = store.tick();
+    expect(done).toEqual({
+      op: 'panel_status',
+      panel_id: 'S',
+      status: 'done',
+      status_changed_at: (panel?.last_event_at ?? 0) + 60,
+      last_event_at: panel?.last_event_at,
+    });
   });
 
   it('process-aware: a live session stays live past idleSeconds while its process is alive', () => {
@@ -355,7 +374,7 @@ describe('SessionStore', () => {
     expect(store.panel('S')?.status).toBe('live');
     // Process exits → the next tick flips it to done promptly.
     liveSids.delete('S');
-    expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
+    expect(store.tick()).toMatchObject([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
     expect(store.panel('S')?.status).toBe('done');
   });
 
@@ -384,7 +403,7 @@ describe('SessionStore', () => {
     // liveness: once its own events go quiet past idleSeconds it settles to
     // done. (Borrowing the parent's liveness left every completed subagent
     // pulsing `live` and un-reapable for the whole life of a long session.)
-    expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'A', status: 'done' }]);
+    expect(store.tick()).toMatchObject([{ op: 'panel_status', panel_id: 'A', status: 'done' }]);
     expect(store.panel('S')?.status).toBe('live');
     expect(store.panel('A')?.status).toBe('done');
   });
@@ -423,7 +442,7 @@ describe('SessionStore', () => {
     clock.advance(11);
     store.tick();
     clock.advance(101);
-    expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'mini' }]);
+    expect(store.tick()).toMatchObject([{ op: 'panel_status', panel_id: 'S', status: 'mini' }]);
   });
 
   it('bin() soft-deletes: keeps the panel but emits panel_remove and hides from snapshot', () => {
@@ -478,7 +497,7 @@ describe('SessionStore', () => {
     clock.advance(11);
     expect(store.tick()).toEqual([]); // would NOT idle out at 1000s
     store.setTimings({ idleSeconds: 10 });
-    expect(store.tick()).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
+    expect(store.tick()).toMatchObject([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
   });
 
   it('mini panel is removed after removeAfterSeconds once ended', () => {
@@ -568,7 +587,7 @@ describe('SessionStore', () => {
     clock.advance(1);
     const deltas = store.apply(ev('user_text', { uuid: 'u2', payload: { text: 'b' } }));
     const statusChanges = deltas.filter((d) => d.op === 'panel_status');
-    expect(statusChanges).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'live' }]);
+    expect(statusChanges).toMatchObject([{ op: 'panel_status', panel_id: 'S', status: 'live' }]);
   });
 
   it('meta record does NOT revive a done panel', () => {
@@ -594,7 +613,7 @@ describe('SessionStore', () => {
     const clock = new FakeClock();
     const store = new SessionStore({ clock: clock.now });
     store.apply(ev('user_text', { payload: { text: 'hi' } }));
-    expect(store.forceStatus('S', 'done')).toEqual([
+    expect(store.forceStatus('S', 'done')).toMatchObject([
       { op: 'panel_status', panel_id: 'S', status: 'done' },
     ]);
     expect(store.panel('S')?.status).toBe('done');
@@ -647,7 +666,7 @@ describe('SessionStore', () => {
 
     it('forceStatus between non-mini statuses stays a light panel_status', () => {
       const { store } = storeWithEvents(3);
-      expect(store.forceStatus('S', 'done')).toEqual([
+      expect(store.forceStatus('S', 'done')).toMatchObject([
         { op: 'panel_status', panel_id: 'S', status: 'done' },
       ]);
     });
@@ -1285,7 +1304,10 @@ describe('SessionStore', () => {
       const clock = new FakeClock();
       const store = new SessionStore({ clock: clock.now });
       const aiTitle = (uuid: string) =>
-        ev('meta', { uuid, payload: { record_type: 'ai-title', raw: { aiTitle: 'First CC title' } } });
+        ev('meta', {
+          uuid,
+          payload: { record_type: 'ai-title', raw: { aiTitle: 'First CC title' } },
+        });
       store.apply(ev('user_text', { uuid: 'u1', payload: { text: 'first prompt' } }));
       store.apply(aiTitle('u2'));
       store.applyAutoTitle('S', 'Rechecked title');
@@ -1577,7 +1599,7 @@ describe('process-liveness grace bound', () => {
     // Past the grace: demotes, back-dated to when it actually went idle.
     clock.advance(700);
     const deltas = store.tick();
-    expect(deltas).toEqual([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
+    expect(deltas).toMatchObject([{ op: 'panel_status', panel_id: 'S', status: 'done' }]);
     expect(store.panel('S')?.status_changed_at).toBe(1_000_000 + 60);
   });
 

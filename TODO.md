@@ -1132,3 +1132,22 @@ rather than WCAG. Give the workspace a shared module and fold both in.
 `client/src/ReplayView.tsx`, and an empty-title error on
 `client/src/assets/icons/jq.svg`. Seen 2026-10-10 on a clean tree. Fix them or
 exclude them, so the check means something again.
+
+## Delta stream: protocol version and sequence numbers
+
+The client can't tell when it's talking to a server built from different
+code, and it can't detect a dropped delta. Neither has hurt yet (2026-11-15):
+
+- **Gaps heal on reconnect.** `httpSubscriptionLink` re-runs the `deltas`
+  subscription, which yields a fresh snapshot first, so a dropped
+  connection never leaves a hole.
+- **Mismatches are mostly covered.** A client rebuild broadcasts
+  `client_build_updated` and open tabs reload. The uncovered case is a
+  server-only change to the `Delta` shape: the server restarts, the old
+  bundle reconnects and misreads the new deltas until it is reloaded.
+
+Fix when that case first bites: stamp the snapshot with a protocol version
+and give each delta a sequence number. A client that sees a different
+version reloads; one that sees a gap asks for a fresh snapshot. Remove the
+`unknown as Delta` cast in `client/src/useDeltaStream.ts` at the same time.
+Don't raise `LIVE_WINDOW` to paper over replay problems.

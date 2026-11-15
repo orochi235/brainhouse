@@ -1,7 +1,7 @@
 import type { Event } from '@server/parser.ts';
 import type { Delta, PanelDto } from '@server/session.ts';
 import { describe, expect, it } from 'vitest';
-import { EVICT_CHUNK, initialState, LIVE_WINDOW, reducer } from './useDeltaStream.ts';
+import { type Action, EVICT_CHUNK, initialState, LIVE_WINDOW, reducer } from './useDeltaStream.ts';
 
 function panelDto(overrides: Partial<PanelDto> = {}): PanelDto {
   return {
@@ -89,17 +89,16 @@ describe('useDeltaStream reducer', () => {
     expect(seeded.panels.get('a')?.events).toEqual([]);
   });
 
-  it('event_append bumps last_event_at to the arrival time', () => {
+  it('event_append takes last_event_at from the server, not arrival time', () => {
     const seeded = reducer(initialState, {
       type: 'delta',
       delta: { op: 'panel_upsert', panel: panelDto({ id: 'a', last_event_at: 0 }) } as Delta,
     });
-    const before = seeded.panels.get('a')?.last_event_at ?? -1;
     const next = reducer(seeded, {
       type: 'delta',
-      delta: { op: 'event_append', panel_id: 'a', event: ev } as Delta,
+      delta: { op: 'event_append', panel_id: 'a', event: ev, last_event_at: 42 } as Delta,
     });
-    expect(next.panels.get('a')?.last_event_at).toBeGreaterThan(before);
+    expect(next.panels.get('a')?.last_event_at).toBe(42);
   });
 
   it('event_append silently drops an event for an unknown panel', () => {
@@ -110,39 +109,70 @@ describe('useDeltaStream reducer', () => {
     expect(next.panels.size).toBe(0);
   });
 
-  it('panel_status updates status + bumps status_changed_at', () => {
-    const seeded = reducer(initialState, {
-      type: 'delta',
-      delta: { op: 'panel_upsert', panel: panelDto({ id: 'a', status: 'live' }) } as Delta,
-    });
-    const before = seeded.panels.get('a')?.status_changed_at ?? 0;
-    const next = reducer(seeded, {
-      type: 'delta',
-      delta: { op: 'panel_status', panel_id: 'a', status: 'done' } as Delta,
-    });
-    expect(next.panels.get('a')?.status).toBe('done');
-    expect(next.panels.get('a')?.status_changed_at).toBeGreaterThan(before);
-  });
-
-  it('panel_remove soft-marks (removing: true) without dropping', () => {
+  it('panel_status takes status_changed_at and last_event_at from the server', () => {
     const seeded = reducer(initialState, {
       type: 'delta',
       delta: { op: 'panel_upsert', panel: panelDto({ id: 'a' }) } as Delta,
     });
     const next = reducer(seeded, {
       type: 'delta',
-      delta: { op: 'panel_remove', panel_id: 'a' } as Delta,
+      delta: {
+        op: 'panel_status',
+        panel_id: 'a',
+        status: 'done',
+        status_changed_at: 70,
+        last_event_at: 10,
+      },
     });
-    expect(next.panels.get('a')?.removing).toBe(true);
+    expect(next.panels.get('a')).toMatchObject({
+      status: 'done',
+      status_changed_at: 70,
+      last_event_at: 10,
+    });
   });
 
-  it('commit_remove drops the panel for real', () => {
-    const seeded = reducer(initialState, {
-      type: 'delta',
-      delta: { op: 'panel_upsert', panel: panelDto({ id: 'a' }) } as Delta,
-    });
-    const next = reducer(seeded, { type: 'commit_remove', panel_id: 'a' });
+  const upsertA: Action = {
+    type: 'delta',
+    delta: { op: 'panel_upsert', panel: panelDto({ id: 'a' }) },
+  };
+  const removeA = (token: number): Action => ({
+    type: 'delta',
+    delta: { op: 'panel_remove', panel_id: 'a' },
+    removalToken: token,
+  });
+
+  it('panel_remove soft-marks with its token without dropping', () => {
+    const next = reducer(reducer(initialState, upsertA), removeA(7));
+    expect(next.panels.get('a')?.removing).toBe(7);
+  });
+
+  it('commit_remove drops the panel when its token still matches', () => {
+    const removing = reducer(reducer(initialState, upsertA), removeA(1));
+    const next = reducer(removing, { type: 'commit_remove', panel_id: 'a', token: 1 });
     expect(next.panels.has('a')).toBe(false);
+  });
+
+  it('commit_remove spares a panel revived by an upsert during the fade', () => {
+    const revived = reducer(reducer(reducer(initialState, upsertA), removeA(1)), upsertA);
+    const next = reducer(revived, { type: 'commit_remove', panel_id: 'a', token: 1 });
+    expect(next.panels.get('a')?.removing).toBeUndefined();
+  });
+
+  it('commit_remove spares a panel revived by a snapshot during the fade', () => {
+    const removing = reducer(reducer(initialState, upsertA), removeA(1));
+    const revived = reducer(removing, {
+      type: 'snapshot',
+      panels: [{ ...panelDto({ id: 'a' }), events: [] }],
+    });
+    const next = reducer(revived, { type: 'commit_remove', panel_id: 'a', token: 1 });
+    expect(next.panels.has('a')).toBe(true);
+  });
+
+  it('a stale commit_remove does not cut short a later removal', () => {
+    const s1 = reducer(reducer(initialState, upsertA), removeA(1));
+    const s2 = reducer(reducer(s1, upsertA), removeA(2));
+    const next = reducer(s2, { type: 'commit_remove', panel_id: 'a', token: 1 });
+    expect(next.panels.get('a')?.removing).toBe(2);
   });
 
   it('snapshot wins over prior delta state', () => {

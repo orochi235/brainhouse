@@ -30,8 +30,10 @@ function appendCapped(existing: Event[], e: Event): Event[] {
 export interface PanelState extends PanelDto {
   events: Event[];
   /** Server has told us this panel is gone; we keep it mounted briefly so
-   * the UI can play a fade-out animation before it actually disappears. */
-  removing?: boolean;
+   * the UI can play a fade-out animation before it actually disappears.
+   * Holds the removal's token: `commit_remove` only deletes when its token
+   * still matches, so an upsert or snapshot that revives the panel wins. */
+  removing?: number;
   /** Wall-clock ms of the most recent auto_titled delta. Drives a brief
    * title flash + toast on the client. The toast component clears its
    * own state after the visibility window; this just timestamps the
@@ -64,8 +66,8 @@ export interface DeltaState {
 export type Action =
   | { type: 'conn'; status: DeltaState['status'] }
   | { type: 'snapshot'; panels: Array<PanelDto & { events: Event[] }> }
-  | { type: 'delta'; delta: Delta }
-  | { type: 'commit_remove'; panel_id: string };
+  | { type: 'delta'; delta: Delta; removalToken?: number }
+  | { type: 'commit_remove'; panel_id: string; token: number };
 
 export const initialState: DeltaState = {
   status: 'connecting',
@@ -95,15 +97,10 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
       } else if (d.op === 'event_append') {
         const existing = panels.get(d.panel_id);
         if (existing) {
-          // Bump last_event_at on every event so client-side observers
-          // (e.g. the auto-mini decay in hiddenPanels) see real-time
-          // activity progression. The server doesn't re-broadcast its
-          // own last_event_at via event_append, so we infer from
-          // arrival time here.
           panels.set(d.panel_id, {
             ...existing,
             events: appendCapped(existing.events, d.event),
-            last_event_at: Date.now() / 1000,
+            last_event_at: d.last_event_at,
           });
         }
       } else if (d.op === 'panel_status') {
@@ -112,7 +109,8 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
           panels.set(d.panel_id, {
             ...existing,
             status: d.status,
-            status_changed_at: Date.now() / 1000,
+            status_changed_at: d.status_changed_at,
+            last_event_at: d.last_event_at,
           });
         }
       } else if (d.op === 'auto_titled') {
@@ -128,11 +126,12 @@ export function reducer(state: DeltaState, action: Action): DeltaState {
         // Soft remove: mark for animation. The actual delete arrives as a
         // separate `commit_remove` action after REMOVAL_HOLD_MS.
         const existing = panels.get(d.panel_id);
-        if (existing) panels.set(d.panel_id, { ...existing, removing: true });
+        if (existing) panels.set(d.panel_id, { ...existing, removing: action.removalToken ?? 1 });
       }
       return { ...state, panels };
     }
     case 'commit_remove': {
+      if (state.panels.get(action.panel_id)?.removing !== action.token) return state;
       const panels = new Map(state.panels);
       panels.delete(action.panel_id);
       return { ...state, panels };
@@ -145,6 +144,8 @@ export function useDeltaStream(): DeltaState {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
+    let nextRemovalToken = 1;
+    const removalTimers = new Set<ReturnType<typeof setTimeout>>();
     dispatch({ type: 'conn', status: 'connecting' });
     const sub = trpc.deltas.subscribe(undefined, {
       onStarted() {
@@ -167,13 +168,17 @@ export function useDeltaStream(): DeltaState {
             window.location.reload();
             return;
           }
-          dispatch({ type: 'delta', delta });
-          if (delta.op === 'panel_remove') {
-            setTimeout(
-              () => dispatch({ type: 'commit_remove', panel_id: delta.panel_id }),
-              REMOVAL_HOLD_MS,
-            );
+          if (delta.op !== 'panel_remove') {
+            dispatch({ type: 'delta', delta });
+            return;
           }
+          const token = nextRemovalToken++;
+          dispatch({ type: 'delta', delta, removalToken: token });
+          const timer = setTimeout(() => {
+            removalTimers.delete(timer);
+            dispatch({ type: 'commit_remove', panel_id: delta.panel_id, token });
+          }, REMOVAL_HOLD_MS);
+          removalTimers.add(timer);
         }
       },
       onError() {
@@ -183,7 +188,10 @@ export function useDeltaStream(): DeltaState {
         dispatch({ type: 'conn', status: 'offline' });
       },
     });
-    return () => sub.unsubscribe();
+    return () => {
+      sub.unsubscribe();
+      for (const t of removalTimers) clearTimeout(t);
+    };
   }, []);
 
   return state;

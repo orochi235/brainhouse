@@ -920,3 +920,10 @@ UI/server is meant to uphold. New entries go at the bottom.
 - **A search hit is always visible in the reader.** The reader renders indexed
   events directly, never through the panel view pipeline, because the pipeline
   folds tool output into capsules and most matches are in tool output.
+- **A panel's activity times come from the server, never from when a delta
+  arrived.** `event_append` and `panel_status` carry `last_event_at` and
+  `status_changed_at`, so a late or replayed delta can't make a panel look
+  fresher than it is.
+- **A panel revived during its fade-out stays.** Each removal carries a token,
+  and the delayed delete only fires if the panel still holds that token; an
+  upsert or snapshot in between clears it.
