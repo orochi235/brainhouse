@@ -43,6 +43,7 @@ async function main() {
   if (!rows || rows.length === 0) return;
 
   const lines = rows
+    .filter(isWorthMentioning)
     .map(formatRow)
     .filter(Boolean)
     .slice(0, 8); // hard cap so the reminder never balloons
@@ -65,6 +66,17 @@ async function main() {
     hookName: 'session-procs-reminder',
     tokens: estimateTokens(message),
   });
+}
+
+/** Infrastructure the session never manages (MCP servers, the harness's caffeinate) and a command still running
+ *  when the prompt arrived, which is the model's own work in flight, not something it left behind. */
+const NEVER_MENTIONED = /\bmcp\b|-mcp\b|mcp@|caffeinate/i;
+const IN_FLIGHT_SECONDS = 60;
+function isWorthMentioning(row) {
+  const cmd = `${row.hook_command ?? ''} ${row.command ?? ''}`;
+  if (NEVER_MENTIONED.test(cmd)) return false;
+  const age = Number(row.uptime_s ?? NaN);
+  return !(Number.isFinite(age) && age < IN_FLIGHT_SECONDS);
 }
 
 async function fetchRows(sessionId) {
