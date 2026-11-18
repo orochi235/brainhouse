@@ -97,6 +97,19 @@ async function fetchRows(sessionId) {
   }
 }
 
+/**
+ * The process's own command, or the Bash command that started it where that names its program. A process
+ * merely first seen while a Bash call ran (a browser an MCP tool launched alongside it) is not that call's,
+ * and labeling it so invites killing the wrong process.
+ */
+function commandOf(row) {
+  const own = row.command ?? '';
+  const hook = row.hook_command;
+  if (!hook) return own;
+  const program = own.match(/^\S*?([^/\s]+)(?:\s|$)/)?.[1];
+  return program && hook.includes(program) ? hook : own || hook;
+}
+
 /** One compact line per process. Format prioritizes the bits a model
  * actually needs to act: bash_id (so it can kill / tail), what binary,
  * any HTTP URL it's serving, and how long it's been up. */
@@ -104,7 +117,7 @@ function formatRow(row) {
   const handle = row.bash_id ?? `pid ${row.pid}`;
   const runtime = row.runtime ?? 'process';
   const framework = row.framework ? `/${row.framework}` : '';
-  const cmd = truncate(row.hook_command ?? row.command ?? '', 60);
+  const cmd = truncate(commandOf(row), 60);
   const url = pickUrl(row.ports);
   const where = url ? ` ${url}` : '';
   const age = formatAge(row.uptime_s);
