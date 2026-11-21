@@ -1,16 +1,5 @@
 # brainhouse — project todos
 
-## [HIGH] session-procs-reminder reports the session itself
-
-Found 2026-11-21. `hooks/session-procs-reminder.mjs` fired on every prompt of a session
-whose only "background processes" were its own `claude` process and the login shell
-that launched it (`-zsh` → `claude --dangerously-skip-permissions`, checked with `ps`).
-Each turn paid for two lines plus "kill any you no longer need", which invites killing
-the session out from under itself. `isWorthMentioning` filters MCP servers, caffeinate,
-and anything under 60 s old, but not the session's own process or its ancestors.
-Exclude the hook's own `claude` ancestor and everything above it, then confirm a quiet
-session injects nothing (the hook records its cost through `recordHookOverhead`).
-
 ## Page load — residual polish (bulk fixed 2026-08-12)
 
 The bootstrap payload was the whole story: 52.8 MB of docked-mini event

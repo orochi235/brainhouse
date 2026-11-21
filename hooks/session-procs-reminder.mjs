@@ -7,8 +7,10 @@
  * Without this, sessions routinely lose track of servers they spun up
  * minutes earlier and either spawn duplicates or forget to clean up.
  * The reminder injects a compact one-line-per-process summary as
- * additionalContext so the running model sees current state on every
- * turn at near-zero token cost.
+ * additionalContext, only when the set of processes changed since it last
+ * spoke to this session (lib/said.mjs), so an unchanged list costs nothing.
+ * The session's own process and everything above it (its login shell,
+ * the terminal) are never listed: they are not background work.
  *
  * Talks to the brainhouse server's plain-JSON `/procs/by-session/:id`
  * endpoint. Silent when the server isn't running or no live processes
@@ -18,9 +20,12 @@
  *   BRAINHOUSE_PORT       override server port (default 8765)
  *   BRAINHOUSE_HOOK_DEBUG log errors to ~/.brainhouse/dispatcher.log
  */
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { estimateTokens, recordHookOverhead } from './lib/overhead.mjs';
+import { lastSaid, PROCS_REMINDER, rememberSaid } from './lib/said.mjs';
+import { ancestorsOf, parsePs } from './lib/wait-loops.mjs';
 
 const PORT = process.env.BRAINHOUSE_PORT || '8765';
 const FETCH_TIMEOUT_MS = 250;
@@ -40,18 +45,18 @@ async function main() {
   if (typeof sessionId !== 'string' || !sessionId) return;
 
   const rows = await fetchRows(sessionId);
-  if (!rows || rows.length === 0) return;
+  if (rows === null) return; // server down: say nothing, and don't forget what was said
+  const self = rows.length ? sessionSelf() : new Set();
+  const shown = rows.filter((r) => !self.has(r.pid) && isWorthMentioning(r)).slice(0, 8); // hard cap so the reminder never balloons
+  // Ages change every turn; only a change in which processes are live is news.
+  const key = shown.map((r) => `${r.bash_id ?? r.pid} ${commandOf(r)}`).join('\n');
+  if (lastSaid(PROCS_REMINDER, sessionId) === key) return;
+  rememberSaid(PROCS_REMINDER, sessionId, key);
 
-  const lines = rows
-    .filter(isWorthMentioning)
-    .map(formatRow)
-    .filter(Boolean)
-    .slice(0, 8); // hard cap so the reminder never balloons
-  if (lines.length === 0) return;
-
-  const message =
-    `Live background processes from this session (brainhouse):\n  ${lines.join('\n  ')}\n` +
-    'Reuse these where possible instead of starting fresh ones; kill any you no longer need.';
+  const message = shown.length
+    ? `Live background processes from this session (brainhouse):\n  ${shown.map(formatRow).join('\n  ')}\n` +
+      'Reuse these where possible instead of starting fresh ones; kill any you no longer need.'
+    : 'The background processes brainhouse listed earlier in this session have all exited.';
 
   process.stdout.write(
     `${JSON.stringify({
@@ -63,9 +68,21 @@ async function main() {
   );
   await recordHookOverhead({
     sessionId,
-    hookName: 'session-procs-reminder',
+    hookName: PROCS_REMINDER,
     tokens: estimateTokens(message),
   });
+}
+
+/** This hook's ancestors: the session's own `claude`, the shell that launched it, the terminal. */
+function sessionSelf() {
+  try {
+    const ps = parsePs(
+      execFileSync('ps', ['-axo', 'pid=,ppid=,etime=,command='], { encoding: 'utf8' }),
+    );
+    return new Set(ancestorsOf(ps, process.pid));
+  } catch {
+    return new Set([process.ppid]);
+  }
 }
 
 /** Infrastructure the session never manages (MCP servers, the harness's caffeinate) and a command still running

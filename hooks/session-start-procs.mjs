@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { mkdirSync, appendFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { eventsDir } from './lib/overhead.mjs';
+import { forgetSaid, PROCS_REMINDER } from './lib/said.mjs';
 
 async function readStdin() {
   let buf = '';
@@ -29,7 +30,11 @@ function itermGuid() {
 
 const raw = await readStdin();
 let payload;
-try { payload = JSON.parse(raw); } catch { process.exit(0); }
+try {
+  payload = JSON.parse(raw);
+} catch {
+  process.exit(0);
+}
 const sessionId = payload?.session_id;
 if (!sessionId || typeof sessionId !== 'string') process.exit(0);
 
@@ -48,6 +53,10 @@ const rec = {
 try {
   const dir = eventsDir();
   mkdirSync(dir, { recursive: true });
-  appendFileSync(join(dir, `${sessionId}.jsonl`), JSON.stringify(rec) + '\n');
-} catch { /* never block Claude */ }
+  appendFileSync(join(dir, `${sessionId}.jsonl`), `${JSON.stringify(rec)}\n`);
+} catch {
+  /* never block Claude */
+}
+// A new, resumed, or compacted context no longer holds the last reminder, so the next prompt repeats it.
+forgetSaid(PROCS_REMINDER, sessionId);
 process.exit(0);

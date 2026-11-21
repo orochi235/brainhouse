@@ -13,7 +13,10 @@ import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from
 import os from 'node:os';
 import path from 'node:path';
 import { estimateTokens, recordHookOverhead } from './lib/overhead.mjs';
+import { forgetSaid, lastSaid, rememberSaid } from './lib/said.mjs';
 import { classify, claudeAncestor, describe, parsePs } from './lib/wait-loops.mjs';
+
+const HOOK_NAME = 'reap-wait-loops';
 
 const LOG = path.join(os.homedir(), '.brainhouse', 'reaper.log');
 const LOG_CAP = 64 * 1024;
@@ -25,6 +28,7 @@ async function main() {
   const sessionId = payload.session_id ?? payload.sessionId;
   const event = payload.hook_event_name ?? 'UserPromptSubmit';
   if (!sessionId) return;
+  if (event === 'SessionStart') forgetSaid(HOOK_NAME, sessionId);
 
   const rows = parsePs(
     execFileSync('ps', ['-axo', 'pid=,ppid=,etime=,command='], { encoding: 'utf8' }),
@@ -33,7 +37,10 @@ async function main() {
   if (!claudePid) return;
 
   const loops = classify(rows, { claudePid, sessionId });
-  if (loops.length === 0) return;
+  if (loops.length === 0) {
+    rememberSaid(HOOK_NAME, sessionId, '');
+    return;
+  }
 
   const dry = Boolean(process.env.BRAINHOUSE_REAP_DRY_RUN);
   const reaped = [];
@@ -45,7 +52,11 @@ async function main() {
     reaped.push(loop);
     log(`${dry ? 'would reap' : 'reaped'} ${describe(loop)} :: ${loop.command.slice(-300)}`);
   }
-  const suspects = loops.filter((l) => l.verdict === 'suspect');
+  // A suspect stays one until it is killed or wakes; name each set once, not on every prompt.
+  const suspected = loops.filter((l) => l.verdict === 'suspect');
+  const key = suspected.map((l) => l.pid).join(' ');
+  const suspects = lastSaid(HOOK_NAME, sessionId) === key ? [] : suspected;
+  rememberSaid(HOOK_NAME, sessionId, key);
 
   const parts = [];
   if (reaped.length) {
@@ -67,7 +78,7 @@ async function main() {
   );
   await recordHookOverhead({
     sessionId,
-    hookName: 'reap-wait-loops',
+    hookName: HOOK_NAME,
     tokens: estimateTokens(message),
   });
 }

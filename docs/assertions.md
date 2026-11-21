@@ -307,6 +307,12 @@ UI/server is meant to uphold. New entries go at the bottom.
   absolute total plus its share of the current context window. Counter
   is in-memory; resets on server restart (re-accumulates as the watcher
   replays the side-channel JSONL).
+- **A per-prompt hook speaks only when what it would say has changed.**
+  Every injection stays in context and is re-read by each later call, so
+  the background-process reminder and the wait-loop reaper's suspect list
+  are said once per change (`hooks/lib/said.mjs`), and again after
+  SessionStart (new, resumed, or compacted context). The process reminder
+  never lists the session's own `claude` process or anything above it.
 - Agent-emitted retitle: a `meta` record with `record_type:
   'session-title'` and `raw.title` routes through the auto-title path
   (`panel_upsert`, synthetic `auto-title` breadcrumb, `auto_titled`

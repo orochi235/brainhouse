@@ -35,6 +35,16 @@ export function parsePs(text) {
   return rows;
 }
 
+/** PIDs above `pid` in `rows`, its parent first, stopping before launchd. */
+export function ancestorsOf(rows, pid) {
+  const ppidOf = new Map(rows.map((r) => [r.pid, r.ppid]));
+  const out = [];
+  for (let p = ppidOf.get(pid); p !== undefined && p > 1 && !out.includes(p); p = ppidOf.get(p)) {
+    out.push(p);
+  }
+  return out;
+}
+
 export function claudeAncestor(rows, pid) {
   const byPid = new Map(rows.map((r) => [r.pid, r]));
   for (let p = pid, hops = 0; p > 1 && hops < 20; hops++) {
