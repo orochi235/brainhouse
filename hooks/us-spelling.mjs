@@ -31,7 +31,7 @@ export const SWAPS = {
   travelling: 'traveling', modelling: 'modeling', labelled: 'labeled',
   labelling: 'labeling', fuelled: 'fueled', signalling: 'signaling',
   marvellous: 'marvelous', learnt: 'learned', spelt: 'spelled',
-  whilst: 'while', amongst: 'among', aluminium: 'aluminum',
+  whilst: 'while', aluminium: 'aluminum',
   manoeuvre: 'maneuver', enrolment: 'enrollment', fulfil: 'fulfill',
 };
 
